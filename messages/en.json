@@ -64,12 +64,24 @@
   },
   "account": {
     "repos": "Repositories",
-    "noRepos": "No repositories selected for this installation. Change the repository selection on GitHub."
+    "noRepos": "No repositories selected for this installation. Change the repository selection on GitHub.",
+    "lastReconciled": "Last reconcile: {time}",
+    "neverReconciled": "Not reconciled yet"
   },
   "settings": {
     "title": "Settings",
     "role": "Your role",
     "roles": { "VIEWER": "Viewer", "OPERATOR": "Operator", "ADMIN": "Admin" },
     "signedInAs": "Signed in as {email}"
+  },
+  "sync": {
+    "now": "Sync now",
+    "running": "Syncing…",
+    "result": {
+      "started": "Sync started. New data appears within a minute.",
+      "rate_limited": "A sync ran less than five minutes ago. Try again later.",
+      "forbidden": "Your role cannot start a sync.",
+      "failed": "The sync could not be started."
+    }
   }
 }

@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { getFormatter, getTranslations } from "next-intl/server";
 import { RepoTable } from "@/components/repo-table";
+import { SyncNowButton } from "@/components/sync-now-button";
 import { Badge } from "@/components/ui/badge";
+import { hasRole } from "@/server/authz/roles";
 import { requireScope } from "@/server/better-auth/session";
 import { findInstallationByAccount } from "@/server/data/installations";
 import { liveRepositories } from "@/server/data/live-repositories";
@@ -21,6 +23,7 @@ export default async function AccountPage({
   if (!installation) notFound();
 
   const t = await getTranslations();
+  const format = await getFormatter();
   const { repos, source } = await liveRepositories(scope, installation);
 
   return (
@@ -32,6 +35,18 @@ export default async function AccountPage({
             ? t("common.organization")
             : t("common.personalAccount")}
         </Badge>
+      </div>
+      <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+        <span>
+          {installation.lastReconciledAt
+            ? t("account.lastReconciled", {
+                time: format.relativeTime(installation.lastReconciledAt),
+              })
+            : t("account.neverReconciled")}
+        </span>
+        {hasRole(scope.role, "OPERATOR") ? (
+          <SyncNowButton installationId={String(installation.id)} />
+        ) : null}
       </div>
       <section className="flex flex-col gap-2">
         <h2 className="font-medium">

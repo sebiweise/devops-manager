@@ -64,7 +64,9 @@
   },
   "account": {
     "repos": "Repositories",
-    "noRepos": "Für diese Installation sind keine Repositories ausgewählt. Ändere die Auswahl auf GitHub."
+    "noRepos": "Für diese Installation sind keine Repositories ausgewählt. Ändere die Auswahl auf GitHub.",
+    "lastReconciled": "Letzter Abgleich: {time}",
+    "neverReconciled": "Noch nicht abgeglichen"
   },
   "settings": {
     "title": "Einstellungen",
@@ -75,5 +77,15 @@
       "ADMIN": "Admin"
     },
     "signedInAs": "Angemeldet als {email}"
+  },
+  "sync": {
+    "now": "Jetzt synchronisieren",
+    "running": "Synchronisiere…",
+    "result": {
+      "started": "Synchronisierung gestartet. Neue Daten erscheinen innerhalb einer Minute.",
+      "rate_limited": "Vor weniger als fünf Minuten lief bereits eine Synchronisierung. Bitte später erneut versuchen.",
+      "forbidden": "Deine Rolle darf keine Synchronisierung starten.",
+      "failed": "Die Synchronisierung konnte nicht gestartet werden."
+    }
   }
 }
