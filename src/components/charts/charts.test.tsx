@@ -109,6 +109,21 @@ describe("Sparkline and RunTimeline", () => {
     expect(html).toContain('fill="url(#s1-hatch)"');
   });
 
+  it("offers the per-day values as a table disclosure", () => {
+    const html = render(
+      <Sparkline
+        id="s2"
+        label="4 runs, 2 failed"
+        points={[{ day: "2026-11-10", runs: 4, failures: 2 }]}
+      />,
+    );
+    expect(html).toContain("<details");
+    expect(html).toContain(">Show as table</summary>");
+    expect(html).toContain(
+      '<th scope="row" class="pr-2 text-left font-normal">2026-11-10</th>',
+    );
+  });
+
   it("positions timeline segments in percent of the span", () => {
     const html = render(
       <RunTimeline
