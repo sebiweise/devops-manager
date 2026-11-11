@@ -1,68 +1,229 @@
-import { notFound } from "next/navigation";
-import { getFormatter, getTranslations } from "next-intl/server";
-import { RepoTable } from "@/components/repo-table";
-import { SyncNowButton } from "@/components/sync-now-button";
-import { Badge } from "@/components/ui/badge";
-import { hasRole } from "@/server/authz/roles";
-import { requireScope } from "@/server/better-auth/session";
-import { findInstallationByAccount } from "@/server/data/installations";
-import { liveRepositories } from "@/server/data/live-repositories";
+import { getLocale, getTranslations } from "next-intl/server";
+import {
+  DurationChart,
+  QueueChart,
+  RunsPerDayChart,
+} from "@/components/insights/day-charts";
+import { KpiGrid, KpiTile } from "@/components/insights/kpi-tile";
+import { RangeFilter } from "@/components/insights/range-filter";
+import { WorkflowLink } from "@/components/insights/workflow-link";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
+import {
+  approx,
+  formatDuration,
+  formatMinutes,
+  formatNumber,
+  formatPercent,
+  formatPointsDelta,
+} from "@/lib/format";
+import { enoughData, param, type SearchParams } from "@/lib/insights-view";
+import {
+  getInstallationOverview,
+  listAlerts,
+  listFlakyJobs,
+  parseRange,
+} from "@/server/data/insights";
+
+export const metadata = { title: "Overview" };
 
 export default async function AccountPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ account: string }>;
+  searchParams: Promise<SearchParams>;
 }) {
   const { account } = await params;
-  const { scope } = await requireScope();
-  // Unknown or invisible accounts answer 404 (not 403), so slugs cannot be enumerated.
-  const installation = await findInstallationByAccount(
-    scope,
-    decodeURIComponent(account),
-  );
-  if (!installation) notFound();
-
-  const t = await getTranslations();
-  const format = await getFormatter();
-  const { repos, source } = await liveRepositories(scope, installation);
+  const sp = await searchParams;
+  const { scope, installation } = await loadAccount(account);
+  const range = parseRange(param(sp, "range"));
+  const [t, locale, overview, alerts, flaky] = await Promise.all([
+    getTranslations(),
+    getLocale(),
+    orNotFound(getInstallationOverview(scope, installation.id, range)),
+    orNotFound(listAlerts(scope, installation.id)),
+    orNotFound(listFlakyJobs(scope, installation.id, range)),
+  ]);
+  const s = overview.summary;
+  const login = installation.accountLogin;
+  const enough = enoughData(s.n);
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-2">
-        <h1 className="text-2xl font-semibold">{installation.accountLogin}</h1>
-        <Badge variant="outline">
-          {installation.accountType === "ORGANIZATION"
-            ? t("common.organization")
-            : t("common.personalAccount")}
-        </Badge>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">{t("overview.title")}</h1>
+        <RangeFilter
+          base={accountPath(login)}
+          current={range}
+          searchParams={sp}
+        />
       </div>
-      <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-        <span>
-          {installation.lastReconciledAt
-            ? t("account.lastReconciled", {
-                time: format.relativeTime(installation.lastReconciledAt),
-              })
-            : t("account.neverReconciled")}
-        </span>
-        {hasRole(scope.role, "OPERATOR") ? (
-          <SyncNowButton installationId={String(installation.id)} />
-        ) : null}
+
+      {s.runs === 0 ? (
+        <p className="text-muted-foreground">{t("overview.noRuns")}</p>
+      ) : null}
+
+      <KpiGrid>
+        <KpiTile
+          label={t("kpi.runs", { range: t(`filters.ranges.${range}`) })}
+          value={formatNumber(s.runs, locale)}
+        />
+        <KpiTile
+          label={t("kpi.successRate")}
+          value={formatPercent(s.successRate, locale)}
+          hint={t("kpi.delta7d", {
+            delta: formatPointsDelta(overview.successRateDelta, locale),
+          })}
+        />
+        <KpiTile
+          label={t("kpi.p50")}
+          value={
+            enough
+              ? approx(formatDuration(s.p50), s.approx)
+              : t("common.notEnoughData")
+          }
+          hint={t("kpi.samples", { n: s.n })}
+        />
+        <KpiTile
+          label={t("kpi.p95")}
+          value={
+            enough
+              ? approx(formatDuration(s.p95), s.approx)
+              : t("common.notEnoughData")
+          }
+        />
+        <KpiTile
+          label={t("kpi.queueP95")}
+          value={approx(formatDuration(s.queueP95), s.approx)}
+        />
+        <KpiTile
+          label={t("kpi.minutes")}
+          value={formatMinutes(overview.billableMinEst, locale)}
+          hint={t("kpi.minutesHint")}
+        />
+      </KpiGrid>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <RunsPerDayChart id="overview-runs" days={overview.perDay} />
+        <DurationChart
+          id="overview-duration"
+          days={overview.perDay}
+          approx={s.approx}
+        />
+        <QueueChart
+          id="overview-queue"
+          days={overview.perDay}
+          approx={s.approx}
+        />
       </div>
-      <section className="flex flex-col gap-2">
-        <h2 className="font-medium">
-          {t("account.repos")}
-          <span className="ml-2 text-sm font-normal text-muted-foreground">
-            {source === "live"
-              ? t("dashboard.liveSource")
-              : t("dashboard.storedSource")}
-          </span>
-        </h2>
-        {repos.length > 0 ? (
-          <RepoTable repos={repos} />
-        ) : (
-          <p className="text-muted-foreground">{t("account.noRepos")}</p>
-        )}
-      </section>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <h2>{t("overview.regressions")}</h2>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {alerts.regressions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {t("overview.noRegressions")}
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2 text-sm">
+                {alerts.regressions.slice(0, 10).map((w) => (
+                  <li key={w.workflowId}>
+                    <WorkflowLink
+                      accountLogin={login}
+                      repoFullName={w.repoFullName}
+                      workflowId={w.workflowId}
+                      workflowName={w.workflowName}
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      {t("overview.regression", {
+                        metric: w.regression!.metric,
+                        recent: formatDuration(w.regression!.recent),
+                        baseline: formatDuration(w.regression!.baseline),
+                        ratio: w.regression!.ratio.toFixed(2),
+                      })}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <h2>{t("overview.flakyJobs")}</h2>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {flaky.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {t("overview.noFlaky")}
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2 text-sm">
+                {flaky.slice(0, 10).map((f) => (
+                  <li key={`${f.workflowId}:${f.baseName}`}>
+                    <span className="font-medium">{f.baseName}</span>
+                    <div className="text-xs">
+                      <WorkflowLink
+                        accountLogin={login}
+                        repoFullName={f.repoFullName}
+                        workflowId={f.workflowId}
+                        workflowName={f.workflowName}
+                      />
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {t("overview.flakyRuns", { count: f.runs })}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <h2>{t("overview.successDrops")}</h2>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {alerts.successDrops.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {t("overview.noSuccessDrops")}
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2 text-sm">
+                {alerts.successDrops.slice(0, 10).map((w) => (
+                  <li key={w.workflowId}>
+                    <WorkflowLink
+                      accountLogin={login}
+                      repoFullName={w.repoFullName}
+                      workflowId={w.workflowId}
+                      workflowName={w.workflowName}
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      {t("overview.successDrop", {
+                        recent: formatPercent(w.successDrop!.recent, locale),
+                        baseline: formatPercent(
+                          w.successDrop!.baseline,
+                          locale,
+                        ),
+                      })}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

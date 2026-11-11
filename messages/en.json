@@ -10,7 +10,10 @@
     "private": "private",
     "archived": "archived",
     "personalAccount": "Personal account",
-    "organization": "Organization"
+    "organization": "Organization",
+    "notEnoughData": "not enough data",
+    "yes": "yes",
+    "no": "no"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -91,8 +94,267 @@
       "failed": "The sync could not be started."
     }
   },
+  "accountNav": {
+    "label": "Installation",
+    "overview": "Overview",
+    "repos": "Repositories",
+    "workflows": "Workflows",
+    "settings": "Settings"
+  },
+  "freshness": {
+    "label": "Data freshness",
+    "pill": "last webhook {webhook} · last reconcile {reconcile}",
+    "never": "never",
+    "refreshing": "Refreshing in the background; reload in a minute for newer data.",
+    "staleTitle": "Data may be out of date",
+    "reasons": {
+      "noWebhook": "No webhook received for more than 6 hours although runs exist. Check that the webhook URL is reachable.",
+      "noReconcile": "No reconcile for more than 24 hours. Check the cron job or use Sync now.",
+      "failedDeliveries": "{count, plural, one {# webhook delivery} other {# webhook deliveries}} failed and wait for replay."
+    }
+  },
+  "filters": {
+    "range": "Time range",
+    "ranges": {
+      "24h": "24 h",
+      "7d": "7 days",
+      "30d": "30 days",
+      "90d": "90 days",
+      "12m": "12 months"
+    }
+  },
   "charts": {
     "showTable": "Show as table",
-    "showChart": "Show as chart"
+    "showChart": "Show as chart",
+    "success": "Success",
+    "failure": "Failure",
+    "cancelled": "Cancelled",
+    "other": "Other",
+    "day": "Day",
+    "runs": "Runs",
+    "successRate": "Success rate",
+    "p50": "p50",
+    "p95": "p95",
+    "queueP95": "Queue p95",
+    "minutes": "Est. minutes",
+    "runsPerDay": {
+      "title": "Runs per day",
+      "description": "Completed runs by conclusion (latest attempt).",
+      "label": "Stacked bar chart of runs per day by conclusion over {days} days, {runs} runs in total."
+    },
+    "duration": {
+      "title": "Run duration",
+      "description": "p50 (solid) and p95 (dashed) wall-clock duration per day.",
+      "label": "Line chart of p50 and p95 run duration per day over {days} days."
+    },
+    "queue": {
+      "title": "Queue time",
+      "description": "p95 time jobs waited for a runner, per day.",
+      "label": "Line chart of the p95 queue time per day over {days} days."
+    },
+    "successChart": {
+      "title": "Success rate",
+      "description": "Success / (success + failure) per day; cancelled and skipped runs are excluded.",
+      "label": "Line chart of the success rate per day over {days} days."
+    },
+    "minutesChart": {
+      "title": "Estimated minutes",
+      "description": "Billable minutes estimated from job durations and runner SKUs.",
+      "label": "Bar chart of estimated minutes per day over {days} days, {minutes} in total."
+    }
+  },
+  "overview": {
+    "title": "Overview",
+    "noRuns": "No completed workflow runs in this range yet. New runs arrive through webhooks; older ones through the backfill.",
+    "regressions": "Regressions",
+    "noRegressions": "No workflow got slower in the last 7 days.",
+    "regression": "{metric} {recent} vs {baseline} over the prior 28 days ({ratio}×)",
+    "flakyJobs": "Flaky jobs",
+    "noFlaky": "No job failed and then passed on a re-run.",
+    "flakyRuns": "{count, plural, one {# flaky run} other {# flaky runs}}",
+    "successDrops": "Success drops",
+    "noSuccessDrops": "No success rate dropped by 10 points or more.",
+    "successDrop": "{recent} in the last 7 days vs {baseline} before"
+  },
+  "kpi": {
+    "runs": "Runs ({range})",
+    "successRate": "Success rate",
+    "delta7d": "{delta} vs the previous 7 days",
+    "p50": "p50 duration",
+    "p95": "p95 duration",
+    "samples": "n = {n}",
+    "queueP95": "Queue p95",
+    "minutes": "Est. minutes",
+    "minutesHint": "estimate from job durations"
+  },
+  "repos": {
+    "title": "Repositories",
+    "filter": "Filter repositories",
+    "apply": "Apply",
+    "changeSelection": "Change the repository selection on GitHub",
+    "repo": "Repository",
+    "lastRun": "Last run",
+    "runs7d": "Runs 7 d",
+    "success7d": "Success 7 d",
+    "p50": "p50 7 d",
+    "minutes30d": "Est. minutes 30 d",
+    "trend": "14 days",
+    "noRuns": "no runs yet",
+    "sparkline": "Runs over the last 14 days: {runs} runs, {failures} failed.",
+    "noMatch": "No repository matches the filter.",
+    "minutesNote": "Minutes are estimates from job durations (rounded up per job, with SKU multipliers); billed usage follows in M2. Open PRs and Dependabot alerts follow in M3."
+  },
+  "repo": {
+    "defaultBranch": "default branch {branch}",
+    "openOnGithub": "Open on GitHub",
+    "tabs": "Repository sections",
+    "tab": {
+      "workflows": "Workflows",
+      "runs": "Runs"
+    },
+    "laterTabs": "Pull requests, variables and Dependabot follow in M3."
+  },
+  "runs": {
+    "filters": "Run filters",
+    "branch": "Branch",
+    "event": "Event",
+    "conclusion": "Conclusion",
+    "actor": "Actor",
+    "any": "any",
+    "empty": "No runs match.",
+    "run": "Run",
+    "workflow": "Workflow",
+    "status": "Status",
+    "duration": "Duration",
+    "created": "Created",
+    "attempt": "attempt {n}",
+    "first": "Newest runs",
+    "older": "Older runs"
+  },
+  "status": {
+    "SUCCESS": "success",
+    "FAILURE": "failure",
+    "CANCELLED": "cancelled",
+    "SKIPPED": "skipped",
+    "TIMED_OUT": "timed out",
+    "ACTION_REQUIRED": "action required",
+    "NEUTRAL": "neutral",
+    "STALE": "stale",
+    "STARTUP_FAILURE": "startup failure",
+    "REQUESTED": "requested",
+    "QUEUED": "queued",
+    "WAITING": "waiting",
+    "PENDING": "pending",
+    "IN_PROGRESS": "in progress",
+    "COMPLETED": "completed"
+  },
+  "runnerKind": {
+    "GITHUB_HOSTED": "GitHub-hosted",
+    "LARGER_HOSTED": "larger hosted",
+    "SELF_HOSTED": "self-hosted",
+    "UNKNOWN": "unknown runner"
+  },
+  "workflows": {
+    "empty": "No workflow runs in this range.",
+    "workflow": "Workflow",
+    "runs": "Runs",
+    "success": "Success",
+    "regressionBadge": "{metric} regression",
+    "successDropBadge": "success drop"
+  },
+  "workflow": {
+    "notEnough": "Only {n} completed runs in this range; percentiles need at least {min}.",
+    "firstTry": "first try {rate}",
+    "flakyRate": "Flaky rate",
+    "flakyRuns": "{count, plural, one {# run recovered on re-run} other {# runs recovered on re-run}}",
+    "jobs": "Jobs by pool",
+    "noJobs": "No completed jobs in this range.",
+    "job": "Job",
+    "pool": "Pool",
+    "count": "Jobs",
+    "failureRate": "Failure",
+    "flaky": "Flaky runs",
+    "compare": "Hosted vs self-hosted",
+    "compareEmpty": "No job ran at least 5 times on both hosted and self-hosted runners in this range.",
+    "hostedP50": "Hosted p50",
+    "selfHostedP50": "Self-hosted p50",
+    "hostedP95": "Hosted p95",
+    "selfHostedP95": "Self-hosted p95",
+    "queueCompare": "Queue p95 (hosted / self-hosted)",
+    "delta": "Δ p50",
+    "recentRuns": "Recent runs"
+  },
+  "run": {
+    "noRunner": "no runner",
+    "queue": "Queue",
+    "wait": "Approval wait",
+    "execution": "Execution",
+    "timeline": "Job timeline",
+    "timelineDescription": "Queue (dotted), approval wait (hatched) and execution (solid) per job; underlined jobs are on the critical path.",
+    "timelineLabel": "Timeline of {jobs} jobs over {span}.",
+    "critical": "critical path",
+    "live": "live",
+    "sha": "Commit",
+    "attempts": "Attempts",
+    "placeholder": "Only job events have arrived for this run so far; the run details are completed by the next reconcile.",
+    "wall": "Wall clock",
+    "compute": "Compute time",
+    "parallelism": "Parallelism",
+    "firstQueue": "First queue",
+    "jobs": "Jobs",
+    "noJobs": "No jobs recorded for this attempt yet.",
+    "runner": "Runner",
+    "jobsAndSteps": "Jobs and steps",
+    "stepsExpired": "Steps are no longer available on GitHub.",
+    "stepsUnavailable": "Steps could not be loaded from GitHub right now.",
+    "labels": "Labels",
+    "noSteps": "No steps reported."
+  },
+  "leaderboards": {
+    "title": "Workflows",
+    "slowest": "Slowest (p95)",
+    "flakiest": "Flakiest",
+    "mostMinutes": "Most estimated minutes",
+    "lowestSuccess": "Lowest success rate",
+    "regressions": "Biggest regressions",
+    "empty": "Nothing to show in this range.",
+    "ratio": "{metric} {ratio}×",
+    "note": "Percentiles and success rates need at least 10 completed runs; values with ~ come from daily histograms."
+  },
+  "syncHealth": {
+    "title": "Sync health",
+    "lastWebhook": "Last webhook",
+    "lastReconcile": "Last reconcile",
+    "lagP50": "Ingestion lag p50",
+    "lagP95": "Ingestion lag p95",
+    "dirty": "Pending rollups",
+    "dirtyHint": "days waiting to be recomputed",
+    "backfillDays": "Backfill days",
+    "repos": "Repositories",
+    "cursor": "Synced up to",
+    "backfill": "Backfill",
+    "state": "State",
+    "lastError": "Last error",
+    "backfillOf": "Backfill progress of {repo}",
+    "done": "done",
+    "needsResync": "resync pending",
+    "ok": "ok",
+    "deliveries": "Webhook deliveries (24 h)",
+    "status": "Status",
+    "count": "Count",
+    "deliveryStatus": {
+      "PROCESSED": "processed",
+      "RECEIVED": "received",
+      "PROCESSING": "processing",
+      "FAILED": "failed",
+      "DEAD": "dead",
+      "SKIPPED": "skipped",
+      "REJECTED": "rejected"
+    },
+    "rateLimits": "GitHub rate limits",
+    "noRateLimits": "No GitHub request recorded yet.",
+    "resource": "Resource",
+    "remaining": "Remaining",
+    "reset": "Resets"
   }
 }
