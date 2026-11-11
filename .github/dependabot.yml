@@ -1,0 +1,69 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Version updates wait a week: most hijacked releases are pulled within
+    # days. Security updates are not delayed by this.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    groups:
+      nextjs:
+        patterns: ["next", "eslint-config-next"]
+        update-types: ["minor", "patch"]
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+      prisma:
+        # Prisma 8 is a separate migration; stay on 7.x until then.
+        patterns: ["prisma", "@prisma/*"]
+        update-types: ["minor", "patch"]
+      better-auth:
+        patterns: ["better-auth", "@better-auth/*"]
+        update-types: ["minor", "patch"]
+      octokit:
+        patterns: ["@octokit/*"]
+        update-types: ["minor", "patch"]
+      lint:
+        patterns:
+          [
+            "eslint",
+            "typescript-eslint",
+            "prettier",
+            "prettier-plugin-tailwindcss",
+          ]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "prisma"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@prisma/*"
+        update-types: ["version-update:semver-major"]
+      # typescript-eslint supports TypeScript < 6.1 only.
+      - dependency-name: "typescript"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7

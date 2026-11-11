@@ -1,0 +1,25 @@
+name: Security
+
+# Semgrep, Trivy (filesystem, dependencies, Dockerfile) and Gitleaks from a
+# public reusable workflow, pinned by commit. Only severe findings fail the
+# run; all findings are listed in the job summary.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # New CVEs are published against code that has not changed.
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    uses: sebiweise/security-workflows/.github/workflows/scan.yml@8b232b405b4b8a638b1bc5a17acb91980663eee5 # v1.1.0
