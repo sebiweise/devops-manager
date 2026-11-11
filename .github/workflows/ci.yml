@@ -5,10 +5,10 @@ name: CI
 # `prisma generate` and `next build` (standalone output), so it covers the app
 # build and the Dockerfile in one job. The image is not pushed.
 
+# Pull requests only: main changes only through pull requests, so a push run
+# would check the same code a second time.
 on:
   pull_request:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
