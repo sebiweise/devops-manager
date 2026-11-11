@@ -233,6 +233,8 @@ export class FakeGitHub {
   readonly redelivered: number[] = [];
   hookDeliveries: HookDelivery[] = [];
   failInstallations = new Set<bigint>();
+  /** Runs GitHub no longer has (log retention): their job lists answer 404. */
+  expiredRuns = new Set<number>();
   now = Date.now();
   msPerRequest = 0;
   remaining = 5000;
@@ -343,6 +345,38 @@ export class FakeGitHub {
         const run = data.runs.get(Number(params.run_id));
         if (!run) throw new HttpError(404);
         return { total_count: run.jobs.length, jobs: run.jobs };
+      }
+      case "GET /repos/{owner}/{repo}/actions/runs/{run_id}/attempts/{attempt_number}/jobs": {
+        const data = this.repo(installationId, params);
+        const run = data.runs.get(Number(params.run_id));
+        if (!run || this.expiredRuns.has(run.run.id)) throw new HttpError(404);
+        const jobs = run.jobs
+          .filter(
+            (j: GhWorkflowJob) =>
+              j.run_attempt === Number(params.attempt_number),
+          )
+          .map((j: GhWorkflowJob) => ({
+            ...j,
+            steps: [
+              {
+                number: 2,
+                name: "Run tests",
+                status: "completed",
+                conclusion: j.conclusion,
+                started_at: j.started_at,
+                completed_at: j.completed_at,
+              },
+              {
+                number: 1,
+                name: "Set up job",
+                status: "completed",
+                conclusion: "success",
+                started_at: j.started_at,
+                completed_at: j.started_at,
+              },
+            ],
+          }));
+        return { total_count: jobs.length, jobs };
       }
       case "GET /repos/{owner}/{repo}/actions/runs/{run_id}": {
         const run = this.repo(installationId, params).runs.get(
