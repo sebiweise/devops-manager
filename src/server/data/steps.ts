@@ -1,7 +1,18 @@
 import "server-only";
+import { LRUCache } from "lru-cache";
 import type { TenantScope } from "@/server/authz/scope";
 import { db } from "@/server/db";
-import { errorStatus, type GitHubClients } from "@/server/ingest/github-client";
+import { RateBudget } from "@/server/ingest/budget";
+import {
+  errorStatus,
+  withBudget,
+  type GitHubClients,
+} from "@/server/ingest/github-client";
+import {
+  belowInteractiveFloor,
+  persistRateBudget,
+  storedCoreBudget,
+} from "@/server/ingest/rate-store";
 import { githubClients } from "@/server/ingest/triggers";
 import { inScope, NotFoundError } from "./installations";
 
@@ -10,6 +21,13 @@ import { inScope, NotFoundError } from "./installations";
  * detail, "steps loaded live"). Steps are never stored. The run must belong
  * to a visible installation of the scope; otherwise NotFoundError is thrown
  * before a token is minted.
+ *
+ * GitHub is called at most once per (installation, run, attempt) and TTL:
+ * results are cached in memory (30 s while the run is live, which matches
+ * the page's auto refresh, 10 minutes once it completed), concurrent views
+ * share one request, and no request is made while the installation's stored
+ * rate budget is below the interactive floor. The rate-limit headers of
+ * these calls are recorded like reconcile's.
  */
 
 export type StepDto = {
@@ -41,6 +59,18 @@ type GhJobWithSteps = { id: number; steps?: GhStep[] };
 
 const PER_PAGE = 100;
 const MAX_PAGES = 5;
+const LIVE_TTL_MS = 30_000;
+const COMPLETED_TTL_MS = 10 * 60_000;
+
+const cache = new LRUCache<string, Promise<RunSteps>>({
+  max: 500,
+  ttl: LIVE_TTL_MS,
+});
+
+/** Empties the steps cache (tests). */
+export function resetStepsCache(): void {
+  cache.clear();
+}
 
 export function mapSteps(steps: ReadonlyArray<GhStep> | undefined): StepDto[] {
   return (steps ?? [])
@@ -82,7 +112,7 @@ export async function getRunSteps(
   if (!inst) throw new NotFoundError();
   const run = await db.workflowRun.findFirst({
     where: { id: runId, installationId },
-    select: { repositoryId: true },
+    select: { repositoryId: true, status: true },
   });
   if (!run) throw new NotFoundError();
   const repo = await db.repository.findFirst({
@@ -91,12 +121,49 @@ export async function getRunSteps(
   });
   if (!repo) return { status: "expired" };
 
+  const key = `${installationId}|${runId}|${attempt}`;
+  const cached = cache.get(key);
+  if (cached) return cached;
+  const pending = fetchSteps(
+    installationId,
+    (inst.permissions ?? {}) as Record<string, unknown>,
+    repo,
+    runId,
+    attempt,
+    clients,
+  );
+  // Only live runs change; "unavailable" is retried after the short TTL.
+  cache.set(key, pending, {
+    ttl: run.status === "COMPLETED" ? COMPLETED_TTL_MS : LIVE_TTL_MS,
+  });
   try {
-    const api = await clients.installation(
-      installationId,
-      "sync.runs",
-      (inst.permissions ?? {}) as Record<string, unknown>,
-      [repo.id],
+    const res = await pending;
+    if (res.status === "unavailable")
+      cache.set(key, pending, { ttl: LIVE_TTL_MS });
+    return res;
+  } catch (error) {
+    cache.delete(key);
+    throw error;
+  }
+}
+
+async function fetchSteps(
+  installationId: bigint,
+  permissions: Record<string, unknown>,
+  repo: { id: bigint; ownerLogin: string; name: string },
+  runId: bigint,
+  attempt: number,
+  clients: GitHubClients,
+): Promise<RunSteps> {
+  if (belowInteractiveFloor(await storedCoreBudget(installationId), Date.now()))
+    return { status: "unavailable" };
+  const budget = new RateBudget();
+  try {
+    const api = withBudget(
+      await clients.installation(installationId, "sync.runs", permissions, [
+        repo.id,
+      ]),
+      budget,
     );
     const byJob: Record<string, StepDto[]> = {};
     for (let page = 1; page <= MAX_PAGES; page++) {
@@ -131,5 +198,7 @@ export async function getRunSteps(
       error instanceof Error ? error.message : "unknown",
     );
     return { status: "unavailable" };
+  } finally {
+    await persistRateBudget(installationId, budget).catch(() => undefined);
   }
 }

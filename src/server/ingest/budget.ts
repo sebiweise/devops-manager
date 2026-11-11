@@ -117,6 +117,16 @@ export class RateBudget {
     return Math.max(500, Math.ceil(limit * 0.25));
   }
 
+  /**
+   * The floor below which interactive reads (run steps) stop calling GitHub.
+   * It lies below the sync reserve, so the reserve serves interactive use and
+   * stale repair, but a page left open cannot drain the last requests that
+   * webhook repair and Sync now need.
+   */
+  static interactiveFloor(limit: number): number {
+    return Math.max(100, Math.ceil(limit * 0.05));
+  }
+
   /** True when steps d-f must pause for this installation. */
   paused(): boolean {
     if (this.clock() < this.pausedUntil) return true;

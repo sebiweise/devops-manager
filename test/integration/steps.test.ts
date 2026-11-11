@@ -64,6 +64,7 @@ describe.skipIf(!DATABASE_URL)("run steps", () => {
   });
 
   beforeEach(async () => {
+    steps.resetStepsCache();
     await resetTables(db);
     await seedInstallations(db);
     gh = new FakeGitHub();
@@ -131,5 +132,57 @@ describe.skipIf(!DATABASE_URL)("run steps", () => {
       steps.getRunSteps(scope("ADMIN", A), B, runOfB, 1, gh.clients()),
     ).rejects.toBeInstanceOf(installations.NotFoundError);
     expect(gh.tokens.length).toBe(before);
+  });
+
+  it("serves repeated views of a run from the cache", async () => {
+    const jobsRequests = () =>
+      gh.requests.filter((r) => r.route.includes("/attempts/")).length;
+    const before = jobsRequests();
+    for (let i = 0; i < 3; i++)
+      expect(
+        (
+          await steps.getRunSteps(
+            scope("VIEWER", A),
+            A,
+            runOfA,
+            1,
+            gh.clients(),
+          )
+        ).status,
+      ).toBe("ok");
+    expect(jobsRequests() - before).toBe(1);
+    const stored = await db.installationRateLimit.findUniqueOrThrow({
+      where: {
+        installationId_resource: { installationId: A, resource: "core" },
+      },
+    });
+    expect(stored.remaining).toBe(gh.remaining);
+  });
+
+  it("does not call GitHub while the stored budget is below the floor", async () => {
+    await db.installationRateLimit.upsert({
+      where: {
+        installationId_resource: { installationId: A, resource: "core" },
+      },
+      create: {
+        installationId: A,
+        resource: "core",
+        limit: 5000,
+        remaining: 50,
+        resetAt: new Date(Date.now() + 600_000),
+        updatedAt: new Date(),
+      },
+      update: { remaining: 50, resetAt: new Date(Date.now() + 600_000) },
+    });
+    const before = gh.requests.length;
+    const res = await steps.getRunSteps(
+      scope("VIEWER", A),
+      A,
+      runOfA,
+      1,
+      gh.clients(),
+    );
+    expect(res).toEqual({ status: "unavailable" });
+    expect(gh.requests.length).toBe(before);
   });
 });

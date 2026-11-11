@@ -28,6 +28,7 @@ import {
   pruneGlobal,
   pruneInstallation,
 } from "./prune";
+import { persistRateBudget } from "./rate-store";
 import { drainRollups, markRecentDaysDirty } from "./rollup";
 import {
   backfill,
@@ -122,25 +123,6 @@ async function releaseInstallation(installationId: bigint, now: Date) {
     where: { id: installationId },
     data: { reconcileLockedUntil: null, lastReconciledAt: now },
   });
-}
-
-async function persistRateBudget(installationId: bigint, budget: RateBudget) {
-  const now = new Date();
-  for (const snap of budget.snapshots.values()) {
-    const data = {
-      limit: snap.limit,
-      remaining: snap.remaining,
-      resetAt: snap.resetAt,
-      updatedAt: now,
-    };
-    await db.installationRateLimit.upsert({
-      where: {
-        installationId_resource: { installationId, resource: snap.resource },
-      },
-      create: { installationId, resource: snap.resource, ...data },
-      update: data,
-    });
-  }
 }
 
 type InstallationRow = {
