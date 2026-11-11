@@ -29,6 +29,7 @@ any number of organisations, through **one least-privilege GitHub App**.
   - [3a. Deploy on Vercel Hobby with Neon](#3a-deploy-on-vercel-hobby-with-neon)
   - [3b. Run with Docker Compose](#3b-run-with-docker-compose)
   - [4. Install the App and sign in](#4-install-the-app-and-sign-in)
+- [Sync and freshness](#sync-and-freshness)
 - [Roles](#roles)
 - [Configuration](#configuration)
 - [Development](#development)
@@ -192,6 +193,35 @@ Secrets can be passed as files: every secret accepts `<NAME>_FILE`
    GitHub redirects back; the installation id is verified with GitHub before it
    is shown.
 3. The dashboard lists the repositories of all installations live from GitHub.
+
+## Sync and freshness
+
+Workflow runs and jobs arrive through the `workflow_run` and `workflow_job`
+webhooks and are folded order-independently: duplicate, redelivered or
+out-of-order deliveries converge to the same row. `/api/cron/reconcile` repairs
+whatever webhooks miss, within a time budget (Vercel: 30 s before the function
+deadline; elsewhere 240 s) and with cursors, so the next call resumes:
+
+1. replay deliveries that were recorded but not processed (eight attempts,
+   then DEAD),
+2. walk GitHub's delivery log for the last 72 hours and request redelivery of
+   failed deliveries (oversized ones trigger a resync of the repository),
+3. re-read stale queued or running jobs and runs, and placeholder runs,
+4. incremental sync of new runs per repository,
+5. backfill of `BACKFILL_DAYS` in three-day windows (split further when a
+   window holds 1,000 runs or more),
+6. daily rollups, recomputed for every touched day,
+7. a daily prune of raw rows older than the retention.
+
+Triggers: the daily Vercel cron, the Docker cron sidecar, a **lazy reconcile**
+when an installation page is opened and the last reconcile is older than
+`LAZY_RECONCILE_MINUTES`, and **Sync now** (operator or admin, once per five
+minutes per installation, audited). Reconcile is idempotent; concurrent
+triggers are serialised per installation.
+
+**Lean mode** (`LEAN_WEBHOOKS=true`): unsubscribe `workflow_run` in the App
+settings to roughly halve webhook invocations on Vercel Hobby. Runs are then
+created from their jobs and completed by reconcile.
 
 ## Roles
 
