@@ -1,0 +1,35 @@
+{
+  "name": "DevOps Manager (read-only)",
+  "url": "https://devops.example.com",
+  "description": "GitHub Actions insights (self-hosted DevOps Manager instance, read-only). Pair with MANAGEMENT_ENABLED=false.",
+  "public": true,
+  "hook_attributes": {
+    "url": "https://devops.example.com/api/github/webhook",
+    "active": true
+  },
+  "redirect_url": "https://devops.example.com/onboarding",
+  "callback_urls": [
+    "https://devops.example.com/api/auth/callback/github",
+    "https://devops.example.com/api/github/connect/callback"
+  ],
+  "setup_url": "https://devops.example.com/onboarding",
+  "setup_on_update": true,
+  "request_oauth_on_install": false,
+  "default_events": ["workflow_run", "workflow_job", "repository"],
+  "default_permissions": {
+    "metadata": "read",
+    "actions": "read",
+    "contents": "read",
+    "pull_requests": "read",
+    "checks": "read",
+    "statuses": "read",
+    "actions_variables": "read",
+    "vulnerability_alerts": "read",
+    "administration": "read",
+    "organization_self_hosted_runners": "read",
+    "organization_actions_variables": "read",
+    "organization_administration": "read",
+    "email_addresses": "read",
+    "plan": "read"
+  }
+}
