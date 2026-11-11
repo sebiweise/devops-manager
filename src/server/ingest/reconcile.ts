@@ -247,7 +247,12 @@ async function reconcileInstallation(
   // g) Rollups, also after a partial pass: what was ingested is counted.
   try {
     await markRecentDaysDirty(inst.id, inst.timezone);
-    const drained = await drainRollups(inst.id, inst.timezone, deadline);
+    const drained = await drainRollups(
+      inst.id,
+      inst.timezone,
+      deadline,
+      retention,
+    );
     result.rollups = drained.partitions;
     if (drained.remaining && result.status === "ok") result.status = "partial";
   } catch (error) {

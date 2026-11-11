@@ -1,8 +1,10 @@
 import "server-only";
+import { env } from "@/env";
 import { Prisma } from "@/generated/prisma/client";
 import type { TenantScope } from "@/server/authz/scope";
 import { hasRole } from "@/server/authz/roles";
 import { db } from "@/server/db";
+import { effectiveRetentionDays } from "@/server/ingest/prune";
 import { daysBetween, localDay } from "@/server/metrics/days";
 import {
   histogramCount,
@@ -60,6 +62,8 @@ type InstallationInfo = {
   accountLogin: string;
   timezone: string;
   rawRetentionDays: number;
+  /** Raw retention as prune applies it (capped by MAX_RETENTION_DAYS); null = unlimited. */
+  retentionDays: number | null;
   lastWebhookAt: Date | null;
   lastReconciledAt: Date | null;
 };
@@ -82,7 +86,13 @@ async function visibleInstallation(
     },
   });
   if (!inst) throw new NotFoundError();
-  return inst;
+  return {
+    ...inst,
+    retentionDays: effectiveRetentionDays(
+      inst.rawRetentionDays,
+      env.MAX_RETENTION_DAYS,
+    ),
+  };
 }
 
 async function visibleRepository(installationId: bigint, repositoryId: bigint) {
@@ -96,8 +106,10 @@ async function visibleRepository(installationId: bigint, repositoryId: bigint) {
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 
+/** True when raw rows still cover `from`..now (prune has not cut into the range). */
 function insideRetention(inst: InstallationInfo, from: Date, now: Date) {
-  return from.getTime() >= now.getTime() - inst.rawRetentionDays * DAY_MS;
+  if (inst.retentionDays == null) return true;
+  return from.getTime() >= now.getTime() - inst.retentionDays * DAY_MS;
 }
 
 // ---------- shared aggregates ----------

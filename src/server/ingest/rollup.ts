@@ -167,26 +167,53 @@ export async function markAllDaysDirty(
 
 export type DrainResult = { partitions: number; remaining: boolean };
 
+const DAY_MS = 86_400_000;
+/** Clock margin between this process and the prune that set the cutoff. */
+const PRUNE_MARGIN_MS = 60 * 60 * 1000;
+
 /**
  * Recomputes up to `limit` dirty partitions of an installation, oldest mark
  * first. A partition re-marked while it was being recomputed stays dirty.
+ *
+ * Days that start before the raw retention cutoff (now - retention) may
+ * already be pruned in part, so recomputing them from raw rows would replace
+ * their kept-forever stats with what is left: their marks are dropped and
+ * the stored stats stay as they are. `retentionDays` null = unlimited.
  */
 export async function drainRollups(
   installationId: bigint,
   timezone: string,
   deadline: Deadline,
+  retentionDays: number | null,
   limit = 200,
 ): Promise<DrainResult> {
-  const dirty = await db.rollupDirty.findMany({
-    where: { installationId },
-    orderBy: { markedAt: "asc" },
-    take: limit + 1,
-  });
+  const cutoff =
+    retentionDays == null
+      ? null
+      : new Date(deadline.now() - retentionDays * DAY_MS + PRUNE_MARGIN_MS);
+  const dirty = await db.$queryRaw<
+    Array<{
+      repositoryId: bigint;
+      day: Date;
+      markedAt: Date;
+      beforeCutoff: boolean;
+    }>
+  >`
+    SELECT "repositoryId", "day", "markedAt",
+      (${cutoff}::timestamptz IS NOT NULL
+        AND ("day"::timestamp AT TIME ZONE ${timezone}::text) < ${cutoff}::timestamptz) AS "beforeCutoff"
+    FROM "RollupDirty"
+    WHERE "installationId" = ${installationId}
+    ORDER BY "markedAt" ASC
+    LIMIT ${limit + 1}`;
   let partitions = 0;
   for (const row of dirty.slice(0, limit)) {
     if (deadline.expired()) return { partitions, remaining: true };
-    const day = row.day.toISOString().slice(0, 10);
-    await rollupPartition(installationId, row.repositoryId, day, timezone);
+    if (!row.beforeCutoff) {
+      const day = row.day.toISOString().slice(0, 10);
+      await rollupPartition(installationId, row.repositoryId, day, timezone);
+      partitions++;
+    }
     await db.rollupDirty.deleteMany({
       where: {
         installationId,
@@ -195,7 +222,6 @@ export async function drainRollups(
         markedAt: { lte: row.markedAt },
       },
     });
-    partitions++;
   }
   return { partitions, remaining: dirty.length > limit };
 }
