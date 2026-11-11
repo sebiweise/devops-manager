@@ -1,0 +1,303 @@
+// DevOps Manager database schema (milestone M0).
+//
+// Conventions:
+// - GitHub ids are BigInt and are serialised as strings in DTOs.
+// - Timestamps are timestamptz(3).
+// - Every tenant table has an installationId column, and every tenant index
+//   leads with it. Tenant data is only read through src/server/data.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- better-auth (users, sessions, accounts) ----------
+
+enum AppRole {
+  VIEWER
+  OPERATOR
+  ADMIN
+}
+
+model User {
+  id             String    @id
+  name           String
+  /// From the OIDC provider or GitHub (verified primary email).
+  email          String    @unique
+  emailVerified  Boolean   @default(false)
+  /// Not rendered (CSP); initials are shown instead.
+  image          String?
+  /// null = DEFAULT_LOCALE
+  locale         String?
+  /// Snapshot of the OIDC groups claim at the last OIDC sign-in.
+  oidcGroups     String[]  @default([])
+  /// Resolved from the env allowlists at the last sign-in.
+  envRole        AppRole?
+  /// Set by an admin (M4). Effective role = max(envRole, roleOverride).
+  roleOverride   AppRole?
+  roleOverrideBy String?
+  roleOverrideAt DateTime? @db.Timestamptz(3)
+  /// Ignored for env-assigned roles (break-glass).
+  disabledAt     DateTime? @db.Timestamptz(3)
+  lastLoginAt    DateTime? @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+
+  sessions Session[]
+  accounts Account[]
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime @db.Timestamptz(3)
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([userId])
+}
+
+/// providerId is "oidc" or "github"; accountId is the provider's subject.
+/// accessToken, refreshToken and idToken are dropped by the account hook
+/// (src/server/better-auth/hooks.ts): they are not needed after sign-in.
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime? @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @db.Timestamptz(3)
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([identifier])
+}
+
+// ---------- tenancy ----------
+
+enum AccountType {
+  USER
+  ORGANIZATION
+}
+
+enum RepoSelection {
+  ALL
+  SELECTED
+}
+
+model Installation {
+  /// GitHub installation id
+  id                   BigInt        @id
+  accountId            BigInt
+  accountLogin         String        @unique
+  accountType          AccountType
+  repositorySelection  RepoSelection
+  /// Granted permissions, as reported by GitHub.
+  permissions          Json
+  events               String[]
+  permissionsCheckedAt DateTime?     @db.Timestamptz(3)
+  /// Per-installation management toggle (admin only), off by default.
+  managementEnabled    Boolean       @default(false)
+  timezone             String        @default("UTC")
+  /// 14..400, capped by MAX_RETENTION_DAYS.
+  rawRetentionDays     Int           @default(90)
+  includedMinutes      Int?
+  planName             String?
+  suspendedAt          DateTime?     @db.Timestamptz(3)
+  deletedAt            DateTime?     @db.Timestamptz(3)
+  purgeAfter           DateTime?     @db.Timestamptz(3)
+  lastWebhookAt        DateTime?     @db.Timestamptz(3)
+  lastReconciledAt     DateTime?     @db.Timestamptz(3)
+  /// Column lock (PgBouncer-safe, no advisory locks).
+  reconcileLockedUntil DateTime?     @db.Timestamptz(3)
+  hookDeliveryCursor   String?
+  createdAt            DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime      @updatedAt @db.Timestamptz(3)
+
+  repositories Repository[]
+}
+
+// ---------- inventory ----------
+
+model Repository {
+  /// GitHub repository id
+  id             BigInt       @id
+  installationId BigInt
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  ownerLogin     String
+  name           String
+  fullName       String
+  private        Boolean
+  archived       Boolean      @default(false)
+  defaultBranch  String       @default("main")
+  /// Set when a SELF_HOSTED job is seen (M1).
+  hasSelfHosted  Boolean      @default(false)
+  removedAt      DateTime?    @db.Timestamptz(3)
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+
+  @@unique([installationId, fullName])
+  @@index([installationId, removedAt])
+}
+
+model SyncState {
+  repositoryId   BigInt    @id
+  installationId BigInt
+  /// Incremental sync high-water mark.
+  runsCursor     DateTime? @db.Timestamptz(3)
+  /// Oldest window covered so far.
+  backfillUntil  DateTime? @db.Timestamptz(3)
+  backfillDone   Boolean   @default(false)
+  runsEtag       String?
+  /// e.g. after an oversized (413) delivery
+  needsResync    Boolean   @default(false)
+  lastError      String?
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([installationId])
+}
+
+// ---------- ingestion & ops ----------
+
+enum DeliveryStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+  DEAD
+  SKIPPED
+  REJECTED
+}
+
+model WebhookDelivery {
+  /// X-GitHub-Delivery
+  id             String         @id
+  event          String
+  action         String?
+  installationId BigInt?
+  repositoryId   BigInt?
+  payloadBytes   Int
+  /// Nulled on PROCESSED/SKIPPED; kept 7 days for FAILED/DEAD.
+  payload        Json?
+  status         DeliveryStatus
+  attempts       Int            @default(0)
+  lockedUntil    DateTime?      @db.Timestamptz(3)
+  /// Truncated and redacted.
+  error          String?
+  receivedAt     DateTime       @default(now()) @db.Timestamptz(3)
+  processedAt    DateTime?      @db.Timestamptz(3)
+
+  @@index([status, receivedAt])
+  @@index([installationId, receivedAt])
+}
+
+/// Mutation (per user) and sign-in (per IP hash) token buckets.
+model RateLimitBucket {
+  /// "action:<userId>" | "login:<ipHash>"
+  key       String   @id
+  tokens    Float
+  updatedAt DateTime @db.Timestamptz(3)
+}
+
+// ---------- audit ----------
+
+enum AuditAction {
+  RUN_RERUN
+  RUN_RERUN_FAILED
+  RUN_CANCEL
+  RUN_FORCE_CANCEL
+  VAR_CREATE
+  VAR_UPDATE
+  VAR_DELETE
+  VAR_BULK
+  VAR_BULK_REVERT
+  ORG_VAR_CREATE
+  ORG_VAR_UPDATE
+  ORG_VAR_DELETE
+  PR_MERGE
+  PR_BULK_MERGE
+  SYNC_NOW
+  MANAGEMENT_TOGGLE
+  SETTINGS_UPDATE
+  DATA_PURGE
+  DELIVERY_REPLAY
+  ROLE_UPDATE
+  USER_DISABLE
+  USER_ENABLE
+  SKU_RATE_UPDATE
+  BILLING_CREDENTIAL_SET
+  BILLING_CREDENTIAL_CONNECT
+  BILLING_CREDENTIAL_REVOKE
+}
+
+enum AuditStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  DENIED
+}
+
+/// Append-only, hash-chained per installation (0 = instance-level chain).
+model AuditLog {
+  id              String      @id @default(cuid())
+  seq             BigInt      @default(autoincrement())
+  installationId  BigInt
+  /// The app user who triggered the action.
+  actorUserId     String
+  /// Snapshot of name or email at the time of the action.
+  actorDisplay    String
+  actorRole       AppRole
+  /// "oidc" | "github"
+  actorProvider   String
+  /// GitHub identity that performed it, e.g. "app:<slug>[bot]".
+  actingAs        String?
+  action          AuditAction
+  repositoryId    BigInt?
+  repoFullName    String?
+  targetType      String
+  targetId        String
+  batchId         String?
+  params          Json
+  confirmation    String
+  idempotencyKey  String      @unique
+  status          AuditStatus
+  httpStatus      Int?
+  githubRequestId String?
+  error           String?
+  ipHash          String?
+  userAgent       String?
+  prevHash        String
+  hash            String
+  createdAt       DateTime    @default(now()) @db.Timestamptz(3)
+  completedAt     DateTime?   @db.Timestamptz(3)
+
+  @@index([installationId, createdAt(sort: Desc)])
+  @@index([actorUserId, createdAt])
+  @@index([batchId])
+}
