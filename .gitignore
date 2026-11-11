@@ -1,0 +1,43 @@
+# dependencies
+/node_modules
+.pnpm-store
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+*.key
+
+# debug
+npm-debug.log*
+.pnpm-debug.log*
+
+# env files: only .env.example is committed
+.env
+.env*.local
+.env.*
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+
+# editors
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# Prisma client (generated)
+/src/generated/

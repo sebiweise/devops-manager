@@ -1,0 +1,22 @@
+allowBuilds:
+  "@parcel/watcher": false
+  "@prisma/engines": true
+  "@swc/core": false
+  esbuild: true
+  prisma: true
+  sharp: true
+  unrs-resolver: true
+minimumReleaseAgeExclude:
+  - "@better-auth/core@1.7.21"
+  - "@better-auth/drizzle-adapter@1.7.21"
+  - "@better-auth/kysely-adapter@1.7.21"
+  - "@better-auth/memory-adapter@1.7.21"
+  - "@better-auth/mongo-adapter@1.7.21"
+  - "@better-auth/prisma-adapter@1.7.21"
+  - "@better-auth/telemetry@1.7.21"
+  - better-auth@1.7.21
+  - icu-minify@4.15.0
+  - next-intl-swc-plugin-extractor@4.15.0
+  - next-intl@4.15.0
+  - use-intl@4.15.0
+  - prettier@3.10.0
