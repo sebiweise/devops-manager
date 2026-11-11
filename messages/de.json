@@ -3,7 +3,10 @@
     "appName": "DevOps Manager",
     "signOut": "Abmelden",
     "language": "Sprache",
-    "languages": { "en": "Englisch", "de": "Deutsch" },
+    "languages": {
+      "en": "Englisch",
+      "de": "Deutsch"
+    },
     "private": "privat",
     "archived": "archiviert",
     "personalAccount": "Persönliches Konto",
@@ -87,5 +90,9 @@
       "forbidden": "Deine Rolle darf keine Synchronisierung starten.",
       "failed": "Die Synchronisierung konnte nicht gestartet werden."
     }
+  },
+  "charts": {
+    "showTable": "Als Tabelle anzeigen",
+    "showChart": "Als Diagramm anzeigen"
   }
 }

@@ -3,7 +3,10 @@
     "appName": "DevOps Manager",
     "signOut": "Sign out",
     "language": "Language",
-    "languages": { "en": "English", "de": "German" },
+    "languages": {
+      "en": "English",
+      "de": "German"
+    },
     "private": "private",
     "archived": "archived",
     "personalAccount": "Personal account",
@@ -71,7 +74,11 @@
   "settings": {
     "title": "Settings",
     "role": "Your role",
-    "roles": { "VIEWER": "Viewer", "OPERATOR": "Operator", "ADMIN": "Admin" },
+    "roles": {
+      "VIEWER": "Viewer",
+      "OPERATOR": "Operator",
+      "ADMIN": "Admin"
+    },
     "signedInAs": "Signed in as {email}"
   },
   "sync": {
@@ -83,5 +90,9 @@
       "forbidden": "Your role cannot start a sync.",
       "failed": "The sync could not be started."
     }
+  },
+  "charts": {
+    "showTable": "Show as table",
+    "showChart": "Show as chart"
   }
 }
