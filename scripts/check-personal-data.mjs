@@ -2,7 +2,8 @@
 /**
  * Personal-data check for a public repository.
  *
- * Fails when a tracked file (or, with --history, a commit message) contains
+ * Fails when a tracked file (or, with --history, a commit message or a
+ * commit's author and committer name and email) contains
  *  - an email address outside the documentation domains (example.com,
  *    example.org, example.net) and GitHub noreply addresses, or
  *  - a term from PRIVACY_DENYLIST (newline- or comma-separated, kept in a CI
@@ -76,6 +77,14 @@ if (process.argv.includes("--history")) {
   for (const entry of log.split("--END--")) {
     const [sha, ...body] = entry.trim().split("\n");
     if (sha) scan(`commit ${sha.slice(0, 12)}`, body.join("\n"));
+  }
+  // Identities: a real name in the author or committer field is published
+  // with the history just like one in the message.
+  const people = git("log", "--format=%H%x00%an <%ae>%x00%cn <%ce>");
+  for (const line of people.split("\n").filter(Boolean)) {
+    const [sha = "", author = "", committer = ""] = line.split("\0");
+    scan(`commit ${sha.slice(0, 12)} author`, author);
+    scan(`commit ${sha.slice(0, 12)} committer`, committer);
   }
 }
 

@@ -1,8 +1,9 @@
 name: CI
 
-# Lint, typecheck, unit and integration tests, migration drift and the
-# personal-data check. There is no app build job: Vercel builds the app, and
-# the Docker image is built by the release workflow.
+# Lint, typecheck, unit and integration tests, migration drift, the
+# personal-data check, and a Docker image build. The image build runs
+# `prisma generate` and `next build` (standalone output), so it covers the app
+# build and the Dockerfile in one job. The image is not pushed.
 
 on:
   pull_request:
@@ -42,6 +43,16 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm run format:check
       - run: pnpm run test
+
+  build:
+    name: Build (Docker image, next build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: docker build --pull --tag devops-manager:ci .
 
   integration:
     name: Integration (Postgres, mock OIDC issuer)
