@@ -78,6 +78,21 @@ describe("token purposes", () => {
     ).toThrow(/workflows:write/);
   });
 
+  it("never returns an empty set, which GitHub would treat as no narrowing", () => {
+    expect(() =>
+      permissionsFor("sync.runners", { metadata: "read", actions: "write" }),
+    ).toThrow(PermissionNotGrantedError);
+    for (const purpose of Object.keys(PURPOSES) as TokenPurpose[]) {
+      try {
+        expect(
+          Object.keys(permissionsFor(purpose, manage)).length,
+        ).toBeGreaterThan(0);
+      } catch (error) {
+        expect(error).toBeInstanceOf(PermissionNotGrantedError);
+      }
+    }
+  });
+
   it("marks every act.* purpose as a mutation", () => {
     for (const purpose of Object.keys(PURPOSES) as TokenPurpose[]) {
       expect(isMutationPurpose(purpose)).toBe(purpose.startsWith("act."));

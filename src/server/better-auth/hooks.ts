@@ -1,3 +1,5 @@
+import { createHmac } from "node:crypto";
+
 /**
  * Pure helpers used by the better-auth database hooks.
  */
@@ -33,4 +35,28 @@ export function stripAccountTokens<T extends Record<string, unknown>>(
 export function readEmailVerified(profile: Record<string, unknown>): boolean {
   const raw = profile.email_verified ?? profile.emailVerified;
   return raw === true || raw === "true";
+}
+
+/**
+ * Pseudonymous client IP (design §9): HMAC-SHA256 with AUDIT_IP_SALT, hex.
+ * The same IP always maps to the same value, so sessions and audit entries
+ * can be correlated without storing the address itself.
+ */
+export function hashIp(ip: string, salt: string): string {
+  return createHmac("sha256", salt)
+    .update(ip.trim().toLowerCase())
+    .digest("hex");
+}
+
+/** Replaces a session row's raw `ipAddress` with its hash before it is written. */
+export function pseudonymiseSessionIp<T extends Record<string, unknown>>(
+  session: T,
+  salt: string,
+): T {
+  if (!("ipAddress" in session)) return session;
+  const ip = session.ipAddress;
+  return {
+    ...session,
+    ipAddress: typeof ip === "string" && ip ? hashIp(ip, salt) : null,
+  };
 }

@@ -94,7 +94,10 @@ export class PermissionNotGrantedError extends Error {
 /**
  * The permission set to request for `purpose`, given what the installation has
  * granted. Throws `PermissionNotGrantedError` when a required permission is
- * missing (the caller shows the "permission not granted" explainer).
+ * missing (the caller shows the "permission not granted" explainer), and when
+ * the resulting set would be empty: GitHub treats an empty `permissions`
+ * object as "no narrowing" and mints a token with every installation
+ * permission, so an empty set must never reach the token endpoint.
  */
 export function permissionsFor(
   purpose: TokenPurpose,
@@ -109,6 +112,14 @@ export function permissionsFor(
   const out: PermissionSet = { ...spec.required };
   for (const [name, level] of Object.entries(spec.optional ?? {})) {
     if (grants(granted, name, level)) out[name] = level;
+  }
+  if (Object.keys(out).length === 0) {
+    throw new PermissionNotGrantedError(
+      purpose,
+      Object.entries(spec.optional ?? {}).map(
+        ([name, level]) => `${name}:${level}`,
+      ),
+    );
   }
   return out;
 }

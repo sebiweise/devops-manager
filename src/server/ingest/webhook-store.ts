@@ -5,6 +5,12 @@ import { isAllowedAccount } from "@/server/authz/config";
 import { db } from "@/server/db";
 import { verifyAndStoreInstallation } from "./discovery";
 import {
+  forgetForeignInstallation,
+  isKnownForeignInstallation,
+  namesForeignOwner,
+  rememberForeignInstallation,
+} from "./foreign-installations";
+import {
   handleAppAuthorizationEvent,
   handleInstallationEvent,
   handleInstallationRepositoriesEvent,
@@ -124,6 +130,7 @@ export const prismaWebhookStore: WebhookStore = {
           reason: "account not in ALLOWED_ACCOUNTS",
         };
       }
+      forgetForeignInstallation(installationId);
       return { ok: true, installationId };
     }
 
@@ -131,14 +138,28 @@ export const prismaWebhookStore: WebhookStore = {
       where: { id: installationId },
     });
     if (!local) {
-      // Unknown installation: ask GitHub (App JWT) instead of trusting the payload.
-      const login = await verifyAndStoreInstallation(installationId);
-      if (!login)
+      // Unknown installation. Cheap checks first, so foreign accounts cannot
+      // spend the App JWT rate limit (see foreign-installations.ts).
+      if (
+        isKnownForeignInstallation(installationId) ||
+        namesForeignOwner(payload, isAllowedAccount)
+      ) {
         return {
           ok: false,
           status: "SKIPPED",
           reason: "installation unknown or not allowed",
         };
+      }
+      // Then ask GitHub (App JWT) instead of trusting the payload.
+      const login = await verifyAndStoreInstallation(installationId);
+      if (!login) {
+        rememberForeignInstallation(installationId);
+        return {
+          ok: false,
+          status: "SKIPPED",
+          reason: "installation unknown or not allowed",
+        };
+      }
       local = await db.installation.findUnique({
         where: { id: installationId },
       });

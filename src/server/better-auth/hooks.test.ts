@@ -1,5 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { readEmailVerified, stripAccountTokens } from "./hooks";
+import {
+  hashIp,
+  pseudonymiseSessionIp,
+  readEmailVerified,
+  stripAccountTokens,
+} from "./hooks";
+
+const SALT = "s".repeat(32);
+
+describe("session IP pseudonymisation", () => {
+  it("stores an HMAC instead of the raw IP", () => {
+    const out = pseudonymiseSessionIp(
+      { userId: "u", ipAddress: "203.0.113.7", userAgent: "ua" },
+      SALT,
+    );
+    expect(out.ipAddress).toBe(hashIp("203.0.113.7", SALT));
+    expect(out.ipAddress).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(out)).not.toContain("203.0.113.7");
+    expect(out.userAgent).toBe("ua");
+  });
+
+  it("is stable per salt and differs across salts", () => {
+    expect(hashIp("203.0.113.7", SALT)).toBe(hashIp(" 203.0.113.7 ", SALT));
+    expect(hashIp("203.0.113.7", SALT)).not.toBe(
+      hashIp("203.0.113.7", "t".repeat(32)),
+    );
+  });
+
+  it("leaves rows without an ipAddress field alone and nulls empty values", () => {
+    expect(pseudonymiseSessionIp({ userId: "u" }, SALT)).toEqual({
+      userId: "u",
+    });
+    expect(pseudonymiseSessionIp({ ipAddress: "" }, SALT).ipAddress).toBeNull();
+  });
+});
 
 describe("account hook token dropping", () => {
   it("removes access, refresh and ID tokens and their expiry", () => {

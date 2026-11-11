@@ -3,6 +3,7 @@ import { signPayload } from "./verify";
 import {
   handleWebhook,
   MAX_BODY_BYTES,
+  readBodyCapped,
   redactError,
   type DeliveryOutcome,
   type DeliveryRow,
@@ -287,6 +288,59 @@ describe("handleWebhook", () => {
     const res = await handleWebhook({ headers, body }, [SECRET], store);
     expect(res.status).toBe(400);
     expect(store.insertDelivery).not.toHaveBeenCalled();
+  });
+});
+
+describe("readBodyCapped", () => {
+  function stream(chunks: Uint8Array[], onCancel = vi.fn()) {
+    let i = 0;
+    return {
+      onCancel,
+      body: new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (i < chunks.length) controller.enqueue(chunks[i++]!);
+          else controller.close();
+        },
+        cancel: onCancel,
+      }),
+    };
+  }
+
+  it("returns the exact raw bytes under the cap", async () => {
+    const bytes = new TextEncoder().encode('{"a":"ä"}');
+    const { body } = stream([bytes.slice(0, 3), bytes.slice(3)]);
+    const out = await readBodyCapped(body, 100);
+    expect(out && Buffer.compare(out, Buffer.from(bytes))).toBe(0);
+  });
+
+  it("stops reading and cancels the stream once the cap is passed", async () => {
+    const chunk = new Uint8Array(8);
+    const { body, onCancel } = stream([chunk, chunk, chunk, chunk]);
+    expect(await readBodyCapped(body, 10)).toBeNull();
+    expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("treats a missing body as empty", async () => {
+    expect((await readBodyCapped(null, 10))?.byteLength).toBe(0);
+  });
+});
+
+describe("handleWebhook with a byte body", () => {
+  it("verifies the signature over the raw bytes", async () => {
+    const store = memoryStore();
+    const text = JSON.stringify(installationCreated);
+    const headers = new Headers({
+      "x-github-event": "installation",
+      "x-github-delivery": "d-bytes",
+      "x-hub-signature-256": signPayload(SECRET, text),
+    });
+    const res = await handleWebhook(
+      { headers, body: Buffer.from(text, "utf8") },
+      [SECRET],
+      store,
+    );
+    expect(res.status).toBe(202);
+    expect(store.insertDelivery).toHaveBeenCalled();
   });
 });
 

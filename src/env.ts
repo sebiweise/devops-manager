@@ -83,6 +83,8 @@ export const env = createEnv({
     ),
     CRON_SECRET: secret32,
     AUDIT_IP_SALT: secret32,
+    /** Comma-separated headers holding the client IP, set by the trusted proxy. */
+    TRUSTED_IP_HEADERS: z.string().min(1).default("x-forwarded-for"),
     LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
       .default("info"),

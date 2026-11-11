@@ -13,7 +13,11 @@ import {
   type Role,
 } from "@/server/authz/roles";
 import { db } from "@/server/db";
-import { readEmailVerified, stripAccountTokens } from "./hooks";
+import {
+  pseudonymiseSessionIp,
+  readEmailVerified,
+  stripAccountTokens,
+} from "./hooks";
 import { decisionFor, rememberDecision } from "./sign-in-context";
 
 /**
@@ -204,13 +208,24 @@ function createAuth() {
               data: {
                 lastLoginAt: new Date(),
                 envRole: decision.envRole,
-                ...(decision.provider === OIDC_PROVIDER_ID
-                  ? { oidcGroups: decision.groups }
-                  : {}),
+                // The effective role is re-resolved from this snapshot on every
+                // request (authz/scope.ts). A GitHub sign-in carries no groups,
+                // so it clears the snapshot: groups removed at the IdP must not
+                // keep granting a role through another way in. The next OIDC
+                // sign-in restores the current groups.
+                oidcGroups:
+                  decision.provider === OIDC_PROVIDER_ID ? decision.groups : [],
               },
             });
-            return { data: session };
+            return {
+              data: pseudonymiseSessionIp(session, env.AUDIT_IP_SALT),
+            };
           },
+        },
+        update: {
+          before: async (session) => ({
+            data: pseudonymiseSessionIp(session, env.AUDIT_IP_SALT),
+          }),
         },
       },
       account: {
@@ -263,6 +278,10 @@ function createAuth() {
     ],
 
     advanced: {
+      // Client IPs feed rate limiting; sessions store only their HMAC (see
+      // the session hooks). Read them only from headers the trusted proxy
+      // sets and overwrites (TRUSTED_IP_HEADERS).
+      ipAddress: { ipAddressHeaders: csv(env.TRUSTED_IP_HEADERS) },
       useSecureCookies: false,
       cookiePrefix: COOKIE_PREFIX,
       defaultCookieAttributes: {

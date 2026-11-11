@@ -65,8 +65,36 @@ export interface WebhookStore {
 
 export type WebhookRequest = {
   headers: Headers;
-  body: string;
+  /** The raw body. Bytes from `readBodyCapped`; strings in tests. */
+  body: string | Uint8Array;
 };
+
+/**
+ * Reads a request body as raw bytes, stopping as soon as it passes `max`.
+ * Returns null when the body is larger, without buffering the rest, so a
+ * chunked upload or a wrong Content-Length cannot make the server hold an
+ * unbounded body before the signature is checked.
+ */
+export async function readBodyCapped(
+  body: ReadableStream<Uint8Array> | null,
+  max: number = MAX_BODY_BYTES,
+): Promise<Buffer | null> {
+  if (!body) return Buffer.alloc(0);
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks, total);
+}
 
 export type WebhookResponse = { status: number; body: Record<string, unknown> };
 
@@ -96,10 +124,9 @@ export async function handleWebhook(
 ): Promise<WebhookResponse> {
   // 1. Size cap. Reconcile recovers oversized deliveries through a resync.
   const declared = Number(req.headers.get("content-length") ?? "0");
-  if (
-    declared > MAX_BODY_BYTES ||
-    Buffer.byteLength(req.body, "utf8") > MAX_BODY_BYTES
-  ) {
+  const raw =
+    typeof req.body === "string" ? Buffer.from(req.body, "utf8") : req.body;
+  if (declared > MAX_BODY_BYTES || raw.byteLength > MAX_BODY_BYTES) {
     return json(413, { error: "payload too large" });
   }
 
@@ -111,14 +138,16 @@ export async function handleWebhook(
     return json(401, { error: "missing headers" });
 
   // 3. Signature. On failure nothing is persisted.
-  if (!verifySignature(req.body, signature, secrets)) {
+  if (!verifySignature(raw, signature, secrets)) {
     store.onSignatureFailure();
     return json(401, { error: "invalid signature" });
   }
 
   let payload: WebhookPayload;
   try {
-    payload = JSON.parse(req.body) as WebhookPayload;
+    payload = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(raw),
+    ) as WebhookPayload;
   } catch {
     return json(400, { error: "invalid JSON" });
   }
@@ -136,7 +165,7 @@ export async function handleWebhook(
     action: typeof payload.action === "string" ? payload.action : null,
     installationId,
     repositoryId,
-    payloadBytes: Buffer.byteLength(req.body, "utf8"),
+    payloadBytes: raw.byteLength,
     payload: handled ? payload : null,
     status: handled ? "RECEIVED" : "SKIPPED",
   };
