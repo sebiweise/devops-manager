@@ -20,9 +20,25 @@ import {
  *   ids, when known). Tokens live only in an in-memory LRU until five minutes
  *   before expiry; mutation tokens are never cached. Tokens are never written
  *   to the DB or to logs.
+ * - Every request is bounded: reconcile passes a deadline-derived signal
+ *   (ingest/github-client.ts `withDeadline`), everything else gets 30 s.
  */
 
-export const Octokit = OctokitCore.plugin(paginateRest).defaults({
+/** Upper bound for any GitHub request that has no tighter signal of its own. */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
+/** Gives every request without its own AbortSignal a timeout. */
+function requestTimeout(octokit: OctokitCore) {
+  octokit.hook.before("request", (options) => {
+    options.request ??= {};
+    options.request.signal ??= AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS);
+  });
+}
+
+export const Octokit = OctokitCore.plugin(
+  paginateRest,
+  requestTimeout,
+).defaults({
   userAgent: "devops-manager",
 });
 export type Octokit = InstanceType<typeof Octokit>;

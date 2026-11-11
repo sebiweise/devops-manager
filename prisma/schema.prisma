@@ -137,6 +137,10 @@ model Installation {
   /// Column lock (PgBouncer-safe, no advisory locks).
   reconcileLockedUntil DateTime?     @db.Timestamptz(3)
   hookDeliveryCursor   String?
+  /// Last daily prune of this installation's raw history (reconcile step i).
+  lastPrunedAt         DateTime?     @db.Timestamptz(3)
+  /// Last "Sync now" (operator), rate-limited to once per 5 minutes.
+  syncRequestedAt      DateTime?     @db.Timestamptz(3)
   createdAt            DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime      @updatedAt @db.Timestamptz(3)
 
@@ -183,7 +187,251 @@ model SyncState {
   @@index([installationId])
 }
 
+// ---------- Actions history (M1) ----------
+//
+// Runs and jobs are folded order-independently (src/server/ingest/fold.ts):
+// any permutation or duplication of the same events yields the same row.
+// Raw SQL in the migration adds partial indexes for open runs and queued jobs.
+
+enum RunStatus {
+  REQUESTED
+  QUEUED
+  WAITING
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum JobStatus {
+  QUEUED
+  WAITING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum Conclusion {
+  SUCCESS
+  FAILURE
+  CANCELLED
+  SKIPPED
+  TIMED_OUT
+  ACTION_REQUIRED
+  NEUTRAL
+  STALE
+  STARTUP_FAILURE
+}
+
+enum RunnerKind {
+  GITHUB_HOSTED
+  LARGER_HOSTED
+  SELF_HOSTED
+  UNKNOWN
+}
+
+enum RunnerOs {
+  LINUX
+  WINDOWS
+  MACOS
+  UNKNOWN
+}
+
+enum Source {
+  WEBHOOK
+  BACKFILL
+  RECONCILE
+}
+
+model WorkflowRun {
+  /// GitHub run id
+  id                     BigInt      @id
+  installationId         BigInt
+  repositoryId           BigInt
+  workflowId             BigInt?
+  workflowName           String
+  workflowPath           String?
+  event                  String?
+  headBranch             String?
+  headSha                String
+  isDefaultBranch        Boolean     @default(false)
+  actorLogin             String?
+  runNumber              Int?
+  /// Latest attempt.
+  runAttempt             Int         @default(1)
+  /// Conclusion of attempt 1, for flakiness.
+  firstAttemptConclusion Conclusion?
+  status                 RunStatus
+  /// requested/queued/pending = 1, waiting = 2, in_progress = 3, completed = 4; 0 = placeholder.
+  statusRank             Int         @db.SmallInt
+  conclusion             Conclusion?
+  createdAt              DateTime    @db.Timestamptz(3)
+  runStartedAt           DateTime?   @db.Timestamptz(3)
+  completedAt            DateTime?   @db.Timestamptz(3)
+  durationS              Int?
+  /// Created from a job before its run arrived.
+  isPlaceholder          Boolean     @default(false)
+  htmlUrl                String?
+  /// GitHub's updated_at; jobs are re-read when it is newer than jobsSyncedAt.
+  githubUpdatedAt        DateTime?   @db.Timestamptz(3)
+  jobsSyncedAt           DateTime?   @db.Timestamptz(3)
+  source                 Source
+  lastEventAt            DateTime    @db.Timestamptz(3)
+
+  @@index([installationId, createdAt(sort: Desc)])
+  @@index([repositoryId, createdAt(sort: Desc)])
+  @@index([repositoryId, workflowId, createdAt])
+}
+
+model WorkflowJob {
+  /// GitHub job id (one per attempt)
+  id               BigInt      @id
+  runId            BigInt
+  runAttempt       Int
+  installationId   BigInt
+  repositoryId     BigInt
+  workflowId       BigInt?
+  workflowName     String
+  name             String
+  /// Matrix suffix " (..)" stripped.
+  baseName         String
+  /// First write, sorted, lowercase.
+  labels           String[]
+  /// Sorted labels joined by ",".
+  labelKey         String
+  status           JobStatus
+  /// queued = 1, waiting = 2, in_progress = 3, completed = 4.
+  statusRank       Int         @db.SmallInt
+  conclusion       Conclusion?
+  runnerId         BigInt?
+  runnerName       String?
+  runnerGroupId    BigInt?
+  runnerGroupName  String?
+  runnerKind       RunnerKind  @default(UNKNOWN)
+  runnerOs         RunnerOs    @default(UNKNOWN)
+  /// e.g. "linux", "windows", "macos", "linux_4_core"
+  sku              String?
+  createdAt        DateTime    @db.Timestamptz(3)
+  /// Environment approval: first `waiting` event.
+  waitingStartedAt DateTime?   @db.Timestamptz(3)
+  /// Latest `queued` event; closes an approval wait (with startedAt and completedAt).
+  lastQueuedAt     DateTime?   @db.Timestamptz(3)
+  /// Approval wait, excluded from queue time.
+  waitingS         Int         @default(0)
+  startedAt        DateTime?   @db.Timestamptz(3)
+  completedAt      DateTime?   @db.Timestamptz(3)
+  queueS           Int?
+  durationS        Int?
+  /// Multiplied minutes (design 6.6); 0 for self-hosted, public standard hosted and unknown.
+  billableMinEst   Int?
+  source           Source
+  lastEventAt      DateTime    @db.Timestamptz(3)
+
+  @@index([installationId, completedAt])
+  @@index([repositoryId, workflowId, completedAt])
+  @@index([runId])
+  @@index([installationId, runnerName, startedAt])
+}
+
+// ---------- rollups (kept forever; histograms are int[80], see metrics/histogram.ts) ----------
+
+/// A (repository, day) whose rollups must be recomputed. Days are in Installation.timezone.
+model RollupDirty {
+  installationId BigInt
+  repositoryId   BigInt
+  day            DateTime @db.Date
+  markedAt       DateTime @db.Timestamptz(3)
+
+  @@id([installationId, repositoryId, day])
+}
+
+model DailyWorkflowStat {
+  installationId       BigInt
+  repositoryId         BigInt
+  /// 0 for runs whose workflow is unknown (placeholders).
+  workflowId           BigInt
+  workflowName         String
+  day                  DateTime @db.Date
+  defaultBranch        Boolean
+  runs                 Int
+  success              Int
+  /// failure + timed_out + startup_failure
+  failure              Int
+  cancelled            Int
+  /// skipped, neutral, action_required, stale
+  other                Int
+  firstTrySuccess      Int
+  flakyRecovered       Int
+  durSumS              BigInt
+  durHist              Int[]
+  /// Per-run queue time of the first job to start.
+  queueHist            Int[]
+  jobSecondsLinux      Int
+  jobSecondsWindows    Int
+  jobSecondsMacos      Int
+  jobSecondsSelfHosted Int
+  billableMinEst       Int
+
+  @@id([workflowId, day, defaultBranch])
+  @@index([installationId, day])
+  @@index([repositoryId, day])
+}
+
+model DailyJobStat {
+  installationId BigInt
+  repositoryId   BigInt
+  workflowId     BigInt
+  baseName       String
+  labelKey       String
+  runnerKind     RunnerKind
+  day            DateTime   @db.Date
+  jobs           Int
+  success        Int
+  failure        Int
+  durSumS        BigInt
+  durHist        Int[]
+  queueHist      Int[]
+  billableMinEst Int
+
+  @@id([workflowId, baseName, labelKey, runnerKind, day])
+  @@index([installationId, day])
+}
+
+// ---------- costs ----------
+
+/// Seeded from prisma/seed/sku-rates.json (idempotent, on reconcile); editable by admins.
+model SkuRate {
+  sku               String
+  os                RunnerOs
+  cores             Int?
+  /// Regex for larger-runner labels.
+  labelPattern      String?
+  minuteMultiplier  Decimal  @db.Decimal(8, 3)
+  pricePerMinuteUsd Decimal  @db.Decimal(10, 4)
+  effectiveFrom     DateTime @db.Date
+
+  @@id([sku, effectiveFrom])
+}
+
 // ---------- ingestion & ops ----------
+
+/// Instance-wide reconcile state, e.g. the GitHub hook delivery log cursor.
+model AppState {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+}
+
+/// GitHub rate budget per installation (0 = App JWT), from response headers.
+model InstallationRateLimit {
+  installationId BigInt
+  /// core | graphql
+  resource       String
+  limit          Int
+  remaining      Int
+  resetAt        DateTime @db.Timestamptz(3)
+  updatedAt      DateTime @db.Timestamptz(3)
+
+  @@id([installationId, resource])
+}
 
 enum DeliveryStatus {
   RECEIVED
