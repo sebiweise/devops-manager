@@ -16,7 +16,11 @@ import {
   type HookLogResult,
   type ReplayResult,
 } from "./deliveries";
-import { withBudget, type GitHubClients } from "./github-client";
+import {
+  withBudget,
+  withDeadline,
+  type GitHubClients,
+} from "./github-client";
 import { redactError } from "./webhook";
 import {
   effectiveRetentionDays,
@@ -206,7 +210,7 @@ async function reconcileInstallation(
       );
       ctx = {
         installationId: inst.id,
-        api: withBudget(api, budget),
+        api: withBudget(api, budget, deadline),
         budget,
         deadline,
         lean: config.lean,
@@ -314,7 +318,10 @@ export async function runReconcile(
     // Instance-wide steps: a) all local failures, b) GitHub's delivery log.
     result.replay = await replayDeliveries(deadline);
     try {
-      result.hookLog = await repairHookDeliveries(opts.clients.app(), deadline);
+      result.hookLog = await repairHookDeliveries(
+        withDeadline(opts.clients.app(), deadline),
+        deadline,
+      );
     } catch (error) {
       console.warn(
         "hook delivery log unavailable",
