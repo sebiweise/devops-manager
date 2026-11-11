@@ -1,0 +1,122 @@
+{
+  "$comment": "Default SKU rates for minute estimates (design 6.6). Seeded once into SkuRate; admins edit the table, not this file. Prices are list prices per minute in USD and may be outdated: check GitHub's current pricing. labelPattern is a case-insensitive regex for larger-runner labels.",
+  "rates": [
+    {
+      "sku": "linux",
+      "os": "LINUX",
+      "cores": 2,
+      "labelPattern": null,
+      "minuteMultiplier": 1,
+      "pricePerMinuteUsd": 0.008,
+      "effectiveFrom": "2024-01-01"
+    },
+    {
+      "sku": "windows",
+      "os": "WINDOWS",
+      "cores": 2,
+      "labelPattern": null,
+      "minuteMultiplier": 2,
+      "pricePerMinuteUsd": 0.016,
+      "effectiveFrom": "2024-01-01"
+    },
+    {
+      "sku": "macos",
+      "os": "MACOS",
+      "cores": 3,
+      "labelPattern": null,
+      "minuteMultiplier": 10,
+      "pricePerMinuteUsd": 0.08,
+      "effectiveFrom": "2024-01-01"
+    },
+    {
+      "sku": "linux_4_core",
+      "os": "LINUX",
+      "cores": 4,
+      "labelPattern": "(^|[^0-9])4[-_ ]?cores?($|[^a-z])",
+      "minuteMultiplier": 2,
+      "pricePerMinuteUsd": 0.016,
+      "effectiveFrom": "2024-01-01"
+    },
+    {
+      "sku": "linux_8_core",
+      "os": "LINUX",
+      "cores": 8,
+      "labelPattern": "(^|[^0-9])8[-_ ]?cores?($|[^a-z])",
+      "minuteMultiplier": 4,
+      "pricePerMinuteUsd": 0.032,
+      "effectiveFrom": "2024-01-01"
+    },
+    {
+      "sku": "linux_16_core",
+      "os": "LINUX",
+      "cores": 16,
+      "labelPattern": "(^|[^0-9])16[-_ ]?cores?($|[^a-z])",
+      "minuteMultiplier": 8,
+      "pricePerMinuteUsd": 0.064,
+      "effectiveFrom": "2024-01-01"
+    },
+    {
+      "sku": "linux_32_core",
+      "os": "LINUX",
+      "cores": 32,
+      "labelPattern": "(^|[^0-9])32[-_ ]?cores?($|[^a-z])",
+      "minuteMultiplier": 16,
+      "pricePerMinuteUsd": 0.128,
+      "effectiveFrom": "2024-01-01"
+    },
+    {
+      "sku": "linux_64_core",
+      "os": "LINUX",
+      "cores": 64,
+      "labelPattern": "(^|[^0-9])64[-_ ]?cores?($|[^a-z])",
+      "minuteMultiplier": 32,
+      "pricePerMinuteUsd": 0.256,
+      "effectiveFrom": "2024-01-01"
+    },
+    {
+      "sku": "windows_4_core",
+      "os": "WINDOWS",
+      "cores": 4,
+      "labelPattern": "(^|[^0-9])4[-_ ]?cores?($|[^a-z])",
+      "minuteMultiplier": 4,
+      "pricePerMinuteUsd": 0.032,
+      "effectiveFrom": "2024-01-01"
+    },
+    {
+      "sku": "windows_8_core",
+      "os": "WINDOWS",
+      "cores": 8,
+      "labelPattern": "(^|[^0-9])8[-_ ]?cores?($|[^a-z])",
+      "minuteMultiplier": 8,
+      "pricePerMinuteUsd": 0.064,
+      "effectiveFrom": "2024-01-01"
+    },
+    {
+      "sku": "windows_16_core",
+      "os": "WINDOWS",
+      "cores": 16,
+      "labelPattern": "(^|[^0-9])16[-_ ]?cores?($|[^a-z])",
+      "minuteMultiplier": 16,
+      "pricePerMinuteUsd": 0.128,
+      "effectiveFrom": "2024-01-01"
+    },
+    {
+      "sku": "macos_large",
+      "os": "MACOS",
+      "cores": 12,
+      "labelPattern": "^macos-(latest|[0-9.]+)-large$",
+      "minuteMultiplier": 15,
+      "pricePerMinuteUsd": 0.12,
+      "effectiveFrom": "2024-01-01"
+    },
+    {
+      "sku": "macos_xlarge",
+      "os": "MACOS",
+      "cores": 6,
+      "labelPattern": "^macos-(latest|[0-9.]+)-xlarge$",
+      "minuteMultiplier": 20,
+      "pricePerMinuteUsd": 0.16,
+      "effectiveFrom": "2024-01-01"
+    }
+  ]
+}
