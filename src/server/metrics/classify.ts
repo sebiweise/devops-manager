@@ -1,0 +1,152 @@
+/**
+ * Runner classification and job naming (design §6.4). Pure functions; the
+ * fold calls them on every write so the derived columns always follow the
+ * merged job row.
+ */
+
+export type RunnerKind =
+  "GITHUB_HOSTED" | "LARGER_HOSTED" | "SELF_HOSTED" | "UNKNOWN";
+export type RunnerOs = "LINUX" | "WINDOWS" | "MACOS" | "UNKNOWN";
+
+/** The SkuRate fields classification and cost estimates read. */
+export type SkuRateLike = {
+  sku: string;
+  os: RunnerOs;
+  labelPattern: string | null;
+  minuteMultiplier: number;
+  pricePerMinuteUsd: number;
+  /** UTC midnight of the first day the rate applies. */
+  effectiveFrom: Date;
+};
+
+export const HOSTED_GROUP = "GitHub Actions";
+
+/** Lowercase, de-duplicated, sorted. */
+export function normalizeLabels(labels: ReadonlyArray<string>): string[] {
+  return [...new Set(labels.map((l) => l.trim().toLowerCase()))]
+    .filter((l) => l.length > 0)
+    .sort();
+}
+
+export function labelKeyOf(labels: ReadonlyArray<string>): string {
+  return normalizeLabels(labels).join(",");
+}
+
+/** Strips a matrix suffix: "test (ubuntu-latest, 22)" -> "test". */
+export function baseNameOf(name: string): string {
+  const stripped = name.replace(/\s+\([^()]*\)\s*$/, "").trim();
+  return stripped.length > 0 ? stripped : name;
+}
+
+const STANDARD_LABEL =
+  /^(ubuntu|windows|macos)-(latest|\d+(\.\d+)?)(-(arm|arm64|large|xlarge|intel))?$|^[a-z0-9.-]+-latest$/;
+
+export function isStandardLabel(label: string): boolean {
+  return STANDARD_LABEL.test(label);
+}
+
+function compile(pattern: string | null): RegExp | null {
+  if (!pattern) return null;
+  try {
+    return new RegExp(pattern, "i");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The larger-runner SkuRate whose labelPattern matches one of the labels and
+ * whose OS fits the labels (when the labels name an OS).
+ */
+export function matchLargerSku(
+  labels: ReadonlyArray<string>,
+  rates: ReadonlyArray<SkuRateLike>,
+): SkuRateLike | null {
+  const os = runnerOsOf(labels);
+  for (const rate of rates) {
+    if (os !== "UNKNOWN" && rate.os !== os) continue;
+    const re = compile(rate.labelPattern);
+    if (re && labels.some((l) => re.test(l))) return rate;
+  }
+  return null;
+}
+
+export type RunnerFacts = {
+  labels: ReadonlyArray<string>;
+  runnerName: string | null;
+  runnerGroupName: string | null;
+  /** True when the runner id matches a known self-hosted runner (M2). */
+  knownSelfHosted?: boolean;
+};
+
+export function classifyRunner(
+  facts: RunnerFacts,
+  rates: ReadonlyArray<SkuRateLike>,
+): RunnerKind {
+  const labels = normalizeLabels(facts.labels);
+  if (
+    labels.includes("self-hosted") ||
+    facts.knownSelfHosted ||
+    (facts.runnerGroupName != null && facts.runnerGroupName !== HOSTED_GROUP)
+  ) {
+    return "SELF_HOSTED";
+  }
+  const hostedRunner =
+    facts.runnerGroupName === HOSTED_GROUP ||
+    (facts.runnerName != null && /^GitHub Actions \d+$/.test(facts.runnerName));
+  const allStandard = labels.length > 0 && labels.every(isStandardLabel);
+  if (hostedRunner) {
+    if (matchLargerSku(labels, rates) || !allStandard) return "LARGER_HOSTED";
+    return "GITHUB_HOSTED";
+  }
+  if (allStandard) {
+    return matchLargerSku(labels, rates) ? "LARGER_HOSTED" : "GITHUB_HOSTED";
+  }
+  return "UNKNOWN";
+}
+
+export function runnerOsOf(
+  labels: ReadonlyArray<string>,
+  fallback: string | null = null,
+): RunnerOs {
+  const all = [...normalizeLabels(labels), (fallback ?? "").toLowerCase()];
+  if (all.some((l) => /ubuntu|linux/.test(l))) return "LINUX";
+  if (all.some((l) => /windows/.test(l))) return "WINDOWS";
+  if (all.some((l) => /macos|^mac|osx/.test(l))) return "MACOS";
+  return "UNKNOWN";
+}
+
+const BASE_SKU: Record<RunnerOs, string | null> = {
+  LINUX: "linux",
+  WINDOWS: "windows",
+  MACOS: "macos",
+  UNKNOWN: null,
+};
+
+/**
+ * The SKU used for cost estimates. Self-hosted and unknown runners have none;
+ * a larger runner without a matching SkuRate has none either and is flagged.
+ */
+export function skuOf(
+  kind: RunnerKind,
+  os: RunnerOs,
+  labels: ReadonlyArray<string>,
+  rates: ReadonlyArray<SkuRateLike>,
+): string | null {
+  if (kind === "SELF_HOSTED" || kind === "UNKNOWN") return null;
+  const larger = matchLargerSku(normalizeLabels(labels), rates);
+  if (larger) return larger.sku;
+  if (kind === "LARGER_HOSTED") return null;
+  return BASE_SKU[os];
+}
+
+/** "sh:<runnerName>" for self-hosted runners, "pool:<labelKey>" otherwise. */
+export function runnerKeyOf(
+  kind: RunnerKind,
+  runnerName: string | null,
+  labelKey: string,
+): string {
+  return kind === "SELF_HOSTED" && runnerName
+    ? `sh:${runnerName}`
+    : `pool:${labelKey}`;
+}

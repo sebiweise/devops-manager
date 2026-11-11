@@ -34,7 +34,7 @@ function setEnv(issuer: string) {
   Object.assign(process.env, {
     NODE_ENV: "test",
     DATABASE_URL,
-    BETTER_AUTH_SECRET: "integration-secret-integration-secret-0001",
+    BETTER_AUTH_SECRET: "integration-secret-integration-secret-0001", // gitleaks:allow (test placeholder)
     BETTER_AUTH_URL: BASE,
     NEXT_PUBLIC_APP_URL: BASE,
     TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),

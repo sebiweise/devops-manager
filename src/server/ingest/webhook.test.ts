@@ -90,6 +90,7 @@ describe("handleWebhook", () => {
       "installation",
       expect.anything(),
       1001n,
+      expect.any(Date),
     );
     expect(store.rows.get("delivery-1")?.final).toEqual({
       status: "PROCESSED",
@@ -252,7 +253,7 @@ describe("handleWebhook", () => {
     expect(store.fold).not.toHaveBeenCalled();
   });
 
-  it("records workflow events until their fold arrives (M1)", async () => {
+  it("folds workflow events with the delivery time as event time", async () => {
     const store = memoryStore();
     const res = await handleWebhook(
       request("workflow_job", {
@@ -264,8 +265,13 @@ describe("handleWebhook", () => {
       store,
     );
     expect(res.status).toBe(202);
-    expect(store.fold).not.toHaveBeenCalled();
-    expect(store.rows.get("delivery-1")?.final?.status).toBe("SKIPPED");
+    expect(store.fold).toHaveBeenCalledTimes(1);
+    const [event, , installationId, receivedAt] = vi.mocked(store.fold).mock
+      .calls[0]!;
+    expect(event).toBe("workflow_job");
+    expect(installationId).toBe(1001n);
+    expect(receivedAt).toEqual(store.rows.get("delivery-1")?.receivedAt);
+    expect(store.rows.get("delivery-1")?.final?.status).toBe("PROCESSED");
   });
 
   it("returns 413 for oversized bodies before verifying anything", async () => {

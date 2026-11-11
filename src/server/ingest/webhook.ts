@@ -19,9 +19,6 @@ export const HANDLED_EVENTS = new Set([
   "github_app_authorization",
 ]);
 
-/** Events whose fold functions arrive with M1; recorded, payload dropped. */
-export const DEFERRED_EVENTS = new Set(["workflow_run", "workflow_job"]);
-
 export type DeliveryRow = {
   id: string;
   event: string;
@@ -31,6 +28,8 @@ export type DeliveryRow = {
   payloadBytes: number;
   payload: WebhookPayload | null;
   status: "RECEIVED" | "SKIPPED";
+  /** Also the event time of the fold, so a replay folds like the original. */
+  receivedAt: Date;
 };
 
 export type DeliveryOutcome =
@@ -52,11 +51,15 @@ export interface WebhookStore {
   finishDelivery(id: string, outcome: DeliveryOutcome): Promise<void>;
   /** Installation and repository consistency (design §5.1 step 6). */
   checkTenant(event: string, payload: WebhookPayload): Promise<TenantCheck>;
-  /** Applies the event (fold functions). */
+  /**
+   * Applies the event (fold functions). `receivedAt` is the event time the
+   * fold uses (the original delivery time for replays).
+   */
   fold(
     event: string,
     payload: WebhookPayload,
     installationId: bigint | null,
+    receivedAt: Date,
   ): Promise<void>;
   /** Cache invalidation and `lastWebhookAt`. */
   touched(installationId: bigint): Promise<void>;
@@ -159,6 +162,7 @@ export async function handleWebhook(
   const handled = HANDLED_EVENTS.has(event);
 
   // 4 + 5. Record the delivery (unknown events without payload) and dedupe.
+  const receivedAt = new Date();
   const row: DeliveryRow = {
     id: deliveryId,
     event,
@@ -168,6 +172,7 @@ export async function handleWebhook(
     payloadBytes: raw.byteLength,
     payload: handled ? payload : null,
     status: handled ? "RECEIVED" : "SKIPPED",
+    receivedAt,
   };
   let inserted: "inserted" | "duplicate";
   try {
@@ -180,50 +185,72 @@ export async function handleWebhook(
   if (inserted === "duplicate") return json(200, { result: "duplicate" });
   if (!handled) return json(202, { result: "skipped" });
 
+  const result = await processDelivery(store, {
+    id: deliveryId,
+    event,
+    payload,
+    receivedAt,
+  });
+  return json(202, { result });
+}
+
+export type StoredDelivery = {
+  id: string;
+  event: string;
+  payload: WebhookPayload;
+  receivedAt: Date;
+};
+
+/**
+ * Steps 6-10 of §5.1 for a recorded delivery: tenant check, claim, fold and
+ * finish. Used inline by the webhook route and by reconcile's replay of
+ * RECEIVED and FAILED deliveries (step a). Returns a short result label.
+ */
+export async function processDelivery(
+  store: WebhookStore,
+  delivery: StoredDelivery,
+): Promise<string> {
+  const { id, event, payload } = delivery;
   try {
     // 6. Tenant check.
     const tenant = await store.checkTenant(event, payload);
     if (!tenant.ok) {
-      await store.finishDelivery(deliveryId, {
+      await store.finishDelivery(id, {
         status: tenant.status,
         reason: tenant.reason,
       });
-      return json(202, { result: tenant.status.toLowerCase() });
+      return tenant.status.toLowerCase();
     }
 
     // 7. Claim the row.
-    if (!(await store.claimDelivery(deliveryId)))
-      return json(202, { result: "in progress" });
-
-    if (DEFERRED_EVENTS.has(event)) {
-      await store.finishDelivery(deliveryId, {
-        status: "SKIPPED",
-        reason: "handled by reconcile until M1",
-      });
-      return json(202, { result: "skipped" });
-    }
+    if (!(await store.claimDelivery(id))) return "in progress";
 
     // 8 + 9. Fold and finish.
     try {
-      await store.fold(event, payload, tenant.installationId);
+      await store.fold(
+        event,
+        payload,
+        tenant.installationId,
+        delivery.receivedAt,
+      );
     } catch (error) {
       // 10. The row is durable; reconcile replays it.
-      await store.finishDelivery(deliveryId, {
+      await store.finishDelivery(id, {
         status: "FAILED",
         error: redactError(
           error instanceof Error ? error.message : String(error),
         ),
       });
-      return json(202, { result: "failed" });
+      return "failed";
     }
-    await store.finishDelivery(deliveryId, { status: "PROCESSED" });
+    await store.finishDelivery(id, { status: "PROCESSED" });
     if (tenant.installationId !== null)
       await store.touched(tenant.installationId);
-    return json(202, { result: "processed" });
+    return "processed";
   } catch (error) {
     // Failures after the insert: the row stays RECEIVED or PROCESSING and is
     // replayed by reconcile, so GitHub does not need to redeliver.
     console.error("webhook processing failed", redactError(String(error)));
-    return json(202, { result: "queued for replay" });
+    return "queued for replay";
   }
 }

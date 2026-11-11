@@ -3,6 +3,10 @@ import { revalidateTag } from "next/cache";
 import { Prisma } from "@/generated/prisma/client";
 import { isAllowedAccount } from "@/server/authz/config";
 import { db } from "@/server/db";
+import {
+  handleWorkflowJobEvent,
+  handleWorkflowRunEvent,
+} from "./actions-events";
 import { verifyAndStoreInstallation } from "./discovery";
 import {
   forgetForeignInstallation,
@@ -16,6 +20,7 @@ import {
   handleInstallationRepositoriesEvent,
   handleRepositoryEvent,
 } from "./inventory";
+import type { WorkflowJobPayload, WorkflowRunPayload } from "./github-map";
 import type {
   AppAuthorizationEvent,
   InstallationEvent,
@@ -202,8 +207,26 @@ export const prismaWebhookStore: WebhookStore = {
     return { ok: true, installationId };
   },
 
-  async fold(event, payload, installationId) {
+  async fold(event, payload, installationId, receivedAt) {
     switch (event) {
+      case "workflow_job":
+        if (installationId !== null && payload.workflow_job) {
+          await handleWorkflowJobEvent(
+            installationId,
+            payload as unknown as WorkflowJobPayload,
+            receivedAt,
+          );
+        }
+        return;
+      case "workflow_run":
+        if (installationId !== null && payload.workflow_run) {
+          await handleWorkflowRunEvent(
+            installationId,
+            payload as unknown as WorkflowRunPayload,
+            receivedAt,
+          );
+        }
+        return;
       case "installation":
         await handleInstallationEvent(payload as unknown as InstallationEvent);
         return;

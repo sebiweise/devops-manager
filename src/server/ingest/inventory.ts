@@ -1,4 +1,5 @@
 import "server-only";
+import { env } from "@/env";
 import { isAllowedAccount } from "@/server/authz/config";
 import { db } from "@/server/db";
 import { forgetInstallationTokens } from "@/server/github/app";
@@ -79,7 +80,8 @@ export async function applyInstallation(gh: GhInstallation): Promise<boolean> {
     });
     await tx.installation.upsert({
       where: { id },
-      create: { id, ...fields },
+      // New installations start with the instance default retention.
+      create: { id, ...fields, rawRetentionDays: env.DEFAULT_RETENTION_DAYS },
       update: { ...fields, deletedAt: null, purgeAfter: null },
     });
   });
