@@ -21,8 +21,9 @@ const ALLOWED_EMAIL_DOMAINS = [
   /^noreply\.github\.com$/i,
   /^noreply\./i,
 ];
-// GitHub commits merges and squashes as `GitHub <noreply@github.com>`.
-const ALLOWED_ADDRESSES = new Set(["noreply@github.com"]);
+// GitHub commits merges and squashes as `GitHub <noreply@github.com>`;
+// Dependabot signs off its commits with `dependabot[bot] <support@github.com>`.
+const ALLOWED_ADDRESSES = new Set(["noreply@github.com", "support@github.com"]);
 const EMAIL =
   /[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})/g;
 const SKIP_FILES = [/^pnpm-lock\.yaml$/, /\.(png|jpe?g|gif|ico|webp|woff2?)$/i];
