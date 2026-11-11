@@ -16,11 +16,7 @@ import {
   type HookLogResult,
   type ReplayResult,
 } from "./deliveries";
-import {
-  withBudget,
-  withDeadline,
-  type GitHubClients,
-} from "./github-client";
+import { withBudget, withDeadline, type GitHubClients } from "./github-client";
 import { redactError } from "./webhook";
 import {
   effectiveRetentionDays,
@@ -209,8 +205,18 @@ async function reconcileInstallation(
     }
 
     if (ctx) {
-      // c) Stale state (uses the reserve budget).
-      await repairStale(ctx);
+      // c) Stale state (uses the reserve budget). A failure here must not
+      // skip d) and e).
+      try {
+        await repairStale(ctx);
+      } catch (error) {
+        if (error instanceof DeadlineReached || error instanceof RateLimited)
+          throw error;
+        console.warn(
+          "stale repair failed",
+          redactError(error instanceof Error ? error.message : String(error)),
+        );
+      }
       // d) Incremental sync, then e) backfill, per repo.
       for (const repo of ordered) {
         try {

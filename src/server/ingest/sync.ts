@@ -11,6 +11,7 @@ import type { RunRow } from "./fold";
 import { errorStatus, type GitHubApi } from "./github-client";
 import type { GhWorkflowJob, GhWorkflowRun } from "./github-map";
 import { loadRepoContext, markJobsSynced, type RepoContext } from "./history";
+import { redactError } from "./webhook";
 import {
   createdQuery,
   nextBackfillWindow,
@@ -386,6 +387,23 @@ type StaleJob = {
 };
 
 /**
+ * One stale job or run GitHub would not answer for (5xx, 403 for one repo,
+ * 422): logged and moved to the back of the queue by bumping lastEventAt, so
+ * it cannot block the rest of step c or steps d and e on every tick.
+ */
+async function skipStaleItem(
+  kind: "job" | "run",
+  error: unknown,
+  bump: () => Promise<unknown>,
+) {
+  console.warn(`stale ${kind} not re-read`, {
+    status: errorStatus(error),
+    error: redactError(error instanceof Error ? error.message : String(error)),
+  });
+  await bump();
+}
+
+/**
  * c) Re-reads jobs that are open with no event for 30 minutes, runs that are
  * open for an hour (five minutes in lean mode, where runs only come from
  * reconcile) and placeholder runs. A job that GitHub no longer has and that
@@ -423,7 +441,17 @@ export async function repairStale(ctx: SyncContext): Promise<void> {
       );
       ctx.stats.jobs++;
     } catch (error) {
-      if (errorStatus(error) !== 404) throw error;
+      if (error instanceof DeadlineReached || error instanceof RateLimited)
+        throw error;
+      if (errorStatus(error) !== 404) {
+        await skipStaleItem("job", error, () =>
+          db.workflowJob.updateMany({
+            where: { id: job.id },
+            data: { lastEventAt: at },
+          }),
+        );
+        continue;
+      }
       const limit =
         job.runnerKind === "SELF_HOSTED"
           ? SELF_HOSTED_JOB_LIMIT_MS
@@ -486,11 +514,13 @@ export async function repairStale(ctx: SyncContext): Promise<void> {
     } catch (error) {
       if (error instanceof DeadlineReached || error instanceof RateLimited)
         throw error;
-      if (errorStatus(error) !== 404) throw error;
-      await db.workflowRun.updateMany({
-        where: { id: run.id },
-        data: { lastEventAt: at },
-      });
+      const bump = () =>
+        db.workflowRun.updateMany({
+          where: { id: run.id },
+          data: { lastEventAt: at },
+        });
+      if (errorStatus(error) !== 404) await skipStaleItem("run", error, bump);
+      else await bump();
     }
   }
 }
