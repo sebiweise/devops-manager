@@ -1,0 +1,73 @@
+# Self-hosting with Docker Compose: Postgres, a one-shot migration, the app
+# and a cron sidecar that triggers reconcile every 10 minutes.
+#
+#   cp .env.example .env   # fill in the values
+#   docker compose up -d --build
+#
+# Put a reverse proxy with TLS in front of port 3000 (see README).
+
+name: devops-manager
+
+x-app: &app
+  image: devops-manager:local
+  build: .
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql://devops:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/devops
+    DIRECT_URL: ""
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: devops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: devops
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devops -d devops"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    environment:
+      ROLE: migrate
+      DATABASE_URL: postgresql://devops:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/devops
+      DIRECT_URL: ""
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    <<: *app
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  cron:
+    image: alpine/curl:8.17.0
+    environment:
+      CRON_SECRET: ${CRON_SECRET:?set CRON_SECRET in .env}
+      CRON_INTERVAL_SECONDS: ${CRON_INTERVAL_SECONDS:-600}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        while true; do
+        curl -fsS -X POST -H "Authorization: Bearer $$CRON_SECRET" http://app:3000/api/cron/reconcile || true;
+        sleep $${CRON_INTERVAL_SECONDS};
+        done
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
