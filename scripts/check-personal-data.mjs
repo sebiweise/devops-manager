@@ -21,6 +21,8 @@ const ALLOWED_EMAIL_DOMAINS = [
   /^noreply\.github\.com$/i,
   /^noreply\./i,
 ];
+// GitHub commits merges and squashes as `GitHub <noreply@github.com>`.
+const ALLOWED_ADDRESSES = new Set(["noreply@github.com"]);
 const EMAIL =
   /[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})/g;
 const SKIP_FILES = [/^pnpm-lock\.yaml$/, /\.(png|jpe?g|gif|ico|webp|woff2?)$/i];
@@ -46,7 +48,10 @@ function scan(label, text) {
   lines.forEach((line, i) => {
     for (const match of line.matchAll(EMAIL)) {
       const domain = match[1] ?? "";
-      if (!ALLOWED_EMAIL_DOMAINS.some((re) => re.test(domain))) {
+      if (
+        !ALLOWED_ADDRESSES.has(match[0].toLowerCase()) &&
+        !ALLOWED_EMAIL_DOMAINS.some((re) => re.test(domain))
+      ) {
         findings.push(
           `${label}:${i + 1}: email address outside example domains`,
         );
