@@ -1,0 +1,79 @@
+{
+  "common": {
+    "appName": "DevOps Manager",
+    "signOut": "Abmelden",
+    "language": "Sprache",
+    "languages": { "en": "Englisch", "de": "Deutsch" },
+    "private": "privat",
+    "archived": "archiviert",
+    "personalAccount": "Persönliches Konto",
+    "organization": "Organisation"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "onboarding": "Installationen",
+    "settings": "Einstellungen"
+  },
+  "landing": {
+    "title": "GitHub-Actions-Einblicke und -Verwaltung, selbst gehostet",
+    "intro": "DevOps Manager verbindet sich über eine GitHub App mit deinen Repositories und zeigt Läufe, Dauern, Wartezeiten, Runner und Kosten über ein persönliches Konto und Organisationen hinweg.",
+    "signIn": "Anmelden",
+    "toDashboard": "Dashboard öffnen",
+    "privacyTitle": "Was gespeichert wird",
+    "privacy": "Normalisierte Metadaten von Läufen und Jobs, Logins der GitHub-Akteure, E-Mail, Name und Gruppen-Snapshot der App-Nutzer sowie Audit-Einträge. Rohdaten bleiben standardmäßig 90 Tage, Tagesaggregate dauerhaft. Logs und Secrets werden nie gespeichert.",
+    "selfHost": "Auf Vercel mit Neon bereitstellen oder mit Docker Compose betreiben."
+  },
+  "login": {
+    "title": "Anmelden",
+    "subtitle": "Melde dich mit dem Login deiner Organisation an. Ein GitHub-Konto ist nicht nötig.",
+    "withProvider": "Mit {provider} anmelden",
+    "withGithub": "Mit GitHub anmelden",
+    "errors": {
+      "no_access": "Kein Zugriff auf diese Instanz. Bitte einen Admin, dir eine Rolle zuzuweisen.",
+      "not_in_allowed_group": "Dein Konto ist in keiner Gruppe, die diese Instanz nutzen darf.",
+      "email_not_verified": "Deine E-Mail-Adresse ist beim Identity Provider nicht bestätigt.",
+      "provider_disabled": "Diese Anmeldemethode ist nicht aktiviert.",
+      "account_not_linked": "Es gibt bereits ein Konto mit dieser E-Mail. Melde dich wie gewohnt an und verknüpfe dieses unter Einstellungen.",
+      "default": "Anmeldung fehlgeschlagen. Bitte versuche es erneut."
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "installations": "{count, plural, =0 {Keine Installationen} one {# Installation} other {# Installationen}}",
+    "repositories": "{count, plural, =0 {Keine Repositories} one {# Repository} other {# Repositories}}",
+    "liveSource": "live von GitHub",
+    "storedSource": "vom letzten Abgleich (GitHub nicht erreichbar)",
+    "empty": "Noch keine Installationen.",
+    "emptyAdmin": "Installiere die GitHub App auf einem Konto, um zu starten.",
+    "emptyViewer": "Noch keine Installationen. Bitte einen Admin, die GitHub App zu installieren.",
+    "waiting": "Warte auf den ersten Workflow-Lauf",
+    "repo": "Repository",
+    "defaultBranch": "Standard-Branch",
+    "open": "Öffnen"
+  },
+  "onboarding": {
+    "title": "Installationen",
+    "intro": "Installationen der GitHub App, die zu einem erlaubten Konto gehören.",
+    "install": "Auf GitHub installieren",
+    "installHint": "Damit neben einem persönlichen Konto auch Organisationen abgedeckt sind, muss die App auf \"Any account\" installierbar sein; Installationen von Konten außerhalb von ALLOWED_ACCOUNTS werden ignoriert.",
+    "verified": "Installation auf {account} geprüft und abgeglichen.",
+    "refresh": "Von GitHub aktualisieren",
+    "askAdmin": "Noch keine Installationen. Bitte einen Admin, die GitHub App zu installieren.",
+    "permissions": "Erteilte Berechtigungen",
+    "suspended": "gesperrt"
+  },
+  "account": {
+    "repos": "Repositories",
+    "noRepos": "Für diese Installation sind keine Repositories ausgewählt. Ändere die Auswahl auf GitHub."
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "role": "Deine Rolle",
+    "roles": {
+      "VIEWER": "Betrachter",
+      "OPERATOR": "Operator",
+      "ADMIN": "Admin"
+    },
+    "signedInAs": "Angemeldet als {email}"
+  }
+}

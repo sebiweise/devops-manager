@@ -1,0 +1,75 @@
+{
+  "common": {
+    "appName": "DevOps Manager",
+    "signOut": "Sign out",
+    "language": "Language",
+    "languages": { "en": "English", "de": "German" },
+    "private": "private",
+    "archived": "archived",
+    "personalAccount": "Personal account",
+    "organization": "Organization"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "onboarding": "Installations",
+    "settings": "Settings"
+  },
+  "landing": {
+    "title": "GitHub Actions insights and management, self-hosted",
+    "intro": "DevOps Manager connects to your repositories through one GitHub App and shows runs, durations, queue times, runners and costs across a personal account and organisations.",
+    "signIn": "Sign in",
+    "toDashboard": "Open dashboard",
+    "privacyTitle": "What is stored",
+    "privacy": "Normalised run and job metadata, logins of GitHub actors, the email, name and groups snapshot of app users, and audit entries. Raw run data is kept for 90 days by default; daily rollups are kept. Logs and secrets are never stored.",
+    "selfHost": "Deploy on Vercel with Neon, or run it with Docker Compose."
+  },
+  "login": {
+    "title": "Sign in",
+    "subtitle": "Use your organisation's sign-in. No GitHub account is needed.",
+    "withProvider": "Sign in with {provider}",
+    "withGithub": "Sign in with GitHub",
+    "errors": {
+      "no_access": "No access to this instance. Ask an admin to assign you a role.",
+      "not_in_allowed_group": "Your account is not in a group that may use this instance.",
+      "email_not_verified": "Your email address is not verified at the identity provider.",
+      "provider_disabled": "This sign-in method is not enabled.",
+      "account_not_linked": "An account with this email already exists. Sign in with your usual provider and link this one from Settings.",
+      "default": "Sign-in failed. Please try again."
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "installations": "{count, plural, =0 {No installations} one {# installation} other {# installations}}",
+    "repositories": "{count, plural, =0 {No repositories} one {# repository} other {# repositories}}",
+    "liveSource": "live from GitHub",
+    "storedSource": "from the last sync (GitHub unreachable)",
+    "empty": "No installations yet.",
+    "emptyAdmin": "Install the GitHub App on an account to get started.",
+    "emptyViewer": "No installations yet. Ask an admin to install the GitHub App.",
+    "waiting": "Waiting for the first workflow run",
+    "repo": "Repository",
+    "defaultBranch": "Default branch",
+    "open": "Open"
+  },
+  "onboarding": {
+    "title": "Installations",
+    "intro": "Installations of the GitHub App that belong to an allowed account.",
+    "install": "Install on GitHub",
+    "installHint": "To cover organisations as well as a personal account, the App must be installable on \"Any account\"; installations from accounts outside ALLOWED_ACCOUNTS are ignored.",
+    "verified": "Installation on {account} verified and synced.",
+    "refresh": "Refresh from GitHub",
+    "askAdmin": "No installations yet. Ask an admin to install the GitHub App.",
+    "permissions": "Granted permissions",
+    "suspended": "suspended"
+  },
+  "account": {
+    "repos": "Repositories",
+    "noRepos": "No repositories selected for this installation. Change the repository selection on GitHub."
+  },
+  "settings": {
+    "title": "Settings",
+    "role": "Your role",
+    "roles": { "VIEWER": "Viewer", "OPERATOR": "Operator", "ADMIN": "Admin" },
+    "signedInAs": "Signed in as {email}"
+  }
+}
