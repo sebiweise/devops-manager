@@ -70,23 +70,46 @@ export async function pruneInstallation(
   return { jobs, runs };
 }
 
-/** Deletes every row of an installation (uninstalled and past purgeAfter). */
-export async function purgeInstallation(installationId: bigint): Promise<void> {
-  await db.$transaction(
-    [
-      db.workflowJob.deleteMany({ where: { installationId } }),
-      db.workflowRun.deleteMany({ where: { installationId } }),
-      db.rollupDirty.deleteMany({ where: { installationId } }),
-      db.dailyWorkflowStat.deleteMany({ where: { installationId } }),
-      db.dailyJobStat.deleteMany({ where: { installationId } }),
-      db.syncState.deleteMany({ where: { installationId } }),
-      db.installationRateLimit.deleteMany({ where: { installationId } }),
-      db.webhookDelivery.deleteMany({ where: { installationId } }),
-      db.repository.deleteMany({ where: { installationId } }),
-      db.installation.deleteMany({ where: { id: installationId } }),
-    ],
-    { timeout: 120_000 },
-  );
+/** Tenant tables of an installation, children first; Installation goes last. */
+const PURGE_TABLES = [
+  "WorkflowJob",
+  "WorkflowRun",
+  "RollupDirty",
+  "DailyWorkflowStat",
+  "DailyJobStat",
+  "SyncState",
+  "InstallationRateLimit",
+  "WebhookDelivery",
+  "Repository",
+] as const;
+
+/**
+ * Deletes every row of an installation (uninstalled and past purgeAfter),
+ * table by table in batches of 5,000 rows, checking the deadline between
+ * batches. The Installation row is deleted only once every child table is
+ * empty, so a purge cut off by the deadline resumes on the next tick.
+ * Returns true when the installation is gone.
+ */
+export async function purgeInstallation(
+  installationId: bigint,
+  deadline: Deadline,
+): Promise<boolean> {
+  for (const table of PURGE_TABLES) {
+    for (;;) {
+      if (deadline.expired()) return false;
+      // Tables with composite keys have no single id column; ctid is the
+      // physical row id, stable within the statement.
+      const n = await db.$executeRawUnsafe(
+        `DELETE FROM "${table}" WHERE ctid IN (
+           SELECT ctid FROM "${table}" WHERE "installationId" = $1::bigint LIMIT ${BATCH})`,
+        installationId,
+      );
+      if (n < BATCH) break;
+    }
+  }
+  if (deadline.expired()) return false;
+  await db.installation.deleteMany({ where: { id: installationId } });
+  return true;
 }
 
 /** Instance-wide part of the daily prune; runs at most once a day. */
@@ -117,8 +140,7 @@ export async function pruneGlobal(deadline: Deadline): Promise<boolean> {
     select: { id: true },
   });
   for (const { id } of purge) {
-    if (deadline.expired()) break;
-    await purgeInstallation(id);
+    if (!(await purgeInstallation(id, deadline))) break;
   }
 
   if (!deadline.expired()) {
