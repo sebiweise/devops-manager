@@ -1,3 +1,4 @@
+import { CircleCheck, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 import {
@@ -5,17 +6,20 @@ import {
   EstimateNotice,
   IncludedGauge,
 } from "@/components/costs/cost-charts";
-import { KpiGrid, KpiTile } from "@/components/insights/kpi-tile";
-import { WorkflowLink } from "@/components/insights/workflow-link";
-import { Badge } from "@/components/ui/badge";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { EmptyState } from "@/components/data/empty-state";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  ClearFilters,
+  FilterBar,
+  FilterChips,
+  SearchBox,
+} from "@/components/data/filter-bar";
+import { InfoTip } from "@/components/data/info-tip";
+import { KpiStrip, KpiTile } from "@/components/data/kpi-strip";
+import { Pagination } from "@/components/data/pagination";
+import { StatusBadge } from "@/components/data/status-badge";
+import { repoHref, workflowHref } from "@/components/insights/workflow-link";
+import { PageHeader } from "@/components/shell/page-header";
 import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
 import { adjacentMonths, currentMonth } from "@/lib/costs-view";
 import {
@@ -25,31 +29,59 @@ import {
   formatSignedPercent,
   formatUsd,
 } from "@/lib/format";
-import { param, withParams, type SearchParams } from "@/lib/insights-view";
-import { getCosts, parseMonth } from "@/server/data/costs";
 import { accountMeta } from "@/lib/page-meta";
+import type { CostRepoRow } from "@/lib/table-pages";
+import {
+  COST_REPO_FILTERS,
+  COST_REPO_TABLE,
+  COST_WORKFLOW_TABLE,
+} from "@/lib/table-specs";
+import {
+  first,
+  hrefWith,
+  parseTableQuery,
+  withParams,
+  type SearchParamsLike,
+} from "@/lib/url-state";
+import { cn } from "@/lib/utils";
+import {
+  getCosts,
+  listCostRepos,
+  listCostWorkflows,
+  parseMonth,
+  type Costs,
+} from "@/server/data/costs";
 
 export const generateMetadata = accountMeta("costs");
 
+const TABS = ["repos", "workflows", "runners"] as const;
+type Tab = (typeof TABS)[number];
+/** Repositories shown before "Show all". */
+const TOP_REPOS = 10;
+const IGNORED_KEY = "\u0000ignored";
+const UNATTRIBUTED_KEY = "\u0000unattributed";
+
 /**
- * Costs for all roles (design §6.6, §7 /costs): month picker, used vs
- * included with the projection, by SKU (multiplier shown), by repository,
- * by day, by workflow (estimated, scaled), estimate vs billed with ⚠ flags.
- * Without billed data: estimates only, with the reason; admins get a link
- * to /admin/github when a billing credential would help.
+ * Costs for all roles (UI overhaul §2.12): the month in the header, the
+ * hero "Net this month" with projection, included minutes and the estimate,
+ * the included-minutes gauge and the per-day chart, then one breakdown card
+ * with tabs: by repository (estimate vs billed merged in, flagged rows, the
+ * ignored repositories and unattributed usage as final rows so the column
+ * sums equal the totals), by workflow (searched, sorted, paged) and by
+ * runner type. Without billed data: estimates only, with the reason.
  */
 export default async function CostsPage({
   params,
   searchParams,
 }: {
   params: Promise<{ account: string }>;
-  searchParams: Promise<SearchParams>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { account } = await params;
-  const sp = await searchParams;
+  const sp = (await searchParams) as SearchParamsLike;
   const { scope, installation } = await loadAccount(account);
   const now = new Date();
-  const month = parseMonth(param(sp, "month"), now);
+  const month = parseMonth(first(sp, "month"), now);
   const [t, locale, format, costs] = await Promise.all([
     getTranslations(),
     getLocale(),
@@ -67,111 +99,161 @@ export default async function CostsPage({
     new Date(`${costs.month}-01T00:00:00.000Z`),
     { year: "numeric", month: "long", timeZone: "UTC" },
   );
-  const sourceBadge = (
-    <Badge variant={billed ? "secondary" : "outline"}>
-      {billed ? t("costs.kpi.billedFlag") : t("costs.kpi.estimateFlag")}
-    </Badge>
-  );
   const empty =
     costs.bySku.length === 0 && costs.totals.estMin === 0 && !billed;
+  const rawTab = first(sp, "tab");
+  const tab: Tab = (TABS as readonly string[]).includes(rawTab ?? "")
+    ? (rawTab as Tab)
+    : "repos";
+  const monthParam = first(sp, "month");
+  const inc = costs.included;
+  const ratio = inc.included > 0 ? inc.used / inc.included : null;
+  const projectedOver = inc.included > 0 && inc.projectedUsed > inc.included;
+  const repos = listCostRepos(costs, {
+    sort: "net",
+    dir: "desc",
+    page: 1,
+    size: 1,
+  });
+
+  const monthNav = (
+    <nav aria-label={t("costs.monthNav")} className="flex gap-1 text-xs">
+      <Link
+        href={withParams(base, { month: prev })}
+        className="rounded-md border px-2.5 py-1 hover:bg-accent"
+      >
+        {t("costs.prev")}
+      </Link>
+      <Link
+        href={base}
+        aria-current={costs.month === thisMonth ? "true" : undefined}
+        className={
+          costs.month === thisMonth
+            ? "rounded-md border bg-secondary px-2.5 py-1 font-medium"
+            : "rounded-md border px-2.5 py-1 hover:bg-accent"
+        }
+      >
+        {t("costs.current")}
+      </Link>
+      {costs.month < thisMonth ? (
+        <Link
+          href={withParams(base, {
+            month: next === thisMonth ? undefined : next,
+          })}
+          className="rounded-md border px-2.5 py-1 hover:bg-accent"
+        >
+          {t("costs.next")}
+        </Link>
+      ) : null}
+    </nav>
+  );
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold">
-          {t("costs.title")}: {monthLabel} {sourceBadge}
-        </h1>
-        <nav aria-label={t("costs.monthNav")} className="flex gap-1 text-xs">
-          <Link
-            href={withParams(base, sp, { month: prev })}
-            className="rounded-md border px-2.5 py-1 hover:bg-accent"
-          >
-            {t("costs.prev")}
-          </Link>
-          <Link
-            href={withParams(base, sp, { month: undefined })}
-            aria-current={costs.month === thisMonth ? "true" : undefined}
-            className={
-              costs.month === thisMonth
-                ? "rounded-md border bg-primary px-2.5 py-1 text-primary-foreground"
-                : "rounded-md border px-2.5 py-1 hover:bg-accent"
-            }
-          >
-            {t("costs.current")}
-          </Link>
-          {costs.month < thisMonth ? (
-            <Link
-              href={withParams(base, sp, {
-                month: next === thisMonth ? undefined : next,
-              })}
-              className="rounded-md border px-2.5 py-1 hover:bg-accent"
+      <PageHeader
+        title={t("costs.title")}
+        subtitle={
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="font-medium text-foreground">{monthLabel}</span>
+            <span
+              className={cn(
+                "rounded-full border px-2 py-0.5 text-xs",
+                billed ? "bg-secondary" : "border-dashed",
+              )}
             >
-              {t("costs.next")}
-            </Link>
-          ) : null}
-        </nav>
-      </div>
-
-      <p className="text-xs text-muted-foreground">
-        {billed ? t("billingStatus.billed") : t("billingStatus.estimated")}{" "}
-        {costs.syncedAt
-          ? t("costs.synced", {
-              ago: format.relativeTime(new Date(costs.syncedAt), now),
-            })
-          : t("costs.neverSynced")}
-      </p>
+              {billed ? t("costs.kpi.billedFlag") : t("costs.kpi.estimateFlag")}
+            </span>
+            <span>
+              {costs.syncedAt
+                ? t("costs.synced", {
+                    ago: format.relativeTime(new Date(costs.syncedAt), now),
+                  })
+                : t("costs.neverSynced")}
+            </span>
+          </span>
+        }
+        actions={monthNav}
+      />
 
       <EstimateNotice costs={costs} accountType={installation.accountType} />
 
-      {empty ? (
-        <p className="text-muted-foreground">{t("costs.noData")}</p>
-      ) : null}
+      {empty ? <EmptyState message={t("costs.noData")} /> : null}
 
-      <KpiGrid>
+      <KpiStrip label={t("overview.kpiLabel")} columns={5}>
         {billed ? (
-          <>
-            <KpiTile
-              label={t("costs.kpi.net")}
-              value={usd(costs.totals.netUsd)}
-            />
-            <KpiTile
-              label={t("costs.kpi.gross")}
-              value={usd(costs.totals.grossUsd)}
-            />
-            <KpiTile
-              label={t("costs.kpi.discount")}
-              value={usd(costs.totals.discountUsd)}
-            />
-            <KpiTile
-              label={t("costs.kpi.projectedNet")}
-              value={usd(costs.included.projectedNetUsd)}
-            />
-            <KpiTile
-              label={t("costs.kpi.allProducts")}
-              value={usd(costs.totals.netUsdAllProducts)}
-            />
-          </>
+          <KpiTile
+            variant="hero"
+            label={t("costs.kpi.netMonth")}
+            info={t("costs.kpi.netInfo", {
+              all: usd(costs.totals.netUsdAllProducts),
+            })}
+            value={usd(costs.totals.netUsd)}
+            hint={t("costs.kpi.grossMinusDiscount", {
+              gross: usd(costs.totals.grossUsd),
+              discount: usd(costs.totals.discountUsd),
+            })}
+          />
         ) : (
           <KpiTile
-            label={t("costs.kpi.projectedEst")}
-            value={usd(costs.included.projectedNetUsd)}
+            variant="hero"
+            label={t("costs.kpi.estMonth")}
+            info={t("costs.kpi.estInfo")}
+            value={usd(costs.totals.estUsd)}
             hint={t("costs.kpi.estimateFlag")}
           />
         )}
+        {projectedOver ? (
+          <KpiTile
+            variant="status"
+            icon={TriangleAlert}
+            tone="warning"
+            label={
+              billed ? t("costs.kpi.projectedNet") : t("costs.kpi.projectedEst")
+            }
+            info={t("costs.kpi.projectedInfo")}
+            value={usd(inc.projectedNetUsd)}
+            hint={t("costs.gauge.projectedOver")}
+          />
+        ) : (
+          <KpiTile
+            label={
+              billed ? t("costs.kpi.projectedNet") : t("costs.kpi.projectedEst")
+            }
+            info={t("costs.kpi.projectedInfo")}
+            value={usd(inc.projectedNetUsd)}
+            hint={t("costs.kpi.projectedMinutes", {
+              minutes: min(inc.projectedUsed),
+            })}
+          />
+        )}
+        <KpiTile
+          variant="meter"
+          label={t("costs.kpi.minutesIncluded")}
+          info={t("costs.kpi.minutesIncludedInfo")}
+          value={formatNumber(inc.used, locale)}
+          ratio={ratio}
+          overLabel={t("costs.gauge.over")}
+          hint={
+            inc.included > 0
+              ? t("costs.kpi.ofIncluded", {
+                  included: formatNumber(inc.included, locale),
+                  source: t(`costs.gauge.sources.${inc.usedSource}`),
+                })
+              : t(`costs.gauge.sources.${inc.usedSource}`)
+          }
+        />
         <KpiTile
           label={t("costs.kpi.estUsd")}
+          info={t("costs.kpi.estInfo")}
           value={usd(costs.totals.estUsd)}
-          hint={t("costs.kpi.estimateFlag")}
+          hint={t("costs.kpi.estMinutes", {
+            minutes: min(costs.totals.estMin),
+          })}
         />
-        <KpiTile
-          label={t("costs.kpi.estMin")}
-          value={min(costs.totals.estMin)}
-          hint={t("costs.kpi.estimateFlag")}
-        />
-      </KpiGrid>
+      </KpiStrip>
 
       {costs.unmatchedJobs > 0 ? (
-        <p className="text-sm">
+        <p className="text-sm text-muted-foreground">
           {t("costs.unmatched", { count: costs.unmatchedJobs })}
         </p>
       ) : null}
@@ -181,316 +263,525 @@ export default async function CostsPage({
         <CostsPerDayChart costs={costs} />
       </div>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="font-medium">{t("costs.bySku.title")}</h2>
-        <Table>
-          <caption className="sr-only">{t("costs.bySku.title")}</caption>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("costs.bySku.sku")}</TableHead>
-              <TableHead className="text-right">
-                {t("costs.bySku.multiplier")}
-              </TableHead>
-              {billed ? (
-                <>
-                  <TableHead className="text-right">
-                    {t("costs.bySku.quantity")}
-                  </TableHead>
-                  <TableHead>{t("costs.bySku.unit")}</TableHead>
-                  <TableHead className="text-right">
-                    {t("costs.bySku.gross")}
-                  </TableHead>
-                  <TableHead className="text-right">
-                    {t("costs.bySku.discount")}
-                  </TableHead>
-                  <TableHead className="text-right">
-                    {t("costs.bySku.net")}
-                  </TableHead>
-                </>
-              ) : null}
-              <TableHead className="text-right">
-                {t("costs.bySku.estMin")}
-              </TableHead>
-              <TableHead className="text-right">
-                {t("costs.bySku.estUsd")}
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {costs.bySku.map((s) => (
-              <TableRow key={s.skuKey}>
-                <TableCell className="font-medium">{s.sku}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {s.minuteMultiplier == null
-                    ? "—"
-                    : `×${formatNumber(s.minuteMultiplier, locale)}`}
-                </TableCell>
-                {billed ? (
-                  <>
-                    <TableCell className="text-right tabular-nums">
-                      {formatNumber(s.billedQuantity, locale)}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {s.unitType ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {usd(s.grossUsd)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {usd(s.discountUsd)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {usd(s.netUsd)}
-                    </TableCell>
-                  </>
-                ) : null}
-                <TableCell className="text-right tabular-nums">
-                  {min(s.estMin)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {usd(s.estUsd)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="font-medium">{t("costs.byRepo.title")}</h2>
-        <Table>
-          <caption className="sr-only">{t("costs.byRepo.title")}</caption>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("costs.byRepo.repo")}</TableHead>
-              {billed ? (
-                <>
-                  <TableHead className="text-right">
-                    {t("costs.bySku.quantity")}
-                  </TableHead>
-                  <TableHead className="text-right">
-                    {t("costs.bySku.gross")}
-                  </TableHead>
-                  <TableHead className="text-right">
-                    {t("costs.bySku.net")}
-                  </TableHead>
-                </>
-              ) : null}
-              <TableHead className="text-right">
-                {t("costs.bySku.estMin")}
-              </TableHead>
-              <TableHead className="text-right">
-                {t("costs.bySku.estUsd")}
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {costs.byRepo.map((r) => (
-              <TableRow key={r.repositoryFullName}>
-                <TableCell className="font-medium">
-                  {r.repositoryFullName || "—"}
-                </TableCell>
-                {billed ? (
-                  <>
-                    <TableCell className="text-right tabular-nums">
-                      {formatNumber(r.billedQuantity, locale)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {usd(r.grossUsd)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {usd(r.netUsd)}
-                    </TableCell>
-                  </>
-                ) : null}
-                <TableCell className="text-right tabular-nums">
-                  {min(r.estMin)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {usd(r.estUsd)}
-                </TableCell>
-              </TableRow>
-            ))}
-            {costs.ignored ? (
-              <TableRow className="text-muted-foreground italic">
-                <TableCell>
-                  {t("costs.byRepo.ignored", {
-                    count: costs.ignored.repositories,
+      <section
+        aria-labelledby="breakdown"
+        className="flex flex-col gap-4 rounded-xl border bg-card p-3 text-card-foreground sm:p-4"
+      >
+        <h2 id="breakdown" className="font-semibold">
+          {t("costs.breakdown")}
+        </h2>
+        <nav
+          aria-label={t("costs.breakdown")}
+          className="overflow-x-auto border-b"
+        >
+          <ul className="flex w-max gap-1">
+            {TABS.map((k) => (
+              <li key={k}>
+                <Link
+                  href={withParams(base, {
+                    tab: k === "repos" ? undefined : k,
+                    month: monthParam,
                   })}
-                </TableCell>
-                {billed ? (
-                  <>
-                    <TableCell className="text-right tabular-nums">
-                      {formatNumber(costs.ignored.billedQuantity, locale)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {usd(costs.ignored.grossUsd)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {usd(costs.ignored.netUsd)}
-                    </TableCell>
-                  </>
-                ) : null}
-                <TableCell className="text-right">—</TableCell>
-                <TableCell className="text-right">—</TableCell>
-              </TableRow>
-            ) : null}
-          </TableBody>
-        </Table>
-        {costs.ignored ? (
-          <p className="text-xs text-muted-foreground">
-            {t("costs.byRepo.ignoredInfo")}
-          </p>
-        ) : null}
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="font-medium">{t("costs.byWorkflow.title")}</h2>
-        <p className="text-xs text-muted-foreground">
-          {billed
-            ? `${t("billingStatus.scaled")}: ${t("costs.byWorkflow.description")}`
-            : t("billingStatus.estimated")}
-        </p>
-        {costs.byWorkflow.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {t("costs.byWorkflow.empty")}
-          </p>
-        ) : (
-          <Table>
-            <caption className="sr-only">{t("costs.byWorkflow.title")}</caption>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("costs.byWorkflow.workflow")}</TableHead>
-                <TableHead>{t("costs.bySku.sku")}</TableHead>
-                <TableHead className="text-right">
-                  {t("costs.bySku.estMin")}
-                </TableHead>
-                <TableHead className="text-right">
-                  {t("costs.bySku.estUsd")}
-                </TableHead>
-                {billed ? (
-                  <>
-                    <TableHead className="text-right">
-                      {t("costs.byWorkflow.scale")}
-                    </TableHead>
-                    <TableHead className="text-right">
-                      {t("costs.byWorkflow.scaledMin")}
-                    </TableHead>
-                    <TableHead className="text-right">
-                      {t("costs.byWorkflow.scaledNet")}
-                    </TableHead>
-                  </>
-                ) : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {costs.byWorkflow.map((w) => (
-                <TableRow
-                  key={`${w.repositoryFullName}|${w.sku}|${w.workflowId}`}
+                  aria-current={tab === k ? "page" : undefined}
+                  scroll={false}
+                  className={cn(
+                    "-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm whitespace-nowrap",
+                    tab === k
+                      ? "border-foreground font-medium"
+                      : "border-transparent text-muted-foreground hover:text-foreground",
+                  )}
                 >
-                  <TableCell>
-                    <WorkflowLink
-                      accountLogin={login}
-                      repoFullName={w.repositoryFullName}
-                      workflowId={w.workflowId}
-                      workflowName={w.workflowName}
-                    />
-                  </TableCell>
-                  <TableCell className="text-xs">{w.sku}</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {min(w.estMin)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {usd(w.estUsd)}
-                  </TableCell>
-                  {billed ? (
-                    <>
-                      <TableCell className="text-right tabular-nums">
-                        {w.scale == null
-                          ? t("costs.notBilled")
-                          : `×${formatRatio(w.scale, locale)}`}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {w.scaledMin == null ? "—" : min(w.scaledMin)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {w.scaledNetUsd == null ? "—" : usd(w.scaledNetUsd)}
-                      </TableCell>
-                    </>
-                  ) : null}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="font-medium">{t("costs.reconciliation.title")}</h2>
-        <p className="text-xs text-muted-foreground">
-          {t("costs.reconciliation.description")} {t("billingStatus.deviation")}
-        </p>
-        {costs.reconciliation.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {t("costs.reconciliation.empty")}
-          </p>
-        ) : (
-          <Table>
-            <caption className="sr-only">
-              {t("costs.reconciliation.title")}
-            </caption>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("costs.byRepo.repo")}</TableHead>
-                <TableHead>{t("costs.bySku.sku")}</TableHead>
-                <TableHead className="text-right">
-                  {t("costs.reconciliation.estimate")}
-                </TableHead>
-                <TableHead className="text-right">
-                  {t("costs.reconciliation.billed")}
-                </TableHead>
-                <TableHead className="text-right">
-                  {t("costs.reconciliation.deviation")}
-                </TableHead>
-                <TableHead>{t("costs.reconciliation.flag")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {costs.reconciliation.map((r) => (
-                <TableRow
-                  key={`${r.repositoryFullName}|${r.sku}`}
-                  className={r.flagged ? "bg-destructive/5" : undefined}
-                >
-                  <TableCell className="font-medium">
-                    {r.repositoryFullName || "—"}
-                  </TableCell>
-                  <TableCell className="text-xs">{r.sku}</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {usd(r.estUsd)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {usd(r.billedGrossUsd)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {formatSignedPercent(r.deviation, locale)}
-                  </TableCell>
-                  <TableCell>
-                    {r.flagged ? (
-                      <Badge variant="destructive">
-                        {t("costs.reconciliation.flagged")}
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">
-                        {t("costs.reconciliation.ok")}
+                  {t(`costs.tabs.${k}`)}
+                  {k === "repos" && repos.flagged > 0 ? (
+                    <span className="inline-flex items-center gap-0.5 text-xs">
+                      <TriangleAlert
+                        aria-hidden="true"
+                        className="size-3 text-status-warning"
+                      />
+                      {repos.flagged}
+                      <span className="sr-only">
+                        {t("costs.flaggedCount", { count: repos.flagged })}
                       </span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    </span>
+                  ) : null}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        {tab === "repos" ? (
+          <ReposTab
+            costs={costs}
+            sp={sp}
+            base={base}
+            login={login}
+            locale={locale}
+          />
+        ) : tab === "workflows" ? (
+          <WorkflowsTab
+            costs={costs}
+            sp={sp}
+            base={base}
+            login={login}
+            locale={locale}
+          />
+        ) : (
+          <RunnerTypesTab costs={costs} locale={locale} />
         )}
       </section>
     </div>
   );
+}
+
+type TabProps = {
+  costs: Costs;
+  sp: SearchParamsLike;
+  base: string;
+  login: string;
+  locale: string;
+};
+
+async function ReposTab({ costs, sp, base, login, locale }: TabProps) {
+  const t = await getTranslations();
+  const billed = costs.source === "billed";
+  const usd = (v: number) => formatUsd(v, locale);
+  const min = (v: number) => formatMinutes(v, locale);
+  const query = parseTableQuery(sp, COST_REPO_TABLE);
+  const showAll = first(sp, "all") === "1";
+  const page = listCostRepos(costs, {
+    ...query,
+    page: showAll ? query.page : 1,
+    size: showAll ? query.size : TOP_REPOS,
+  });
+  const netMax = Math.max(1e-9, ...page.rows.map((r) => r.netUsd));
+  const estMax = Math.max(1e-9, ...page.rows.map((r) => r.estUsd));
+  const special = (r: CostRepoRow) =>
+    r.repositoryFullName === IGNORED_KEY ||
+    r.repositoryFullName === UNATTRIBUTED_KEY;
+
+  const tail: CostRepoRow[] = [
+    ...(page.ignored
+      ? [
+          {
+            repositoryFullName: IGNORED_KEY,
+            billedQuantity: page.ignored.billedQuantity,
+            grossUsd: page.ignored.grossUsd,
+            netUsd: page.ignored.netUsd,
+            estMin: 0,
+            estUsd: 0,
+            billedGrossUsd: null,
+            deviation: null,
+            flagged: false,
+          } satisfies CostRepoRow,
+        ]
+      : []),
+    ...(page.unattributed
+      ? [{ ...page.unattributed, repositoryFullName: UNATTRIBUTED_KEY }]
+      : []),
+  ];
+
+  const columns: Column<CostRepoRow>[] = [
+    {
+      id: "repo",
+      label: t("costs.byRepo.repo"),
+      header: t("costs.byRepo.repo"),
+      sortKey: "name",
+      cell: (r) =>
+        r.repositoryFullName === IGNORED_KEY ? (
+          <span className="inline-flex items-center gap-1">
+            {t("costs.byRepo.ignored", {
+              count: page.ignored?.repositories ?? 0,
+            })}
+            <InfoTip
+              label={t("costs.byRepo.ignored", {
+                count: page.ignored?.repositories ?? 0,
+              })}
+            >
+              {t("costs.byRepo.ignoredInfo")}
+            </InfoTip>
+          </span>
+        ) : r.repositoryFullName === UNATTRIBUTED_KEY ? (
+          <span className="inline-flex items-center gap-1">
+            {t("costs.byRepo.unattributed")}
+            <InfoTip label={t("costs.byRepo.unattributed")}>
+              {t("costs.byRepo.unattributedInfo")}
+            </InfoTip>
+          </span>
+        ) : (
+          <Link
+            href={repoHref(login, r.repositoryFullName)}
+            title={r.repositoryFullName}
+            className="font-medium underline-offset-2 hover:underline"
+          >
+            {r.repositoryFullName.split("/").pop()}
+          </Link>
+        ),
+    },
+    ...(billed
+      ? ([
+          {
+            id: "net",
+            label: t("costs.bySku.net"),
+            header: t("costs.bySku.net"),
+            sortKey: "net",
+            align: "right",
+            magnitude: (r) => (special(r) ? null : r.netUsd / netMax),
+            cell: (r) => usd(r.netUsd),
+          },
+          {
+            id: "gross",
+            label: t("costs.bySku.gross"),
+            header: t("costs.bySku.gross"),
+            sortKey: "gross",
+            align: "right",
+            hideBelow: "md",
+            cell: (r) => usd(r.grossUsd),
+          },
+          {
+            id: "minutes",
+            label: t("costs.byRepo.minutes"),
+            header: t("costs.byRepo.minutes"),
+            sortKey: "minutes",
+            align: "right",
+            hideBelow: "md",
+            cell: (r) => formatNumber(r.billedQuantity, locale),
+          },
+        ] satisfies Column<CostRepoRow>[])
+      : []),
+    {
+      id: "estimate",
+      label: t("costs.reconciliation.estimate"),
+      header: t("costs.reconciliation.estimate"),
+      sortKey: "estimate",
+      align: "right",
+      magnitude: billed
+        ? undefined
+        : (r) => (special(r) ? null : r.estUsd / estMax),
+      cell: (r) =>
+        special(r) ? (
+          "—"
+        ) : (
+          <span className="flex flex-col items-end">
+            <span>{usd(r.estUsd)}</span>
+            <span className="text-xs text-muted-foreground">
+              {min(r.estMin)}
+            </span>
+          </span>
+        ),
+    },
+    ...(billed
+      ? ([
+          {
+            id: "billed",
+            label: t("costs.reconciliation.billed"),
+            header: t("costs.reconciliation.billedGross"),
+            align: "right",
+            hideBelow: "lg",
+            cell: (r) =>
+              r.billedGrossUsd == null ? "—" : usd(r.billedGrossUsd),
+          },
+          {
+            id: "deviation",
+            label: t("costs.reconciliation.deviation"),
+            header: t("costs.reconciliation.deviation"),
+            sortKey: "deviation",
+            align: "right",
+            hideBelow: "lg",
+            cell: (r) => (
+              <span className="inline-flex items-center justify-end gap-1.5">
+                {r.deviation == null
+                  ? "—"
+                  : formatSignedPercent(r.deviation, locale)}
+                {r.flagged ? <StatusBadge kind="deviation" /> : null}
+              </span>
+            ),
+          },
+        ] satisfies Column<CostRepoRow>[])
+      : []),
+  ];
+
+  return (
+    <div className="flex flex-col gap-3">
+      {billed ? (
+        page.flagged === 0 ? (
+          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <CircleCheck
+              aria-hidden="true"
+              className="size-4 text-status-good"
+            />
+            {t("costs.reconciliation.allOk")}
+          </p>
+        ) : (
+          <FilterBar>
+            <SearchBox label={t("costs.searchRepo")} />
+            <FilterChips
+              label={t("costs.reconciliation.title")}
+              options={COST_REPO_FILTERS.map((f) => ({
+                value: f,
+                label: t("costs.flaggedOnly"),
+                count: page.flagged,
+              }))}
+            />
+            <ClearFilters />
+          </FilterBar>
+        )
+      ) : null}
+      <DataTable
+        caption={t("costs.byRepo.title")}
+        columns={columns}
+        rows={page.rows}
+        rowKey={(r) => r.repositoryFullName}
+        sort={{ key: query.sort, dir: query.dir, base, params: sp }}
+        tail={query.q || query.filters.length > 0 ? [] : tail}
+        empty={<EmptyState quiet message={t("costs.byRepo.empty")} />}
+      />
+      {showAll ? (
+        <Pagination
+          base={base}
+          params={sp}
+          page={page.page}
+          size={page.size}
+          total={page.total}
+        />
+      ) : page.total > TOP_REPOS ? (
+        <Link
+          href={hrefWith(base, sp, { all: 1, page: undefined })}
+          scroll={false}
+          className="w-fit text-sm underline-offset-2 hover:underline"
+        >
+          {t("costs.showAll", { count: page.total })}
+        </Link>
+      ) : null}
+      {billed ? (
+        <p className="text-xs text-muted-foreground">
+          {t("costs.reconciliation.description")} {t("billingStatus.deviation")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+async function WorkflowsTab({ costs, sp, base, login, locale }: TabProps) {
+  const t = await getTranslations();
+  const billed = costs.source === "billed";
+  const usd = (v: number) => formatUsd(v, locale);
+  const min = (v: number) => formatMinutes(v, locale);
+  const query = parseTableQuery(sp, COST_WORKFLOW_TABLE);
+  const page = listCostWorkflows(costs, query);
+  type Row = Costs["byWorkflow"][number];
+  const minMax = Math.max(1e-9, ...page.rows.map((w) => w.estMin));
+  const columns: Column<Row>[] = [
+    {
+      id: "name",
+      label: t("costs.byWorkflow.workflow"),
+      header: t("costs.byWorkflow.workflow"),
+      sortKey: "name",
+      cell: (w) => (
+        <span className="flex flex-col">
+          <Link
+            href={workflowHref(login, w.repositoryFullName, w.workflowId)}
+            className="font-medium underline-offset-2 hover:underline"
+          >
+            {w.workflowName}
+          </Link>
+          <span className="text-xs text-muted-foreground">
+            {w.repositoryFullName.split("/").pop()} · {w.sku}
+          </span>
+        </span>
+      ),
+    },
+    {
+      id: "minutes",
+      label: t("costs.bySku.estMin"),
+      header: t("costs.bySku.estMin"),
+      sortKey: "minutes",
+      align: "right",
+      magnitude: (w) => w.estMin / minMax,
+      cell: (w) => min(w.estMin),
+    },
+    {
+      id: "estimate",
+      label: t("costs.bySku.estUsd"),
+      header: t("costs.bySku.estUsd"),
+      sortKey: "estimate",
+      align: "right",
+      cell: (w) => usd(w.estUsd),
+    },
+    ...(billed
+      ? ([
+          {
+            id: "scale",
+            label: t("costs.byWorkflow.scale"),
+            header: t("costs.byWorkflow.scale"),
+            align: "right",
+            hideBelow: "lg",
+            cell: (w) =>
+              w.scale == null
+                ? t("costs.notBilled")
+                : `×${formatRatio(w.scale, locale)}`,
+          },
+          {
+            id: "scaledMin",
+            label: t("costs.byWorkflow.scaledMin"),
+            header: t("costs.byWorkflow.scaledMin"),
+            align: "right",
+            hideBelow: "lg",
+            cell: (w) => (w.scaledMin == null ? "—" : min(w.scaledMin)),
+          },
+          {
+            id: "net",
+            label: t("costs.byWorkflow.scaledNet"),
+            header: t("costs.byWorkflow.scaledNet"),
+            sortKey: "net",
+            align: "right",
+            hideBelow: "md",
+            cell: (w) => (w.scaledNetUsd == null ? "—" : usd(w.scaledNetUsd)),
+          },
+        ] satisfies Column<Row>[])
+      : []),
+  ];
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-muted-foreground">
+        {billed
+          ? `${t("billingStatus.scaled")}: ${t("costs.byWorkflow.description")}`
+          : t("billingStatus.estimated")}{" "}
+        {t("costs.byWorkflow.ignoredNote")}
+      </p>
+      <FilterBar>
+        <SearchBox label={t("costs.searchWorkflow")} />
+        <ClearFilters />
+      </FilterBar>
+      <DataTable
+        caption={t("costs.byWorkflow.title")}
+        columns={columns}
+        rows={page.rows}
+        rowKey={(w) => `${w.repositoryFullName}|${w.sku}|${w.workflowId}`}
+        sort={{ key: query.sort, dir: query.dir, base, params: sp }}
+        empty={<EmptyState quiet message={t("costs.byWorkflow.empty")} />}
+      />
+      {page.total > 0 ? (
+        <Pagination
+          base={base}
+          params={sp}
+          page={page.page}
+          size={page.size}
+          total={page.total}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+async function RunnerTypesTab({
+  costs,
+  locale,
+}: {
+  costs: Costs;
+  locale: string;
+}) {
+  const t = await getTranslations();
+  const billed = costs.source === "billed";
+  const usd = (v: number) => formatUsd(v, locale);
+  const min = (v: number) => formatMinutes(v, locale);
+  type Row = Costs["bySku"][number];
+  const columns: Column<Row>[] = [
+    {
+      id: "sku",
+      label: t("costs.bySku.sku"),
+      header: t("costs.bySku.sku"),
+      cell: (s) => (
+        <span className="flex flex-col">
+          <span className="font-medium">{runnerTypeName(s.skuKey, t)}</span>
+          <span className="font-mono text-xs text-muted-foreground">
+            {s.sku}
+          </span>
+        </span>
+      ),
+    },
+    {
+      id: "multiplier",
+      label: t("costs.bySku.multiplier"),
+      header: t("costs.bySku.multiplier"),
+      align: "right",
+      hideBelow: "md",
+      cell: (s) =>
+        s.minuteMultiplier == null
+          ? "—"
+          : `×${formatNumber(s.minuteMultiplier, locale)}`,
+    },
+    ...(billed
+      ? ([
+          {
+            id: "quantity",
+            label: t("costs.bySku.quantity"),
+            header: t("costs.bySku.quantity"),
+            align: "right",
+            hideBelow: "lg",
+            cell: (s) =>
+              `${formatNumber(s.billedQuantity, locale)}${s.unitType ? ` ${s.unitType}` : ""}`,
+          },
+          {
+            id: "gross",
+            label: t("costs.bySku.gross"),
+            header: t("costs.bySku.gross"),
+            align: "right",
+            hideBelow: "md",
+            cell: (s) => usd(s.grossUsd),
+          },
+          {
+            id: "discount",
+            label: t("costs.bySku.discount"),
+            header: t("costs.bySku.discount"),
+            align: "right",
+            hideBelow: "lg",
+            cell: (s) => usd(s.discountUsd),
+          },
+          {
+            id: "net",
+            label: t("costs.bySku.net"),
+            header: t("costs.bySku.net"),
+            align: "right",
+            cell: (s) => usd(s.netUsd),
+          },
+        ] satisfies Column<Row>[])
+      : []),
+    {
+      id: "est",
+      label: t("costs.reconciliation.estimate"),
+      header: t("costs.reconciliation.estimate"),
+      align: "right",
+      cell: (s) => (
+        <span className="flex flex-col items-end">
+          <span>{usd(s.estUsd)}</span>
+          <span className="text-xs text-muted-foreground">{min(s.estMin)}</span>
+        </span>
+      ),
+    },
+  ];
+  return (
+    <DataTable
+      caption={t("costs.bySku.title")}
+      columns={columns}
+      rows={costs.bySku}
+      rowKey={(s) => s.skuKey}
+      empty={<EmptyState quiet message={t("costs.byWorkflow.empty")} />}
+    />
+  );
+}
+
+/** Readable runner type from the SkuRate key: "linux_4_core" → "Linux · 4 cores". */
+function runnerTypeName(
+  key: string,
+  t: Awaited<ReturnType<typeof getTranslations>>,
+): string {
+  const os = key.startsWith("linux")
+    ? "Linux"
+    : key.startsWith("windows")
+      ? "Windows"
+      : key.startsWith("macos")
+        ? "macOS"
+        : key;
+  const cores = /_(\d+)_core/.exec(key)?.[1];
+  return cores ? `${os} · ${t("costs.cores", { n: Number(cores) })}` : os;
 }

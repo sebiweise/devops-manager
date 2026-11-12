@@ -170,15 +170,23 @@ export function KpiTile(props: KpiTileProps) {
 /** A responsive grid of 4 to 6 tiles. */
 export function KpiStrip({
   label,
+  columns = 6,
   children,
 }: {
   label?: string;
+  /** Tiles per row on wide screens (a hero tile spans two). */
+  columns?: 4 | 5 | 6;
   children: ReactNode;
 }) {
   return (
     <dl
       aria-label={label}
-      className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6"
+      className={cn(
+        "grid grid-cols-2 gap-3 md:grid-cols-3",
+        columns === 4 && "xl:grid-cols-4",
+        columns === 5 && "xl:grid-cols-5",
+        columns === 6 && "xl:grid-cols-6",
+      )}
     >
       {children}
     </dl>

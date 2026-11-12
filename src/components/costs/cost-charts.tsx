@@ -3,7 +3,6 @@ import { useLocale, useTranslations } from "next-intl";
 import { ChartFrame } from "@/components/charts/chart-frame";
 import { DataTable } from "@/components/charts/data-table";
 import { Gauge } from "@/components/charts/gauge";
-import { Legend } from "@/components/charts/legend";
 import {
   StackedBarChart,
   type BarSeries,
@@ -113,16 +112,6 @@ export function CostsPerDayChart({ costs }: { costs: Costs }) {
             x: d.day.slice(8),
             title: d.day,
             values: { minutes: Math.round(value(d)) },
-          }))}
-        />
-      }
-      legend={
-        <Legend
-          items={series.map((s) => ({
-            label: s.label,
-            tone: s.tone,
-            kind: "bar" as const,
-            pattern: s.pattern,
           }))}
         />
       }

@@ -870,7 +870,18 @@
       "projectedNet": "Hochrechnung netto, Monatsende",
       "projectedEst": "Hochrechnung Schätzung, Monatsende",
       "estimateFlag": "Schätzung",
-      "billedFlag": "abgerechnet"
+      "billedFlag": "abgerechnet",
+      "netMonth": "Netto diesen Monat",
+      "netInfo": "Was GitHub diesen Monat nach den inklusiven Minuten für Actions berechnet. Alle Produkte der Abrechnung (Speicher, Packages und andere): {all}.",
+      "grossMinusDiscount": "brutto {gross} − inklusive {discount}",
+      "estMonth": "Schätzung diesen Monat",
+      "estInfo": "Geschätzt aus Jobdauern und den Preisen der Runner-Typen; maßgeblich ist die Abrechnung von GitHub.",
+      "projectedInfo": "Der Wert dieses Monats, mit der bisherigen Tagesrate bis Monatsende hochgerechnet.",
+      "projectedMinutes": "{minutes} bis Monatsende",
+      "minutesIncluded": "Verbrauchte Minuten",
+      "minutesIncludedInfo": "Gewichtete Minuten, die auf die inklusiven Minuten des Plans angerechnet werden.",
+      "ofIncluded": "von {included} inklusive ({source})",
+      "estMinutes": "{minutes} geschätzt"
     },
     "gauge": {
       "title": "Inklusivminuten",
@@ -907,7 +918,11 @@
       "title": "Nach Repository",
       "repo": "Repository",
       "ignored": "Ignorierte Repositories ({count})",
-      "ignoredInfo": "Von GitHub abgerechnet; ignorierte Repositories werden nicht einzeln ausgewiesen."
+      "ignoredInfo": "Von GitHub abgerechnet; ignorierte Repositories werden nicht einzeln ausgewiesen.",
+      "minutes": "Abgerechnete Minuten",
+      "unattributed": "Keinem Repository zugeordnet",
+      "unattributedInfo": "Abgerechnete Nutzung, die GitHubs Bericht ohne Repository führt.",
+      "empty": "Kein Repository hat diesen Monat Nutzung."
     },
     "byDay": {
       "title": "Nach Tag",
@@ -925,7 +940,8 @@
       "workflow": "Workflow",
       "scale": "Skalierungsfaktor",
       "scaledMin": "Skalierte Minuten",
-      "scaledNet": "Skaliert netto"
+      "scaledNet": "Skaliert netto",
+      "ignoredNote": "Workflows ignorierter Repositories fehlen; ihre Läufe sind gelöscht, daher gibt es keine Schätzung."
     },
     "reconciliation": {
       "title": "Schätzung vs. Abrechnung",
@@ -936,8 +952,22 @@
       "deviation": "Abweichung",
       "flag": "Prüfen",
       "flagged": "⚠ prüfen",
-      "ok": "ok"
-    }
+      "ok": "ok",
+      "allOk": "Die Schätzungen passen zur Abrechnung (innerhalb von 15 %).",
+      "billedGross": "Abgerechnet (brutto)"
+    },
+    "breakdown": "Aufschlüsselung",
+    "tabs": {
+      "repos": "Nach Repository",
+      "workflows": "Nach Workflow",
+      "runners": "Nach Runner-Typ"
+    },
+    "flaggedCount": "{count, plural, one {# Repository zu prüfen} other {# Repositories zu prüfen}}",
+    "flaggedOnly": "Nur auffällige",
+    "searchRepo": "Repository suchen",
+    "searchWorkflow": "Workflow oder Repository suchen",
+    "showAll": "Alle {count} Repositories zeigen",
+    "cores": "{n} Kerne"
   },
   "adminGithub": {
     "title": "GitHub-Abrechnungszugänge",

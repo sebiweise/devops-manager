@@ -870,7 +870,18 @@
       "projectedNet": "Projected net, month end",
       "projectedEst": "Projected estimate, month end",
       "estimateFlag": "estimate",
-      "billedFlag": "billed"
+      "billedFlag": "billed",
+      "netMonth": "Net this month",
+      "netInfo": "What GitHub bills for Actions this month after the included minutes. All products of the bill (storage, Packages and others): {all}.",
+      "grossMinusDiscount": "gross {gross} − included {discount}",
+      "estMonth": "Estimate this month",
+      "estInfo": "Estimated from job durations and the runner type rates; GitHub's bill is authoritative.",
+      "projectedInfo": "This month's figure extended to the end of the month at the current daily rate.",
+      "projectedMinutes": "{minutes} by month end",
+      "minutesIncluded": "Minutes used",
+      "minutesIncludedInfo": "Multiplied minutes counted against the included minutes of the plan.",
+      "ofIncluded": "of {included} included ({source})",
+      "estMinutes": "{minutes} estimated"
     },
     "gauge": {
       "title": "Included minutes",
@@ -907,7 +918,11 @@
       "title": "By repository",
       "repo": "Repository",
       "ignored": "Ignored repositories ({count})",
-      "ignoredInfo": "Billed by GitHub; not attributed to individual repositories because they are ignored."
+      "ignoredInfo": "Billed by GitHub; not attributed to individual repositories because they are ignored.",
+      "minutes": "Billed minutes",
+      "unattributed": "Not attributed to a repository",
+      "unattributedInfo": "Billed usage that GitHub's report lists without a repository.",
+      "empty": "No repository has usage this month."
     },
     "byDay": {
       "title": "By day",
@@ -925,7 +940,8 @@
       "workflow": "Workflow",
       "scale": "Scale factor",
       "scaledMin": "Scaled minutes",
-      "scaledNet": "Scaled net"
+      "scaledNet": "Scaled net",
+      "ignoredNote": "Workflows of ignored repositories are not listed; their runs are deleted, so they have no estimate."
     },
     "reconciliation": {
       "title": "Estimate vs billed",
@@ -936,8 +952,22 @@
       "deviation": "Deviation",
       "flag": "Check",
       "flagged": "⚠ check",
-      "ok": "ok"
-    }
+      "ok": "ok",
+      "allOk": "Estimates match the bill (within 15 %).",
+      "billedGross": "Billed (gross)"
+    },
+    "breakdown": "Breakdown",
+    "tabs": {
+      "repos": "By repository",
+      "workflows": "By workflow",
+      "runners": "By runner type"
+    },
+    "flaggedCount": "{count, plural, one {# repository to check} other {# repositories to check}}",
+    "flaggedOnly": "Flagged only",
+    "searchRepo": "Search repository",
+    "searchWorkflow": "Search workflow or repository",
+    "showAll": "Show all {count} repositories",
+    "cores": "{n} cores"
   },
   "adminGithub": {
     "title": "GitHub billing credentials",

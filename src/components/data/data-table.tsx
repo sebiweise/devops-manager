@@ -118,6 +118,7 @@ export function DataTable<T>({
   selectHeader,
   selectCell,
   expanderLabel,
+  tail,
   className,
 }: {
   caption: string;
@@ -133,6 +134,11 @@ export function DataTable<T>({
   selectCell?: (row: T) => ReactNode;
   /** Summary text of a row's disclosure (default "More"). */
   expanderLabel?: (row: T) => string;
+  /**
+   * Rows rendered last, outside the sort and paging (e.g. "Ignored
+   * repositories" on the costs page), muted and in italics.
+   */
+  tail?: ReadonlyArray<T>;
   className?: string;
 }) {
   const t = useTranslations("table");
@@ -147,7 +153,8 @@ export function DataTable<T>({
         ? "lg"
         : "md";
 
-  if (rows.length === 0 && empty) return <>{empty}</>;
+  if (rows.length === 0 && (tail?.length ?? 0) === 0 && empty)
+    return <>{empty}</>;
 
   return (
     <Table className={className}>
@@ -272,6 +279,30 @@ export function DataTable<T>({
             </TableRow>
           );
         })}
+        {(tail ?? []).map((row) => (
+          <TableRow
+            key={`tail-${rowKey(row)}`}
+            data-tail
+            className="text-muted-foreground italic"
+          >
+            {selectCell ? <TableCell /> : null}
+            {visible.map((c) => (
+              <TableCell
+                key={c.id}
+                className={cn(
+                  c.align === "right" && "text-right tabular-nums",
+                  c.hideBelow && HIDE[c.hideBelow],
+                  c.className,
+                )}
+              >
+                {c.cell(row)}
+              </TableCell>
+            ))}
+            {hasExpander ? (
+              <TableCell className={cn(widest && SHOW_IN_EXPANDER[widest])} />
+            ) : null}
+          </TableRow>
+        ))}
       </TableBody>
     </Table>
   );
