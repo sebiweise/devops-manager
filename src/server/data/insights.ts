@@ -57,7 +57,7 @@ export function rangeStart(range: InsightRange, now: Date): Date {
   return new Date(now.getTime() - days * DAY_MS);
 }
 
-type InstallationInfo = {
+export type InstallationInfo = {
   id: bigint;
   accountLogin: string;
   timezone: string;
@@ -69,7 +69,7 @@ type InstallationInfo = {
 };
 
 /** The visible, active installation, or NotFoundError. */
-async function visibleInstallation(
+export async function visibleInstallation(
   scope: TenantScope,
   installationId: bigint,
 ): Promise<InstallationInfo> {

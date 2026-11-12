@@ -356,5 +356,56 @@
     "resource": "Ressource",
     "remaining": "Verbleibend",
     "reset": "Zurückgesetzt"
+  },
+  "runnerData": {
+    "stuck": "Hängt",
+    "stuckHint": "Seit mehr als 15 Minuten in der Warteschlange und kein freier Online-Runner hat diese Labels.",
+    "noMatchingRunner": "Kein passender Runner",
+    "noMatchingRunnerHint": "Kein Runner dieser Installation hat alle diese Labels, weder online noch offline.",
+    "insufficientSamples": "Zu wenige Messpunkte",
+    "insufficientSamplesHint": "Die Runner-Messpunkte decken weniger als die Hälfte des Zeitraums ab, daher lässt sich die Auslastung nicht von Lücken zwischen den Messungen unterscheiden.",
+    "sampleInterval": "± ein Messintervall ({interval})",
+    "repoRunnersMissing": "Repository-Runner benötigen die Repository-Berechtigung Administration: read. Ohne sie sind sie nur aus Job-Daten bekannt.",
+    "orgRunnersMissing": "Organisations-Runner benötigen die Organisations-Berechtigung Self-hosted runners: read.",
+    "speedIndex": "Geschwindigkeitsindex",
+    "speedIndexHint": "Mittlere Job-Dauer auf diesem Runner im Verhältnis zu allen Runnern; 1,0 ist Durchschnitt, 0,8 ist 20 % schneller.",
+    "infraFailures": "Infrastrukturfehler",
+    "ephemeral": "kurzlebig"
+  },
+  "billingStatus": {
+    "billed": "Abgerechnete Werte aus GitHubs Billing-Usage-Bericht.",
+    "estimated": "Geschätzt aus Job-Dauern und den SKU-Preisen.",
+    "scaled": "geschätzt, auf die abgerechneten Minuten skaliert",
+    "no_permission": "Kosten sind Schätzungen: Der App wurde die Organisations-Berechtigung Administration: read nicht erteilt.",
+    "no_credential": "Kosten sind Schätzungen: Für dieses persönliche Konto ist kein Billing-Zugang hinterlegt.",
+    "unavailable": "Kosten sind Schätzungen: GitHubs Billing-Usage-Bericht ist für dieses Konto nicht verfügbar (erweiterte Billing-Plattform nötig).",
+    "credential_error": "Kosten sind Schätzungen: Der Billing-Zugang funktioniert nicht mehr.",
+    "not_synced": "Kosten sind Schätzungen, bis die erste Billing-Synchronisierung gelaufen ist.",
+    "reconnect": "Verbinde den Billing-Zugang in den GitHub-Einstellungen dieser Instanz neu.",
+    "deviation": "Schätzung und Abrechnung weichen um mehr als 15 % ab, oft wegen einer unbekannten Larger-Runner-SKU."
+  },
+  "billingCredential": {
+    "states": {
+      "none": "Kein Zugang",
+      "env": "Token aus der Umgebung",
+      "pat": "Gespeichertes Token",
+      "connected": "Mit GitHub verbunden",
+      "reconnect": "Neu verbinden nötig"
+    },
+    "expiringSoon": "Läuft am {date} ab",
+    "results": {
+      "saved": "Token für {login} gespeichert.",
+      "connected": "Verbunden als {login}.",
+      "revoked": "Zugang entfernt.",
+      "redirect": "Weiter auf GitHub.",
+      "forbidden": "Nur Admins können Billing-Zugänge verwalten.",
+      "confirmation_mismatch": "Gib zur Bestätigung den Konto-Login ein.",
+      "invalid_token": "GitHub hat dieses Token nicht akzeptiert.",
+      "login_mismatch": "Das Token gehört zu {login}, nicht zu diesem Konto.",
+      "not_configured": "Connect GitHub ist auf dieser Instanz nicht konfiguriert.",
+      "invalid_state": "Die Verbindungsanfrage ist abgelaufen oder wurde von jemand anderem gestartet. Bitte neu starten.",
+      "github_error": "GitHub ist nicht erreichbar. Bitte später erneut versuchen.",
+      "denied": "Die Autorisierung wurde auf GitHub abgebrochen."
+    }
   }
 }
