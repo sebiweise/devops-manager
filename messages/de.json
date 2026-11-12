@@ -819,7 +819,32 @@
     "approvals": {
       "title": "Warten auf Freigabe",
       "description": "Jobs, die auf eine Umgebungsfreigabe warten; sie brauchen noch keinen Runner.",
-      "empty": "Kein Job wartet auf eine Freigabe."
+      "empty": "Kein Job wartet auf eine Freigabe.",
+      "titleCount": "Wartet auf Freigabe ({count})"
+    },
+    "live": "Live · alle 30 s aktualisiert · {time}",
+    "samplingLabel": "Runner-Stichprobe läuft",
+    "search": "Job oder Workflow suchen",
+    "chips": "Wartende Jobs filtern",
+    "viewLabel": "Ansicht der Warteschlange",
+    "view": {
+      "groups": "Nach Runner-Gruppe",
+      "jobs": "Alle Jobs"
+    },
+    "group": "Runner-Gruppe (Labels) · Repository",
+    "workflowsMore": "{first} +{count} weitere",
+    "showJobs": "{count, plural, one {# Job} other {# Jobs}}",
+    "noMatch": "Kein wartender Job passt zum Filter.",
+    "kpi": {
+      "queued": "Jetzt wartend",
+      "queuedInfo": "Jobs, die gerade auf einen Runner warten (ohne Jobs, die auf eine Freigabe warten).",
+      "groups": "{count, plural, one {in # Gruppe} other {in # Gruppen}}",
+      "oldest": "Längste Wartezeit",
+      "p95": "95 % warten kürzer als",
+      "p95Info": "95 % der gerade wartenden Jobs warten kürzer als diese Zeit.",
+      "stuck": "Hängt fest",
+      "noRunner": "Kein passender Runner",
+      "approval": "Wartet auf Freigabe"
     }
   },
   "costs": {
@@ -1555,11 +1580,11 @@
     },
     "stuck": {
       "label": "Hängt fest",
-      "info": "Hängt fest: seit über 10 Minuten hat kein Runner den Job übernommen, obwohl ein passender existiert."
+      "info": "Hängt fest: seit mehr als 15 Minuten in der Warteschlange, und kein freier Runner online hat alle Labels, die der Job verlangt."
     },
     "noRunner": {
       "label": "Kein passender Runner",
-      "info": "Kein Runner online hat alle Labels, die der Job verlangt."
+      "info": "Kein Runner dieser Installation hat alle Labels, die der Job verlangt, ob online oder nicht."
     },
     "approval": {
       "label": "Wartet auf Freigabe",

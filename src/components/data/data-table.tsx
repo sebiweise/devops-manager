@@ -117,6 +117,7 @@ export function DataTable<T>({
   empty,
   selectHeader,
   selectCell,
+  expanderLabel,
   className,
 }: {
   caption: string;
@@ -130,6 +131,8 @@ export function DataTable<T>({
   empty?: ReactNode;
   selectHeader?: ReactNode;
   selectCell?: (row: T) => ReactNode;
+  /** Summary text of a row's disclosure (default "More"). */
+  expanderLabel?: (row: T) => string;
   className?: string;
 }) {
   const t = useTranslations("table");
@@ -235,7 +238,7 @@ export function DataTable<T>({
                 >
                   <details className="group text-xs">
                     <summary className="cursor-pointer text-muted-foreground select-none hover:text-foreground">
-                      {t("more")}
+                      {expanderLabel?.(row) ?? t("more")}
                     </summary>
                     <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 whitespace-normal">
                       {collapsible.map((c) => (

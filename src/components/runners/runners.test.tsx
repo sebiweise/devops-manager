@@ -10,12 +10,8 @@ import type {
 import { bucketOf, emptyHistogram } from "@/server/metrics/histogram";
 import de from "../../../messages/de.json";
 import en from "../../../messages/en.json";
-import {
-  LabelList,
-  QueueFlagBadges,
-  RunnerStateBadge,
-  UtilisationValue,
-} from "./runner-badges";
+import { StatusBadge } from "@/components/data/status-badge";
+import { LabelList, UtilisationMeter } from "./runner-badges";
 import {
   ConcurrencyChart,
   DurationVsPoolChart,
@@ -55,15 +51,15 @@ const util = (u: Partial<UtilisationDto>): UtilisationDto => ({
 });
 
 describe("runner badges", () => {
-  it("states the runner state as text", () => {
-    expect(render(<RunnerStateBadge state="busy" />)).toContain(">busy<");
-    expect(render(<RunnerStateBadge state="offline" />)).toContain(">offline<");
-    expect(render(<RunnerStateBadge state="idle" />, "de")).toContain(">frei<");
+  it("states the runner state as icon plus text", () => {
+    expect(render(<StatusBadge kind="busy" />)).toContain("Busy");
+    expect(render(<StatusBadge kind="offline" />)).toContain("Offline");
+    expect(render(<StatusBadge kind="idle" />, "de")).toContain("Frei");
   });
 
-  it("shows utilisation with one sample interval of uncertainty", () => {
+  it("shows utilisation as a meter with the sample interval as tooltip", () => {
     const html = render(
-      <UtilisationValue
+      <UtilisationMeter
         u={util({
           value: 0.42,
           coverage: 0.9,
@@ -73,39 +69,34 @@ describe("runner badges", () => {
       />,
     );
     expect(html).toContain("42%");
-    expect(html).toContain("± one sample interval (10m 00s)");
+    expect(html).toContain('title="± one sample interval (10m 00s)"');
+    expect(html).toContain("width:42%");
   });
 
   it("shows insufficient samples below 50% coverage instead of a number", () => {
     const html = render(
-      <UtilisationValue
+      <UtilisationMeter
         u={util({ value: null, coverage: 0.3, medianSampleIntervalS: 900 })}
       />,
     );
     expect(html).toContain("Insufficient samples");
     expect(html).toContain("± one sample interval (15m 00s)");
     expect(html).not.toContain("%");
-    expect(render(<UtilisationValue u={util({})} />)).toContain(
+    expect(render(<UtilisationMeter u={util({})} />)).toContain(
       "no samples yet",
     );
   });
 
-  it("flags STUCK and no matching runner, and nothing otherwise", () => {
-    const both = render(<QueueFlagBadges stuck noMatchingRunner />);
-    expect(both).toContain(">Stuck<");
-    expect(both).toContain(">No matching runner<");
-    expect(
-      render(<QueueFlagBadges stuck={3} noMatchingRunner={false} />),
-    ).toContain(">3 stuck<");
-    expect(
-      render(<QueueFlagBadges stuck={false} noMatchingRunner={false} />),
-    ).toBe("");
-  });
-
-  it("lists labels", () => {
+  it("lists labels, the first ones and +N with max", () => {
     const html = render(<LabelList labels={["self-hosted", "linux"]} />);
     expect(html).toContain("self-hosted");
     expect(render(<LabelList labels={[]} />)).toContain("—");
+    const short = render(
+      <LabelList labels={["linux", "self-hosted", "x64", "gpu"]} max={2} />,
+    );
+    expect(short).toContain("+2");
+    expect(short).toContain('title="linux, self-hosted, x64, gpu"');
+    expect(short).not.toContain(">x64<");
   });
 });
 

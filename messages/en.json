@@ -819,7 +819,32 @@
     "approvals": {
       "title": "Waiting for approval",
       "description": "Jobs waiting for an environment approval; they do not need a runner yet.",
-      "empty": "No job waits for an approval."
+      "empty": "No job waits for an approval.",
+      "titleCount": "Waiting for approval ({count})"
+    },
+    "live": "Live · refreshed every 30 s · {time}",
+    "samplingLabel": "Sampling runners",
+    "search": "Search job or workflow",
+    "chips": "Filter queued jobs",
+    "viewLabel": "Queue view",
+    "view": {
+      "groups": "Grouped by runner group",
+      "jobs": "All jobs"
+    },
+    "group": "Runner group (labels) · repository",
+    "workflowsMore": "{first} +{count} more",
+    "showJobs": "{count, plural, one {# job} other {# jobs}}",
+    "noMatch": "No queued job matches the filter.",
+    "kpi": {
+      "queued": "Queued now",
+      "queuedInfo": "Jobs waiting for a runner right now (not counting jobs waiting for an approval).",
+      "groups": "{count, plural, one {in # group} other {in # groups}}",
+      "oldest": "Oldest wait",
+      "p95": "95 % wait less than",
+      "p95Info": "95 % of the jobs queued right now have waited less than this.",
+      "stuck": "Stuck",
+      "noRunner": "No matching runner",
+      "approval": "Waiting for approval"
     }
   },
   "costs": {
@@ -1555,11 +1580,11 @@
     },
     "stuck": {
       "label": "Stuck",
-      "info": "Stuck: no runner picked the job up for more than 10 minutes, although a matching runner exists."
+      "info": "Stuck: queued for more than 15 minutes and no free online runner has all the labels the job asks for."
     },
     "noRunner": {
       "label": "No matching runner",
-      "info": "No online runner has all the labels the job asks for."
+      "info": "No runner of this installation has all the labels the job asks for, online or not."
     },
     "approval": {
       "label": "Waiting for approval",
