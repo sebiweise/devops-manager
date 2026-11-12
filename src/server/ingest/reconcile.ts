@@ -124,10 +124,21 @@ export async function claimInstallation(
   return count === 1;
 }
 
-async function releaseInstallation(installationId: bigint, now: Date) {
+async function releaseInstallation(
+  installationId: bigint,
+  now: Date,
+  outcome?: InstallationResult,
+) {
   await db.installation.updateMany({
     where: { id: installationId },
-    data: { reconcileLockedUntil: null, lastReconciledAt: now },
+    data: {
+      reconcileLockedUntil: null,
+      lastReconciledAt: now,
+      lastReconcileStatus: outcome?.status ?? "error",
+      lastReconcileReason: outcome
+        ? (outcome.reason ?? null)
+        : "reconcile aborted",
+    },
   });
 }
 
@@ -213,7 +224,7 @@ async function reconcileInstallation(
     } catch (error) {
       if (!(error instanceof PermissionNotGrantedError)) throw error;
       result.status = "skipped";
-      result.reason = "actions:read not granted";
+      result.reason = redactError(error.message);
     }
 
     if (ctx) {
@@ -452,12 +463,19 @@ export async function runReconcile(
       });
       continue;
     }
+    let outcome: InstallationResult | undefined;
     try {
-      result.installations.push(
-        await reconcileInstallation(inst, opts, config),
-      );
+      outcome = await reconcileInstallation(inst, opts, config);
+      result.installations.push(outcome);
+      if (outcome.status !== "ok")
+        console.warn(
+          "reconcile installation not ok",
+          String(inst.id),
+          outcome.status,
+          outcome.reason ?? "",
+        );
     } finally {
-      await releaseInstallation(inst.id, new Date(deadline.now()));
+      await releaseInstallation(inst.id, new Date(deadline.now()), outcome);
       try {
         revalidateTag(`inst:${inst.id}`, "max");
       } catch {
