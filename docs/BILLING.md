@@ -129,3 +129,9 @@ the new token belongs to the same grant; connecting another user revokes the
 old user's grant. The outcome is recorded as `previousRevocation` in the
 audit parameters. A Connect attempt with the wrong account gives that
 account's grant back right away.
+
+Months without items: every month the usage report was read successfully is
+remembered (AppState `billing-months:<installationId>`, two years). Such a
+month is shown as billed at $0 even when the report had no items (only
+self-hosted or public-repository usage, or nothing used yet); "not synced"
+is shown only for months no successful sync has read.

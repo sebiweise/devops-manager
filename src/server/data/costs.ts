@@ -2,6 +2,7 @@ import "server-only";
 import type { TenantScope } from "@/server/authz/scope";
 import { hasRole } from "@/server/authz/roles";
 import { db } from "@/server/db";
+import { syncedBillingMonths } from "@/server/ingest/billing";
 import { loadSkuRates } from "@/server/ingest/sku-rates";
 import {
   attributeToWorkflows,
@@ -201,7 +202,7 @@ export async function getCosts(
   const to = new Date(Date.UTC(m.year, m.month, 1));
   const label = `${m.year}-${String(m.month).padStart(2, "0")}`;
 
-  const [inst, credential, items, rates] = await Promise.all([
+  const [inst, credential, items, rates, synced] = await Promise.all([
     db.installation.findUniqueOrThrow({
       where: { id: installationId },
       select: {
@@ -221,12 +222,16 @@ export async function getCosts(
       where: { installationId, date: { gte: from, lt: to } },
     }),
     loadSkuRates(),
+    syncedBillingMonths(installationId),
   ]);
   const est = await estimates(installationId, from, to, rates);
 
   const actions = items.filter((i) => isActionsProduct(i.product));
   const minuteItems = actions.filter((i) => isMinutesUnit(i.unitType));
-  const source: CostSource = items.length > 0 ? "billed" : "estimate";
+  // A month the billing API answered for is billed, even with no items
+  // (only self-hosted or public-repo usage, or nothing used yet): $0.
+  const source: CostSource =
+    items.length > 0 || synced.has(label) ? "billed" : "estimate";
   let reason: EstimateReason | null = null;
   if (source === "estimate") {
     const s = inst.billingStatus;

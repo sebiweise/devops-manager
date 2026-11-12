@@ -878,6 +878,28 @@ describe.skipIf(!DATABASE_URL)("billing", () => {
     expect(await db.gitHubCredential.count()).toBe(0);
   });
 
+  it("an empty usage report after a successful sync is billed at $0, not an estimate", async () => {
+    await seedInstallations(db, {
+      permissions: { organization_administration: "read" },
+    });
+    const gh = new FakeGitHub();
+    gh.billing.set("example-org", []);
+    gh.addRun(B, { createdAt: new Date(gh.now - 3_600_000), durationS: 61 });
+    expect((await runBilling(gh, B)).status).toBe("ok");
+    const c = await costs.getCosts(scope(), B, undefined, new Date(gh.now));
+    expect(c).toMatchObject({ source: "billed", reason: null });
+    expect(c.totals.netUsd).toBe(0);
+    expect(c.totals.netUsdAllProducts).toBe(0);
+    // A month the sync never read stays an estimate.
+    const earlier = await costs.getCosts(
+      scope(),
+      B,
+      { year: 2020, month: 1 },
+      new Date(gh.now),
+    );
+    expect(earlier).toMatchObject({ source: "estimate", reason: "not_synced" });
+  });
+
   it("keeps installations and roles apart", async () => {
     await seedInstallations(db, {
       permissions: { organization_administration: "read" },

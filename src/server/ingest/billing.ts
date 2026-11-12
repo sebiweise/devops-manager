@@ -75,6 +75,48 @@ export function monthsToSync(
 const monthKey = (m: { year: number; month: number }) =>
   `${m.year}-${String(m.month).padStart(2, "0")}`;
 
+const syncedKey = (installationId: bigint) =>
+  `billing-months:${installationId}`;
+/** Synced months remembered per installation (two years of history). */
+const SYNCED_MONTHS_KEPT = 24;
+
+/**
+ * "YYYY-MM" months whose usage report was read successfully at least once.
+ * A synced month without items is billed at $0, not "not synced yet".
+ */
+export async function syncedBillingMonths(
+  installationId: bigint,
+): Promise<Set<string>> {
+  const row = await db.appState.findUnique({
+    where: { key: syncedKey(installationId) },
+  });
+  const months = (row?.value as { months?: unknown } | undefined)?.months;
+  return new Set(
+    Array.isArray(months)
+      ? months.filter((m): m is string => typeof m === "string")
+      : [],
+  );
+}
+
+async function recordSyncedMonths(
+  installationId: bigint,
+  months: ReadonlyArray<string>,
+): Promise<void> {
+  if (months.length === 0) return;
+  const key = syncedKey(installationId);
+  const all = [
+    ...new Set([...(await syncedBillingMonths(installationId)), ...months]),
+  ]
+    .sort()
+    .slice(-SYNCED_MONTHS_KEPT);
+  const value = { months: all };
+  await db.appState.upsert({
+    where: { key },
+    create: { key, value },
+    update: { value },
+  });
+}
+
 /** Replaces the stored items of one month with `items`. */
 export async function storeUsageMonth(
   installationId: bigint,
@@ -148,6 +190,7 @@ async function fetchMonths(
     count += await storeUsageMonth(installationId, m, items, now);
     months.push(monthKey(m));
   }
+  await recordSyncedMonths(installationId, months);
   return { months, items: count };
 }
 
