@@ -470,8 +470,17 @@ export class FakeGitHub {
         throw new HttpError(404);
       }
       case "GET /repos/{owner}/{repo}/actions/runners": {
-        const data = this.repo(installationId, params);
-        const list = this.runners.get(`repo:${data.owner}/${data.name}`) ?? [];
+        // Further repos of the same owner exist for runner lists only.
+        const key = `repo:${String(params.owner)}/${String(params.repo)}`;
+        const expected = REPOS[String(installationId)];
+        if (
+          installationId === null ||
+          !expected ||
+          params.owner !== expected.owner ||
+          (params.repo !== expected.name && !this.runners.has(key))
+        )
+          throw new HttpError(installationId === null ? 401 : 404);
+        const list = this.runners.get(key) ?? [];
         return { total_count: list.length, runners: list.map(ghRunner) };
       }
       case "GET /orgs/{org}/actions/runners": {

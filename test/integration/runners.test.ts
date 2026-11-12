@@ -9,6 +9,7 @@ import {
 } from "vitest";
 import type * as Budget from "@/server/ingest/budget";
 import type * as Reconcile from "@/server/ingest/reconcile";
+import type * as RunnerSync from "@/server/ingest/runners";
 import type * as Runners from "@/server/data/runners";
 import type * as Installations from "@/server/data/installations";
 import type * as Db from "@/server/db";
@@ -41,6 +42,7 @@ let reconcile: typeof Reconcile;
 let budget: typeof Budget;
 let runners: typeof Runners;
 let installations: typeof Installations;
+let runnerSync: typeof RunnerSync;
 
 const scope = (installationIds: bigint[] = [A, B]): TenantScope => ({
   userId: "user-admin",
@@ -73,6 +75,7 @@ describe.skipIf(!DATABASE_URL)("runners", () => {
     budget = await import("@/server/ingest/budget");
     runners = await import("@/server/data/runners");
     installations = await import("@/server/data/installations");
+    runnerSync = await import("@/server/ingest/runners");
   });
 
   afterAll(async () => {
@@ -326,6 +329,70 @@ describe.skipIf(!DATABASE_URL)("runners", () => {
     const shPool = pools.pools.find((p) => p.runnerKind === "SELF_HOSTED")!;
     expect(shPool.runners).toBe(1);
     expect(shPool.peakConcurrency).toBe(1);
+  });
+
+  it("resumes a discovery pass cut short by the deadline instead of starting over", async () => {
+    await seedInstallations(db, { permissions: { administration: "read" } });
+    const extra = ["repo-c", "repo-d", "repo-e", "repo-f"];
+    await db.repository.createMany({
+      data: extra.map((name, i) => ({
+        id: BigInt(12 + i),
+        installationId: A,
+        ownerLogin: "example-user",
+        name,
+        fullName: `example-user/${name}`,
+        private: true,
+      })),
+    });
+    const gh = new FakeGitHub();
+    for (const name of extra) gh.runners.set(`repo:example-user/${name}`, []);
+    // Only the last repository has a runner.
+    gh.runners.set("repo:example-user/repo-f", [
+      { ...RUNNER_1, id: 515, name: "runner-5" },
+    ]);
+    gh.msPerRequest = 1_000;
+    const pass = (deadlineMs: number) => {
+      const budgetNow = new budget.RateBudget(gh.clock);
+      const deadline = new budget.Deadline(gh.now + deadlineMs, gh.clock);
+      return runnerSync.sampleRunners({
+        installationId: A,
+        accountLogin: "example-user",
+        accountType: "USER",
+        permissions: { administration: "read" },
+        api: gh.api(A),
+        budget: budgetNow,
+        deadline,
+        targetIntervalS: 600,
+      });
+    };
+    const listedRepos = () =>
+      gh.requests
+        .filter((r) => r.route === "GET /repos/{owner}/{repo}/actions/runners")
+        .map((r) => String(r.params.repo));
+
+    // 5 s reserve + 1.5 s at 1 s per request: two repositories fit.
+    const first = await pass(6_500);
+    expect(first.discovery).toBe("partial");
+    expect(listedRepos()).toEqual(["repo-a", "repo-c"]);
+    let inst = await db.installation.findUniqueOrThrow({ where: { id: A } });
+    expect(inst.runnersDiscoveredAt).toBeNull();
+    expect(await runnerSync.discoveryCursor(A)).toBe(12n);
+
+    // The next tick continues after repo-c, not from the first repository.
+    gh.requests.length = 0;
+    const second = await pass(600_000);
+    expect(second.discovery).toBe("done");
+    expect(listedRepos()).toEqual(["repo-d", "repo-e", "repo-f"]);
+    expect(await runnerSync.discoveryCursor(A)).toBeNull();
+    inst = await db.installation.findUniqueOrThrow({ where: { id: A } });
+    expect(inst.runnersDiscoveredAt).not.toBeNull();
+    const list = await runners.listRunners(scope(), A, new Date(gh.now));
+    expect(list.runners.map((r) => r.name)).toEqual(["runner-5"]);
+
+    // Done for the day: the next tick only samples the known repository.
+    gh.requests.length = 0;
+    expect((await pass(600_000)).discovery).toBe("not_due");
+    expect(listedRepos()).toEqual(["repo-f"]);
   });
 
   it("flags STUCK and no-matching-runner jobs in the live queue", async () => {
