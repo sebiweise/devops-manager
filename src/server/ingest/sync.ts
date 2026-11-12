@@ -420,6 +420,7 @@ export async function repairStale(ctx: SyncContext): Promise<void> {
       AND j."status" <> 'COMPLETED'
       AND j."lastEventAt" < ${new Date(now - STALE_JOB_MS)}
       AND r."installationId" = ${ctx.installationId}
+      AND r."ignoredAt" IS NULL
     ORDER BY j."lastEventAt" ASC
     LIMIT ${STALE_BATCH}`;
 
@@ -489,6 +490,7 @@ export async function repairStale(ctx: SyncContext): Promise<void> {
     FROM "WorkflowRun" w JOIN "Repository" r ON r."id" = w."repositoryId"
     WHERE w."installationId" = ${ctx.installationId}
       AND r."installationId" = ${ctx.installationId}
+      AND r."ignoredAt" IS NULL
       AND w."status" <> 'COMPLETED'
       AND (w."isPlaceholder" OR w."lastEventAt" < ${runThreshold})
     ORDER BY w."lastEventAt" ASC

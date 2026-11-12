@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { signPayload } from "./verify";
 import {
   handleWebhook,
+  ignoredRepoCheck,
   MAX_BODY_BYTES,
   readBodyCapped,
   redactError,
@@ -359,5 +360,51 @@ describe("redactError", () => {
     expect(out).not.toContain("ghs_0123456789abcdef");
     expect(out).not.toContain("abc.def");
     expect(out.length).toBeLessThanOrEqual(500);
+  });
+});
+
+describe("ignored repositories", () => {
+  it("skips repository data events of an ignored repository", () => {
+    for (const event of [
+      "workflow_run",
+      "workflow_job",
+      "pull_request",
+      "dependabot_alert",
+    ])
+      expect(ignoredRepoCheck(event, true)).toEqual({
+        ok: false,
+        status: "SKIPPED",
+        reason: "repo_ignored",
+      });
+  });
+
+  it("still processes inventory events and active repositories", () => {
+    expect(ignoredRepoCheck("repository", true)).toBeNull();
+    expect(ignoredRepoCheck("installation_repositories", true)).toBeNull();
+    expect(ignoredRepoCheck("workflow_run", false)).toBeNull();
+  });
+
+  it("records a skipped delivery without folding it", async () => {
+    const store = memoryStore({
+      checkTenant: vi.fn(
+        async (event: string): Promise<TenantCheck> =>
+          ignoredRepoCheck(event, true) ?? { ok: true, installationId: 1n },
+      ),
+    });
+    const res = await handleWebhook(
+      request("workflow_job", {
+        action: "queued",
+        installation: { id: 1 },
+        repository: { id: 7, full_name: "example-org/repo-a" },
+      }),
+      [SECRET],
+      store,
+    );
+    expect(res.status).toBe(202);
+    expect(store.fold).not.toHaveBeenCalled();
+    expect(store.rows.get("delivery-1")?.final).toEqual({
+      status: "SKIPPED",
+      reason: "repo_ignored",
+    });
   });
 });

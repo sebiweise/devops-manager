@@ -16,6 +16,11 @@ import {
   type HookLogResult,
   type ReplayResult,
 } from "./deliveries";
+import { activeRepoWhere } from "./active-repos";
+import {
+  purgeIgnoredRepositories,
+  type IgnorePurgeResult,
+} from "./ignore-purge";
 import { withBudget, withDeadline, type GitHubClients } from "./github-client";
 import { redactError } from "./webhook";
 import {
@@ -27,6 +32,7 @@ import {
 } from "./prune";
 import { syncBilling, type BillingResult } from "./billing";
 import { persistRateBudget } from "./rate-store";
+import { refreshRepoCounts } from "./repo-counts";
 import { drainRollups, markRecentDaysDirty } from "./rollup";
 import { rollupRunnerDays } from "./runner-rollup";
 import { sampleRunners, type RunnerSampleResult } from "./runners";
@@ -52,6 +58,8 @@ import {
  *   c) stale jobs and runs                  d) incremental sync per repo
  *   e) backfill BACKFILL_DAYS               f) runner sampling (+ daily discovery)
  *   g) rollups (incl. DailyRunnerStat)      h) billing (daily)   i) prune (daily)
+ *   j) purge of ignored repositories (every pass, until done)
+ *   k) open PR and Dependabot alert counts per repository (every 6 h)
  *
  * Installations are processed round-robin by lastReconciledAt and claimed
  * with a column lock (`reconcileLockedUntil`), which is PgBouncer-safe.
@@ -69,6 +77,9 @@ export type InstallationResult = {
   repos: number;
   runners?: RunnerSampleResult;
   billing?: BillingResult;
+  ignorePurge?: IgnorePurgeResult;
+  /** Repositories whose open PR / alert counts were refreshed. */
+  repoCounts?: number;
 };
 
 export type ReconcileResult = {
@@ -175,8 +186,9 @@ async function reconcileInstallation(
     config.maxRetentionDays,
   );
 
+  // Ignored repositories are skipped by every step (no sync, no backfill).
   const repos = await db.repository.findMany({
-    where: { installationId: inst.id, removedAt: null },
+    where: { installationId: inst.id, ...activeRepoWhere },
     select: {
       id: true,
       ownerLogin: true,
@@ -334,6 +346,25 @@ async function reconcileInstallation(
     }
   }
 
+  // k) Cached open PR and alert counts (every 6 h, GraphQL, optional permissions).
+  if (
+    (result.status === "ok" || result.status === "skipped") &&
+    !deadline.expired(20_000)
+  ) {
+    try {
+      result.repoCounts = await refreshRepoCounts(
+        { id: inst.id, permissions },
+        opts.clients,
+        deadline,
+      );
+    } catch (error) {
+      console.warn(
+        "repository counts failed",
+        redactError(error instanceof Error ? error.message : String(error)),
+      );
+    }
+  }
+
   // g) Rollups, also after a partial pass: what was ingested is counted.
   try {
     await markRecentDaysDirty(inst.id, inst.timezone);
@@ -383,6 +414,28 @@ async function reconcileInstallation(
         where: { id: inst.id },
         data: { lastPrunedAt: new Date(now) },
       });
+    }
+  }
+
+  // j) Purge the stored data of repositories an admin ignored (every pass,
+  // resumable; no GitHub call).
+  if (!deadline.expired(5_000)) {
+    try {
+      result.ignorePurge = await purgeIgnoredRepositories(
+        inst.id,
+        inst.timezone,
+        retention,
+        deadline,
+      );
+      if (result.ignorePurge.remaining > 0 && result.status === "ok") {
+        result.status = "partial";
+        result.reason = "purge of ignored repositories continues";
+      }
+    } catch (error) {
+      console.warn(
+        "ignore purge failed",
+        redactError(error instanceof Error ? error.message : String(error)),
+      );
     }
   }
 

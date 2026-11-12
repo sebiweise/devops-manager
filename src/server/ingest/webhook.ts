@@ -19,6 +19,31 @@ export const HANDLED_EVENTS = new Set([
   "github_app_authorization",
 ]);
 
+/**
+ * Events that carry repository data (runs, jobs, pull requests, alerts).
+ * For an ignored repository they are recorded as SKIPPED (`repo_ignored`)
+ * and not folded. Inventory events (`repository`, `installation_repositories`)
+ * are still processed, so name, archive and fork changes stay current.
+ */
+export const REPO_DATA_EVENTS = new Set([
+  "workflow_run",
+  "workflow_job",
+  "pull_request",
+  "pull_request_review",
+  "dependabot_alert",
+]);
+
+export const REPO_IGNORED_REASON = "repo_ignored";
+
+/** The tenant-check result for a delivery about an ignored repository, or null. */
+export function ignoredRepoCheck(
+  event: string,
+  repoIgnored: boolean,
+): TenantCheck | null {
+  if (!repoIgnored || !REPO_DATA_EVENTS.has(event)) return null;
+  return { ok: false, status: "SKIPPED", reason: REPO_IGNORED_REASON };
+}
+
 export type DeliveryRow = {
   id: string;
   event: string;
