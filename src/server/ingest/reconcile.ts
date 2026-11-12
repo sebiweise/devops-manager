@@ -168,6 +168,7 @@ async function reconcileInstallation(
     backfillDone: 0,
     repos: 0,
   };
+  const startedMs = deadline.now();
   const budget = new RateBudget(() => deadline.now());
   const retention = effectiveRetentionDays(
     inst.rawRetentionDays,
@@ -264,7 +265,9 @@ async function reconcileInstallation(
     if (error instanceof DeadlineReached || error instanceof RateLimited) {
       result.status = "partial";
       result.reason =
-        error instanceof RateLimited ? "rate budget paused" : "deadline";
+        error instanceof RateLimited
+          ? "rate budget paused"
+          : `deadline (${Math.max(0, Math.round((deadline.endsAt - startedMs) / 1000))} s budget)`;
     } else {
       result.status = "error";
       result.reason = redactError(
