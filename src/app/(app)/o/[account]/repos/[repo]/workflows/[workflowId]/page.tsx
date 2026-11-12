@@ -8,9 +8,8 @@ import {
   SuccessRateChart,
 } from "@/components/insights/day-charts";
 import { KpiGrid, KpiTile } from "@/components/insights/kpi-tile";
-import { RangeFilter } from "@/components/insights/range-filter";
 import { RunsTable } from "@/components/insights/runs-table";
-import { repoHref, workflowHref } from "@/components/insights/workflow-link";
+import { repoHref } from "@/components/insights/workflow-link";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -32,17 +31,16 @@ import {
   enoughData,
   hostedVsSelfHosted,
   MIN_SAMPLES,
-  param,
   type SearchParams,
 } from "@/lib/insights-view";
 import {
   findRepositoryByName,
   getWorkflowDetail,
   listRuns,
-  parseRange,
 } from "@/server/data/insights";
 import { getManagementState } from "@/server/data/management";
 import { accountMeta } from "@/lib/page-meta";
+import { pageRange } from "@/lib/page-range";
 
 export const generateMetadata = accountMeta("workflow");
 
@@ -63,7 +61,7 @@ export default async function WorkflowPage({
     decodeURIComponent(repoParam),
   );
   if (!repo || repo.ignored) notFound();
-  const range = parseRange(param(sp, "range") ?? "30d");
+  const range = await pageRange(sp);
   const id = BigInt(workflowId);
   const detail = await orNotFound(
     getWorkflowDetail(scope, installation.id, id, range),
@@ -115,11 +113,6 @@ export default async function WorkflowPage({
             ) : null}
           </h1>
         </div>
-        <RangeFilter
-          base={workflowHref(login, repo.fullName, detail.workflowId)}
-          current={range}
-          searchParams={sp}
-        />
       </div>
 
       {!enough ? (

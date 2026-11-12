@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getFormatter, getTranslations } from "next-intl/server";
-import { RangeFilter } from "@/components/insights/range-filter";
 import { RunFilters } from "@/components/insights/run-filters";
 import { RunsTable } from "@/components/insights/runs-table";
 import { repoHref } from "@/components/insights/workflow-link";
@@ -30,13 +29,14 @@ import {
   findRepositoryByName,
   listRuns,
   listWorkflowStats,
-  parseRange,
 } from "@/server/data/insights";
 import {
   getManagementState,
   type ManagementState,
 } from "@/server/data/management";
 import { accountMeta } from "@/lib/page-meta";
+import type { InsightRange } from "@/lib/range";
+import { pageRange } from "@/lib/page-range";
 
 export const generateMetadata = accountMeta("repo");
 
@@ -141,7 +141,7 @@ export default async function RepoPage({
       : tab === "pulls" || tab === "variables"
         ? "ADMIN"
         : null;
-  const range = parseRange(param(sp, "range") ?? "30d");
+  const range = await pageRange(sp);
 
   return (
     <div className="flex flex-col gap-4">
@@ -251,10 +251,8 @@ async function WorkflowsTab({
   installationId,
   repositoryId,
   login,
-  base,
   range,
-  sp,
-}: TabProps & { range: ReturnType<typeof parseRange> }) {
+}: TabProps & { range: InsightRange }) {
   const t = await getTranslations();
   const stats = await orNotFound(
     listWorkflowStats(scope, installationId, { repositoryId, range }),
@@ -263,7 +261,6 @@ async function WorkflowsTab({
     <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-medium">{t("repo.tab.workflows")}</h2>
-        <RangeFilter base={base} current={range} searchParams={sp} />
       </div>
       <WorkflowsTable
         accountLogin={login}

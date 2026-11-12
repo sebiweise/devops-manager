@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleCheck, TriangleAlert } from "lucide-react";
+import { CircleCheck, LoaderCircle, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState } from "react";
@@ -22,6 +22,7 @@ export function FreshnessChip({
   canSync,
   settingsHref,
   now,
+  refreshing = false,
 }: {
   lastWebhookAt: string | null;
   lastReconciledAt: string | null;
@@ -31,6 +32,8 @@ export function FreshnessChip({
   settingsHref?: string;
   /** Server render time, so the first paint matches the server. */
   now: string;
+  /** A background full sync was just started for this view. */
+  refreshing?: boolean;
 }) {
   const t = useTranslations("shell.freshness");
   const format = useFormatter();
@@ -62,7 +65,7 @@ export function FreshnessChip({
     };
   }, [open]);
 
-  const Icon = stale ? TriangleAlert : CircleCheck;
+  const Icon = refreshing ? LoaderCircle : stale ? TriangleAlert : CircleCheck;
   return (
     <div ref={ref} className="relative">
       <button
@@ -81,7 +84,8 @@ export function FreshnessChip({
           aria-hidden="true"
           className={cn(
             "size-3.5",
-            stale ? "text-status-warning" : "text-status-good",
+            refreshing && "animate-spin text-muted-foreground",
+            !refreshing && (stale ? "text-status-warning" : "text-status-good"),
           )}
         />
         {updated ? t("updated", { ago: ago(updated) }) : t("notYet")}
@@ -100,6 +104,7 @@ export function FreshnessChip({
             <dt className="text-muted-foreground">{t("lastSync")}</dt>
             <dd>{ago(lastReconciledAt)}</dd>
           </dl>
+          {refreshing ? <p className="text-xs">{t("refreshing")}</p> : null}
           {stale ? <p className="text-xs">{t("staleHint")}</p> : null}
           {canSync ? <SyncNowButton installationId={installationId} /> : null}
           {settingsHref ? (

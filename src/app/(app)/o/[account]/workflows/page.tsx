@@ -1,18 +1,18 @@
 import { getLocale, getTranslations } from "next-intl/server";
-import { RangeFilter } from "@/components/insights/range-filter";
 import { WorkflowLink } from "@/components/insights/workflow-link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
+import { loadAccount, orNotFound } from "@/lib/account-page";
 import {
   approx,
   formatDuration,
   formatMinutes,
   formatPercent,
 } from "@/lib/format";
-import { leaderboards, param, type SearchParams } from "@/lib/insights-view";
-import { listWorkflowStats, parseRange } from "@/server/data/insights";
+import { leaderboards, type SearchParams } from "@/lib/insights-view";
+import { listWorkflowStats } from "@/server/data/insights";
 import type { WorkflowStat } from "@/server/data/insights";
 import { accountMeta } from "@/lib/page-meta";
+import { pageRange } from "@/lib/page-range";
 
 export const generateMetadata = accountMeta("workflows");
 
@@ -26,7 +26,7 @@ export default async function WorkflowsPage({
   const { account } = await params;
   const sp = await searchParams;
   const { scope, installation } = await loadAccount(account);
-  const range = parseRange(param(sp, "range") ?? "30d");
+  const range = await pageRange(sp);
   const [t, locale, stats] = await Promise.all([
     getTranslations(),
     getLocale(),
@@ -81,11 +81,6 @@ export default async function WorkflowsPage({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">{t("leaderboards.title")}</h1>
-        <RangeFilter
-          base={accountPath(login, "/workflows")}
-          current={range}
-          searchParams={sp}
-        />
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         {board("slowest", (w) =>

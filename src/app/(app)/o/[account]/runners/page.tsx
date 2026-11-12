@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 import { AutoRefresh } from "@/components/insights/auto-refresh";
-import { RangeFilter } from "@/components/insights/range-filter";
 import {
   LabelList,
   RunnerStateBadge,
@@ -29,7 +28,7 @@ import {
   formatRatio,
   formatSignedPercent,
 } from "@/lib/format";
-import { param, type SearchParams } from "@/lib/insights-view";
+import { type SearchParams } from "@/lib/insights-view";
 import { lazyRunnerSample } from "@/lib/runner-sample";
 import {
   groupRunners,
@@ -37,7 +36,6 @@ import {
   runnerHref,
   runnerState,
 } from "@/lib/runners-view";
-import { parseRange } from "@/server/data/insights";
 import {
   getConcurrencyTimeline,
   getHostedVsSelfHosted,
@@ -45,6 +43,7 @@ import {
   listRunners,
 } from "@/server/data/runners";
 import { accountMeta } from "@/lib/page-meta";
+import { pageRange } from "@/lib/page-range";
 
 export const generateMetadata = accountMeta("runners");
 
@@ -64,7 +63,7 @@ export default async function RunnersPage({
   const { account } = await params;
   const sp = await searchParams;
   const { scope, installation } = await loadAccount(account);
-  const range = parseRange(param(sp, "range") ?? "7d");
+  const range = await pageRange(sp);
   const sampling = await lazyRunnerSample(installation.id);
   const [t, locale, format, list, pools, concurrency, compare] =
     await Promise.all([
@@ -89,11 +88,6 @@ export default async function RunnersPage({
       <AutoRefresh />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">{t("runners.title")}</h1>
-        <RangeFilter
-          base={`${base}/runners`}
-          current={range}
-          searchParams={sp}
-        />
       </div>
 
       <div className="flex flex-col gap-1 text-sm">

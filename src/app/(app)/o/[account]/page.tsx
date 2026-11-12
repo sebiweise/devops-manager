@@ -5,10 +5,9 @@ import {
   RunsPerDayChart,
 } from "@/components/insights/day-charts";
 import { KpiGrid, KpiTile } from "@/components/insights/kpi-tile";
-import { RangeFilter } from "@/components/insights/range-filter";
 import { WorkflowLink } from "@/components/insights/workflow-link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
+import { loadAccount, orNotFound } from "@/lib/account-page";
 import {
   approx,
   formatDuration,
@@ -17,14 +16,14 @@ import {
   formatPercent,
   formatPointsDelta,
 } from "@/lib/format";
-import { enoughData, param, type SearchParams } from "@/lib/insights-view";
+import { enoughData, type SearchParams } from "@/lib/insights-view";
 import {
   getInstallationOverview,
   listAlerts,
   listFlakyJobs,
-  parseRange,
 } from "@/server/data/insights";
 import { accountMeta } from "@/lib/page-meta";
+import { pageRange } from "@/lib/page-range";
 
 export const generateMetadata = accountMeta("overview");
 
@@ -38,7 +37,7 @@ export default async function AccountPage({
   const { account } = await params;
   const sp = await searchParams;
   const { scope, installation } = await loadAccount(account);
-  const range = parseRange(param(sp, "range"));
+  const range = await pageRange(sp);
   const [t, locale, overview, alerts, flaky] = await Promise.all([
     getTranslations(),
     getLocale(),
@@ -54,11 +53,6 @@ export default async function AccountPage({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">{t("overview.title")}</h1>
-        <RangeFilter
-          base={accountPath(login)}
-          current={range}
-          searchParams={sp}
-        />
       </div>
 
       {s.runs === 0 ? (

@@ -19,7 +19,7 @@
     "dashboard": "Dashboard",
     "onboarding": "GitHub App installations",
     "settings": "Settings",
-    "github": "GitHub billing"
+    "github": "Billing access"
   },
   "landing": {
     "title": "GitHub Actions insights and management, self-hosted",
@@ -45,7 +45,7 @@
     }
   },
   "dashboard": {
-    "title": "Dashboard",
+    "title": "Accounts & organisations",
     "installations": "{count, plural, =0 {No accounts} one {# account} other {# accounts}}",
     "repositories": "{count, plural, =0 {No repositories} one {# repository} other {# repositories}}",
     "liveSource": "live from GitHub",
@@ -56,7 +56,54 @@
     "waiting": "Waiting for the first workflow run",
     "repo": "Repository",
     "defaultBranch": "Default branch",
-    "open": "Open"
+    "open": "Open overview",
+    "intro": "Choose an organisation or account to see its runs, runners, queue and costs.",
+    "updated": "updated {ago}",
+    "notUpdated": "not synced yet",
+    "openNamed": "Open the overview of {name}",
+    "kpi": {
+      "runs": "Runs · 7 d",
+      "success": "Success · 7 d",
+      "queued": "Queued now",
+      "minutes": "Minutes · month",
+      "minutesOf": "of {included} included",
+      "stuck": "{count} waiting > 15 min",
+      "noRuns": "—",
+      "minutesOfEst": "of {included} included (est.)",
+      "est": "estimate",
+      "over": "over the included minutes"
+    },
+    "counts": {
+      "repos": "{count, plural, =0 {No repositories} one {# repository} other {# repositories}}",
+      "ignored": "{count} ignored",
+      "offline": "{count, plural, one {# runner offline} other {# runners offline}}",
+      "failing": "{count, plural, one {# failing workflow} other {# failing workflows}}"
+    },
+    "attention": "Needs attention",
+    "attentionItem": "{count, plural, one {# failure} other {# failures}} in 7 days",
+    "quickLinks": "Sections of {name}",
+    "trend": "Runs per day, last 14 days",
+    "across": {
+      "title": "Across all accounts",
+      "summary": "Top workflows across all accounts (last 7 days)",
+      "failing": "Most failures",
+      "slowest": "Slowest (95 % finished within)",
+      "workflow": "Workflow",
+      "account": "Account",
+      "failures": "Failures",
+      "p95": "95 % within",
+      "empty": "Nothing to show yet."
+    },
+    "type": {
+      "ORGANIZATION": "Organisation",
+      "USER": "Personal account"
+    },
+    "sections": {
+      "repos": "Repositories",
+      "runners": "Runners",
+      "queue": "Queue",
+      "costs": "Costs"
+    }
   },
   "onboarding": {
     "title": "GitHub App installations",
@@ -83,7 +130,11 @@
       "OPERATOR": "Operator",
       "ADMIN": "Admin"
     },
-    "signedInAs": "Signed in as {email}"
+    "signedInAs": "Signed in as {email}",
+    "profile": "Profile",
+    "roleIs": "Role: {role}",
+    "themeHint": "System follows the setting of your device.",
+    "signOutHint": "Ends this session in this browser."
   },
   "sync": {
     "now": "Sync now",
@@ -100,14 +151,19 @@
     "overview": "Overview",
     "repos": "Repositories",
     "workflows": "Workflows",
-    "settings": "Settings",
+    "settings": "Settings & sync",
     "runners": "Runners",
     "queue": "Queue",
     "costs": "Costs",
     "pulls": "Pull requests",
     "dependabot": "Dependabot",
     "variables": "Variables",
-    "audit": "Audit log"
+    "audit": "Audit log",
+    "groups": {
+      "insights": "Insights",
+      "manage": "Manage",
+      "audit": "Audit"
+    }
   },
   "freshness": {
     "label": "Data freshness",
@@ -129,6 +185,13 @@
       "30d": "30 days",
       "90d": "90 days",
       "12m": "12 months"
+    },
+    "short": {
+      "24h": "24 h",
+      "7d": "7 d",
+      "30d": "30 d",
+      "90d": "90 d",
+      "12m": "12 m"
     }
   },
   "charts": {
@@ -169,7 +232,11 @@
       "title": "Estimated minutes",
       "description": "Billable minutes estimated from job durations and runner SKUs.",
       "label": "Bar chart of estimated minutes per day over {days} days, {minutes} in total."
-    }
+    },
+    "trendTable": "Show trend as table",
+    "trendTableEntity": "Name",
+    "trendTableHint": "Runs per day; after the slash the failed runs.",
+    "sparkTitle": "Last 14 days: {runs} runs, {failures} failed"
   },
   "overview": {
     "title": "Overview",
@@ -1404,9 +1471,32 @@
       "staleHint": "Data may be out of date; see the notice below.",
       "lastWebhook": "Last webhook",
       "lastSync": "Last full sync",
-      "settings": "Settings & sync"
+      "settings": "Settings & sync",
+      "refreshing": "A full sync with GitHub is running in the background; reload in a minute for newer data."
     },
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "mainNav": "Main",
+    "admin": "Admin",
+    "userMenu": "Account menu of {email}",
+    "language": "Language",
+    "userSettings": "Settings",
+    "switcher": {
+      "label": "Switch account, current: {current}",
+      "all": "All accounts",
+      "accounts": "Accounts & organisations",
+      "filter": "Filter accounts",
+      "none": "No account matches."
+    },
+    "type": {
+      "ORGANIZATION": "Org",
+      "USER": "User"
+    },
+    "theme": {
+      "label": "Theme",
+      "system": "System",
+      "light": "Light",
+      "dark": "Dark"
+    }
   },
   "errors": {
     "title": "Something went wrong",

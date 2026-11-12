@@ -19,7 +19,7 @@
     "dashboard": "Dashboard",
     "onboarding": "GitHub-App-Installationen",
     "settings": "Einstellungen",
-    "github": "GitHub-Abrechnung"
+    "github": "Abrechnungszugriff"
   },
   "landing": {
     "title": "GitHub-Actions-Einblicke und -Verwaltung, selbst gehostet",
@@ -45,7 +45,7 @@
     }
   },
   "dashboard": {
-    "title": "Dashboard",
+    "title": "Konten & Organisationen",
     "installations": "{count, plural, =0 {Keine Konten} one {# Konto} other {# Konten}}",
     "repositories": "{count, plural, =0 {Keine Repositories} one {# Repository} other {# Repositories}}",
     "liveSource": "live von GitHub",
@@ -56,7 +56,54 @@
     "waiting": "Warte auf den ersten Workflow-Lauf",
     "repo": "Repository",
     "defaultBranch": "Standard-Branch",
-    "open": "Öffnen"
+    "open": "Übersicht öffnen",
+    "intro": "Organisation oder Konto wählen, um Läufe, Runner, Warteschlange und Kosten zu sehen.",
+    "updated": "aktualisiert {ago}",
+    "notUpdated": "noch nicht abgeglichen",
+    "openNamed": "Übersicht von {name} öffnen",
+    "kpi": {
+      "runs": "Läufe · 7 T.",
+      "success": "Erfolg · 7 T.",
+      "queued": "In Warteschlange",
+      "minutes": "Minuten · Monat",
+      "minutesOf": "von {included} inklusive",
+      "stuck": "{count} warten > 15 Min.",
+      "noRuns": "—",
+      "minutesOfEst": "von {included} inklusive (gesch.)",
+      "est": "Schätzung",
+      "over": "über den inklusiven Minuten"
+    },
+    "counts": {
+      "repos": "{count, plural, =0 {Keine Repositories} one {# Repository} other {# Repositories}}",
+      "ignored": "{count} ignoriert",
+      "offline": "{count, plural, one {# Runner offline} other {# Runner offline}}",
+      "failing": "{count, plural, one {# fehlschlagender Workflow} other {# fehlschlagende Workflows}}"
+    },
+    "attention": "Braucht Aufmerksamkeit",
+    "attentionItem": "{count, plural, one {# Fehlschlag} other {# Fehlschläge}} in 7 Tagen",
+    "quickLinks": "Bereiche von {name}",
+    "trend": "Läufe pro Tag, letzte 14 Tage",
+    "across": {
+      "title": "Über alle Konten",
+      "summary": "Auffällige Workflows über alle Konten (letzte 7 Tage)",
+      "failing": "Meiste Fehlschläge",
+      "slowest": "Langsamste (95 % fertig innerhalb)",
+      "workflow": "Workflow",
+      "account": "Konto",
+      "failures": "Fehlschläge",
+      "p95": "95 % innerhalb",
+      "empty": "Noch nichts anzuzeigen."
+    },
+    "type": {
+      "ORGANIZATION": "Organisation",
+      "USER": "Persönliches Konto"
+    },
+    "sections": {
+      "repos": "Repositories",
+      "runners": "Runner",
+      "queue": "Warteschlange",
+      "costs": "Kosten"
+    }
   },
   "onboarding": {
     "title": "GitHub-App-Installationen",
@@ -83,7 +130,11 @@
       "OPERATOR": "Operator",
       "ADMIN": "Admin"
     },
-    "signedInAs": "Angemeldet als {email}"
+    "signedInAs": "Angemeldet als {email}",
+    "profile": "Profil",
+    "roleIs": "Rolle: {role}",
+    "themeHint": "System folgt der Einstellung deines Geräts.",
+    "signOutHint": "Beendet die Sitzung in diesem Browser."
   },
   "sync": {
     "now": "Jetzt synchronisieren",
@@ -100,14 +151,19 @@
     "overview": "Übersicht",
     "repos": "Repositories",
     "workflows": "Workflows",
-    "settings": "Einstellungen",
+    "settings": "Einstellungen & Abgleich",
     "runners": "Runner",
     "queue": "Warteschlange",
     "costs": "Kosten",
     "pulls": "Pull Requests",
     "dependabot": "Dependabot",
     "variables": "Variablen",
-    "audit": "Audit-Log"
+    "audit": "Audit-Log",
+    "groups": {
+      "insights": "Auswertung",
+      "manage": "Verwalten",
+      "audit": "Audit"
+    }
   },
   "freshness": {
     "label": "Aktualität der Daten",
@@ -129,6 +185,13 @@
       "30d": "30 Tage",
       "90d": "90 Tage",
       "12m": "12 Monate"
+    },
+    "short": {
+      "24h": "24 Std.",
+      "7d": "7 T.",
+      "30d": "30 T.",
+      "90d": "90 T.",
+      "12m": "12 M."
     }
   },
   "charts": {
@@ -169,7 +232,11 @@
       "title": "Geschätzte Minuten",
       "description": "Abrechenbare Minuten, geschätzt aus Jobdauern und Runner-SKUs.",
       "label": "Balkendiagramm der geschätzten Minuten pro Tag über {days} Tage, insgesamt {minutes}."
-    }
+    },
+    "trendTable": "Verlauf als Tabelle anzeigen",
+    "trendTableEntity": "Name",
+    "trendTableHint": "Läufe pro Tag; nach dem Schrägstrich die fehlgeschlagenen.",
+    "sparkTitle": "Letzte 14 Tage: {runs} Läufe, {failures} fehlgeschlagen"
   },
   "overview": {
     "title": "Übersicht",
@@ -1404,9 +1471,32 @@
       "staleHint": "Die Daten sind möglicherweise veraltet; siehe Hinweis unten.",
       "lastWebhook": "Letzter Webhook",
       "lastSync": "Letzter Abgleich",
-      "settings": "Einstellungen & Abgleich"
+      "settings": "Einstellungen & Abgleich",
+      "refreshing": "Im Hintergrund läuft ein Abgleich mit GitHub; in einer Minute neu laden für neuere Daten."
     },
-    "loading": "Wird geladen…"
+    "loading": "Wird geladen…",
+    "mainNav": "Hauptnavigation",
+    "admin": "Admin",
+    "userMenu": "Kontomenü von {email}",
+    "language": "Sprache",
+    "userSettings": "Einstellungen",
+    "switcher": {
+      "label": "Konto wechseln, aktuell: {current}",
+      "all": "Alle Konten",
+      "accounts": "Konten & Organisationen",
+      "filter": "Konten filtern",
+      "none": "Kein Konto passt."
+    },
+    "type": {
+      "ORGANIZATION": "Org",
+      "USER": "Benutzer"
+    },
+    "theme": {
+      "label": "Darstellung",
+      "system": "System",
+      "light": "Hell",
+      "dark": "Dunkel"
+    }
   },
   "errors": {
     "title": "Etwas ist schiefgelaufen",

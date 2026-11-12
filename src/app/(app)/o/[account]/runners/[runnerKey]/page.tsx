@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 import { KpiGrid, KpiTile } from "@/components/insights/kpi-tile";
-import { RangeFilter } from "@/components/insights/range-filter";
 import { StatusBadge } from "@/components/insights/status-badge";
 import {
   LabelList,
@@ -31,11 +30,12 @@ import {
   formatPercent,
   formatRatio,
 } from "@/lib/format";
-import { param, type SearchParams } from "@/lib/insights-view";
+import { type SearchParams } from "@/lib/insights-view";
 import { parseRunnerKey, runnerState } from "@/lib/runners-view";
-import { parseRange, rangeStart } from "@/server/data/insights";
+import { rangeStart } from "@/server/data/insights";
 import { getRunnerDetail } from "@/server/data/runners";
 import { accountMeta } from "@/lib/page-meta";
+import { pageRange } from "@/lib/page-range";
 
 export const generateMetadata = accountMeta("runner");
 
@@ -57,7 +57,7 @@ export default async function RunnerPage({
   const key = parseRunnerKey(runnerKey);
   if (!key) notFound();
   const { scope, installation } = await loadAccount(account);
-  const range = parseRange(param(sp, "range") ?? "7d");
+  const range = await pageRange(sp);
   const now = new Date();
   const [t, locale, format, detail] = await Promise.all([
     getTranslations(),
@@ -110,11 +110,6 @@ export default async function RunnerPage({
           </p>
           <LabelList labels={r.labels} />
         </div>
-        <RangeFilter
-          base={`${base}/runners/${encodeURIComponent(key)}`}
-          current={range}
-          searchParams={sp}
-        />
       </div>
 
       <KpiGrid>
