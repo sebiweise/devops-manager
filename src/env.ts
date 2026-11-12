@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
+import { parsePresets } from "./server/management/variable-rules";
 
 /**
  * Validated configuration (see README "Configuration").
@@ -184,6 +185,15 @@ export const env = createEnv({
           path: ["ADMIN_EMAILS"],
           message:
             "set ADMIN_EMAILS or ADMIN_GROUPS: without an admin rule nobody can administer this instance",
+        });
+      }
+      try {
+        parsePresets(v.VARIABLE_PRESETS as string | undefined);
+      } catch (error) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["VARIABLE_PRESETS"],
+          message: error instanceof Error ? error.message : "invalid",
         });
       }
       if (
