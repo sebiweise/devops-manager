@@ -30,7 +30,6 @@
     "organization_self_hosted_runners": "read",
     "organization_actions_variables": "write",
     "organization_administration": "read",
-    "email_addresses": "read",
-    "plan": "read"
+    "emails": "read"
   }
 }

@@ -29,7 +29,6 @@
     "organization_self_hosted_runners": "read",
     "organization_actions_variables": "read",
     "organization_administration": "read",
-    "email_addresses": "read",
-    "plan": "read"
+    "emails": "read"
   }
 }
