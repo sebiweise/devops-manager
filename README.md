@@ -14,8 +14,9 @@ any number of organisations, through **one least-privilege GitHub App**.
 - One codebase, two hosting modes: **Vercel Hobby + Neon Free**, or
   **`docker compose up`** (app, Postgres, cron sidecar).
 
-> Status: **M2** (runners and costs). Management actions arrive with M3.
-> See [Features by milestone](#features-by-milestone).
+> Status: **M3** (management). Management actions are off until an admin
+> turns them on per installation. See [Management](#management) and
+> [Features by milestone](#features-by-milestone).
 
 ## Contents
 
@@ -31,6 +32,7 @@ any number of organisations, through **one least-privilege GitHub App**.
   - [4. Install the App and sign in](#4-install-the-app-and-sign-in)
   - [5. Optional: personal-account billing](#5-optional-personal-account-billing)
 - [Sync and freshness](#sync-and-freshness)
+- [Management](#management)
 - [Roles](#roles)
 - [Configuration](#configuration)
 - [Development](#development)
@@ -38,13 +40,13 @@ any number of organisations, through **one least-privilege GitHub App**.
 
 ## Features by milestone
 
-| Milestone                               | Scope                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **M0**                                  | OIDC login via better-auth (generic provider, optional GitHub), sign-in gate and roles from env allowlists, installation discovery with the App JWT, onboarding with Setup URL verification, dashboard with a live repository list across installations, webhook endpoint (HMAC, dedupe, installation and repository events), encrypted token storage helpers, health and readiness probes, CSP and security headers, Docker and Vercel setups, CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| **M1** Actions insights                 | Workflow runs and jobs with an order-independent fold, reconcile (replay, redelivery, incremental sync, backfill), lazy reconcile on page view and Sync now, daily rollups with histograms, success rate, p50/p95 durations, queue times, flaky-run and regression detection, estimated minutes (minutes only). Pages: installation overview (KPI tiles, runs per day, duration and queue charts, regressions, flaky jobs, success drops), repositories (sortable, filterable, 14-day sparklines), repository detail (workflows, runs with filters), workflow detail (trends, job breakdown by pool, hosted vs self-hosted), run detail (job timeline with queue, approval wait and execution, critical path, steps loaded live), workflow leaderboards, sync health (admin), freshness banner. Every chart has an aria-label, a caption and a table view (sparklines: a per-row table disclosure); the chart components are checked with axe-core in the unit tests |
-| **M2** Runners and costs (this release) | Runner cache with sampling on reconcile and lazily on the runner and queue pages, daily discovery of repository and organisation runners, utilisation (busy / online, with the sample interval shown and "insufficient samples" below 50% coverage), speed index, infrastructure failures, concurrency timeline, pools with a weekday × hour queue heatmap, hosted vs self-hosted comparison; live queue with STUCK and no-matching-runner flags and a separate approvals section; daily billing sync for organisations (installation token) and personal accounts (optional billing credential: token or "Connect GitHub"); costs page with month picker, used vs included gauge with projection, by SKU, repository, day and workflow (estimated, scaled), estimate vs billed with flags, estimate-only fallback with the reason; `/admin/github` for the billing credential. Charts have an aria-label, a caption and a table view and are checked with axe-core  |
-| **M3** Management                       | Re-run, re-run failed, cancel (operator); repository and organisation variables with `LINUX_RUNNER` / `MACOS_RUNNER` presets, bulk set and revert, SHA-pinned PR merge and guarded Dependabot batch merge (admin); hash-chained audit log                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| **M4** Polish, v0.1.0                   | Complete German translation, user and role management, `/admin/ops`, setup wizard, full docs, signed GHCR image                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Milestone                        | Scope                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **M0**                           | OIDC login via better-auth (generic provider, optional GitHub), sign-in gate and roles from env allowlists, installation discovery with the App JWT, onboarding with Setup URL verification, dashboard with a live repository list across installations, webhook endpoint (HMAC, dedupe, installation and repository events), encrypted token storage helpers, health and readiness probes, CSP and security headers, Docker and Vercel setups, CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **M1** Actions insights          | Workflow runs and jobs with an order-independent fold, reconcile (replay, redelivery, incremental sync, backfill), lazy reconcile on page view and Sync now, daily rollups with histograms, success rate, p50/p95 durations, queue times, flaky-run and regression detection, estimated minutes (minutes only). Pages: installation overview (KPI tiles, runs per day, duration and queue charts, regressions, flaky jobs, success drops), repositories (sortable, filterable, 14-day sparklines), repository detail (workflows, runs with filters), workflow detail (trends, job breakdown by pool, hosted vs self-hosted), run detail (job timeline with queue, approval wait and execution, critical path, steps loaded live), workflow leaderboards, sync health (admin), freshness banner. Every chart has an aria-label, a caption and a table view (sparklines: a per-row table disclosure); the chart components are checked with axe-core in the unit tests                                                                                                  |
+| **M2** Runners and costs         | Runner cache with sampling on reconcile and lazily on the runner and queue pages, daily discovery of repository and organisation runners, utilisation (busy / online, with the sample interval shown and "insufficient samples" below 50% coverage), speed index, infrastructure failures, concurrency timeline, pools with a weekday × hour queue heatmap, hosted vs self-hosted comparison; live queue with STUCK and no-matching-runner flags and a separate approvals section; daily billing sync for organisations (installation token) and personal accounts (optional billing credential: token or "Connect GitHub"); costs page with month picker, used vs included gauge with projection, by SKU, repository, day and workflow (estimated, scaled), estimate vs billed with flags, estimate-only fallback with the reason; `/admin/github` for the billing credential. Charts have an aria-label, a caption and a table view and are checked with axe-core                                                                                                   |
+| **M3** Management (this release) | Action pipeline (kill switch, per-installation toggle, live role check, App permission check, idempotency, rate limit, typed confirmations, hash-chained audit with the app user and the App identity, installation tokens narrowed per action and repository). Re-run, re-run failed, cancel and force cancel on the run page and in run lists (operator); repository and organisation variables with a name × repo matrix, inline edit with diff, the `LINUX_RUNNER` / `MACOS_RUNNER` presets, bulk set with preview diff and per-repo results, batch revert, optional value redaction (admin); open PRs per installation and per repository with checks, mergeable state, review decision and chips, SHA-pinned merge as the App including workflow-changing PRs, GitHub's 405/409 shown verbatim (admin); read-only Dependabot alerts by severity × repo with the matching Dependabot PR; audit log with filters, chain Verify, CSV export and Revert batch links; management disabled banner. The guarded Dependabot batch merge is not part of this release yet |
+| **M4** Polish, v0.1.0            | Complete German translation, user and role management, `/admin/ops`, setup wizard, full docs, signed GHCR image                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ## How it works
 
@@ -301,13 +303,61 @@ last 24 hours, ingestion lag and rate limits under the installation's
 settings to roughly halve webhook invocations on Vercel Hobby. Runs are then
 created from their jobs and completed by reconcile.
 
+## Management
+
+Management actions are performed **by the GitHub App itself** with an
+installation token narrowed to the action and the target repositories;
+GitHub shows `<app-slug>[bot]` as the actor, and the audit log records which
+app user triggered the action, their role and sign-in provider.
+
+- **Switches**: `MANAGEMENT_ENABLED=false` hides every action for the whole
+  instance and the server answers 403. Each installation additionally has its
+  own toggle, **off by default**: an admin turns it on under the
+  installation's **Settings** (audited). While either switch is off, the
+  management pages show a banner and stay readable.
+- **Runs** (operator): the run page offers Re-run all jobs (optionally with
+  debug logging), Re-run failed jobs, Cancel and, 60 seconds after a cancel
+  of a run that is still going, Force cancel. Run lists on the repository and
+  workflow pages offer the same per row, without force cancel. Each action
+  opens a dialog naming the repository, workflow, run number and attempt.
+- **Variables** (`/o/<account>/variables`, and the repository's Variables
+  tab): every role reads the variable × repository matrix; with **value
+  redaction** on (installation settings) viewers and operators see values
+  hidden and the audit log keeps only a hash and the length. Admins create,
+  edit (dialog with old → new) and delete (variable name typed) variables;
+  organisation installations with Organization `Variables` also get the
+  organisation variables with their visibility. **Bulk set** applies one
+  value to the selected repositories after a preview diff and the typed
+  name, using the presets from `VARIABLE_PRESETS` (default `LINUX_RUNNER`
+  and `MACOS_RUNNER`). The batch history links to **Revert batch**, which
+  restores the recorded values once and leaves repositories alone whose
+  value changed afterwards. Variables are not secrets; secrets are never
+  read or changed.
+- **Pull requests** (`/o/<account>/pulls`, and the repository's tab): open
+  PRs with checks, mergeable state, review decision, age and the
+  Dependabot, draft, failing and "changes workflows" chips. Admins merge in a
+  dialog with the repository's allowed methods; the merge is pinned to the
+  head SHA shown, needs an extra confirmation when GitHub's merge state is
+  not `CLEAN`, and uses the `Workflows` permission only for PRs that change
+  `.github/workflows`. Without `Workflows: write` such PRs show why they
+  cannot be merged. `MERGE_AUDIT_TRAILER=true` adds a
+  `DevOps-Manager-Audit: <auditId>` trailer to merge commits.
+- **Dependabot** (`/o/<account>/dependabot`, and the repository's tab):
+  read-only alerts by severity and repository, with package, ecosystem,
+  advisory, fixed-in version and the matching open Dependabot PR.
+- **Audit log** (`/o/<account>/audit`): every role sees the log of every
+  visible installation; admins also see the instance chain. Filters (app
+  user, action, repository, status, dates) live in the URL; **Verify chain**
+  recomputes the hash chain and names the first changed, removed or inserted
+  entry; **Export CSV** downloads the filtered log.
+
 ## Roles
 
-| Role     | May                                                                                                                                             |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Viewer   | read every page of every visible installation, including runners, queue and costs                                                               |
-| Operator | everything a viewer may, plus Sync now (M1), re-run and cancel (M3)                                                                             |
-| Admin    | everything an operator may, plus variables, merges, installation settings, the billing credential (`/admin/github`) and instance administration |
+| Role     | May                                                                                                                                                                                                                                                                                      |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Viewer   | read every page of every visible installation, including runners, queue, costs, pull requests, variables (values hidden when redaction is on), Dependabot alerts and the audit log                                                                                                       |
+| Operator | everything a viewer may, plus Sync now (M1), re-run, re-run failed, cancel and force cancel (M3)                                                                                                                                                                                         |
+| Admin    | everything an operator may, plus creating, editing, bulk setting and reverting variables, merging pull requests, installation settings (management toggle, value redaction, sync health), the instance audit chain, the billing credential (`/admin/github`) and instance administration |
 
 Roles come from comma-separated, case-insensitive allowlists:
 `ADMIN_EMAILS`, `ADMIN_GROUPS`, `OPERATOR_EMAILS`, `OPERATOR_GROUPS`,
