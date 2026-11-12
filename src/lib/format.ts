@@ -72,6 +72,45 @@ export function formatMinutes(
   return `${formatNumber(Math.round(value), locale)} min`;
 }
 
+/** A relative change, signed and whole: 0.25 -> "+25%", -0.1 -> "-10%". */
+export function formatSignedPercent(
+  value: number | null | undefined,
+  locale = "en",
+): string {
+  if (value == null || !Number.isFinite(value)) return EMPTY;
+  return new Intl.NumberFormat(locale, {
+    style: "percent",
+    maximumFractionDigits: 0,
+    signDisplay: "exceptZero",
+  }).format(value);
+}
+
+/** US dollars with cents, e.g. 1234.5 -> "$1,234.50" (en). */
+export function formatUsd(
+  value: number | null | undefined,
+  locale = "en",
+): string {
+  if (value == null || !Number.isFinite(value)) return EMPTY;
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+/** A ratio with two decimals, e.g. a speed index of 0.8 -> "0.80". */
+export function formatRatio(
+  value: number | null | undefined,
+  locale = "en",
+): string {
+  if (value == null || !Number.isFinite(value)) return EMPTY;
+  return new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 /** Prefixes approximate values (from histograms) with "~". */
 export function approx(text: string, isApprox: boolean): string {
   return isApprox && text !== EMPTY ? `~${text}` : text;

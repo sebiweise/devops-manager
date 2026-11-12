@@ -6,6 +6,9 @@ import {
   formatMinutes,
   formatPercent,
   formatPointsDelta,
+  formatRatio,
+  formatSignedPercent,
+  formatUsd,
   shortSha,
 } from "./format";
 
@@ -59,5 +62,28 @@ describe("rates and minutes", () => {
 
   it("shortens commit shas", () => {
     expect(shortSha("0123456789abcdef")).toBe("0123456");
+  });
+});
+
+describe("formatUsd and formatRatio", () => {
+  it("formats dollars with cents in both languages", () => {
+    expect(formatUsd(1234.5, "en")).toBe("$1,234.50");
+    expect(formatUsd(0, "en")).toBe("$0.00");
+    expect(formatUsd(1234.5, "de")).toMatch(/^1\.234,50\s\$$/);
+    expect(formatUsd(null)).toBe(EMPTY);
+    expect(formatUsd(Number.NaN)).toBe(EMPTY);
+  });
+
+  it("formats signed relative changes", () => {
+    expect(formatSignedPercent(0.25)).toBe("+25%");
+    expect(formatSignedPercent(-0.1)).toBe("-10%");
+    expect(formatSignedPercent(0)).toBe("0%");
+    expect(formatSignedPercent(null)).toBe(EMPTY);
+  });
+
+  it("formats ratios with two decimals", () => {
+    expect(formatRatio(0.8)).toBe("0.80");
+    expect(formatRatio(1.234, "de")).toBe("1,23");
+    expect(formatRatio(null)).toBe(EMPTY);
   });
 });
