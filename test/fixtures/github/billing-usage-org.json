@@ -1,0 +1,81 @@
+{
+  "$comment": "Synthetic enhanced billing usage report (GET /organizations/{org}/settings/billing/usage), shaped like GitHub's documented schema. Generic placeholder names only.",
+  "usageItems": [
+    {
+      "date": "2026-11-02T00:00:00Z",
+      "product": "Actions",
+      "sku": "Actions Linux",
+      "quantity": 120,
+      "unitType": "Minutes",
+      "pricePerUnit": 0.008,
+      "grossAmount": 0.96,
+      "discountAmount": 0.96,
+      "netAmount": 0,
+      "organizationName": "example-org",
+      "repositoryName": "example-org/repo-b"
+    },
+    {
+      "date": "2026-11-03T00:00:00Z",
+      "product": "Actions",
+      "sku": "Actions Linux",
+      "quantity": 250,
+      "unitType": "Minutes",
+      "pricePerUnit": 0.008,
+      "grossAmount": 2,
+      "discountAmount": 1.5,
+      "netAmount": 0.5,
+      "organizationName": "example-org",
+      "repositoryName": "example-org/repo-b"
+    },
+    {
+      "date": "2026-11-03T00:00:00Z",
+      "product": "Actions",
+      "sku": "Actions macOS 3-core",
+      "quantity": 30,
+      "unitType": "Minutes",
+      "pricePerUnit": 0.08,
+      "grossAmount": 2.4,
+      "discountAmount": 0,
+      "netAmount": 2.4,
+      "organizationName": "example-org",
+      "repositoryName": "repo-c"
+    },
+    {
+      "date": "2026-11-03T00:00:00Z",
+      "product": "Actions",
+      "sku": "Actions Storage",
+      "quantity": 0.5,
+      "unitType": "GigabyteHours",
+      "pricePerUnit": 0.00033602,
+      "grossAmount": 0.00016801,
+      "discountAmount": 0,
+      "netAmount": 0.00016801,
+      "organizationName": "example-org",
+      "repositoryName": "example-org/repo-b"
+    },
+    {
+      "date": "2026-11-04T00:00:00Z",
+      "product": "Packages",
+      "sku": "Packages data transfer",
+      "quantity": 2,
+      "unitType": "Gigabytes",
+      "pricePerUnit": 0.5,
+      "grossAmount": 1,
+      "discountAmount": 0,
+      "netAmount": 1,
+      "organizationName": "example-org",
+      "repositoryName": ""
+    },
+    {
+      "date": "not-a-date",
+      "product": "Actions",
+      "sku": "Actions Linux",
+      "quantity": 1,
+      "unitType": "Minutes",
+      "pricePerUnit": 0.008,
+      "grossAmount": 0.008,
+      "discountAmount": 0,
+      "netAmount": 0.008
+    }
+  ]
+}

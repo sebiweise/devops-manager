@@ -9,13 +9,16 @@ import type { Deadline } from "./budget";
  * | Data                         | Rule                                          |
  * | WorkflowJob, WorkflowRun     | older than rawRetentionDays (capped by MAX_RETENTION_DAYS, 0 = unlimited) |
  * | WebhookDelivery              | deleted after 14 days; FAILED/DEAD payloads nulled after 7 days |
+ * | RunnerSample                 | 30 days                                       |
  * | Installations past purgeAfter| every row of the installation                 |
- * | Daily stats                  | kept forever                                  |
+ * | Daily stats, BillingUsageItem| kept forever                                  |
  */
 
 const BATCH = 5_000;
 const DAY_MS = 86_400_000;
 export const PRUNE_INTERVAL_MS = DAY_MS;
+/** RunnerSample retention (design §5.5). */
+export const SAMPLE_RETENTION_DAYS = 30;
 const GLOBAL_PRUNE_KEY = "lastGlobalPruneAt";
 
 /** Effective raw retention in days; null = unlimited. */
@@ -46,8 +49,18 @@ export async function pruneInstallation(
   installationId: bigint,
   retentionDays: number | null,
   deadline: Deadline,
-): Promise<{ jobs: number; runs: number }> {
-  if (retentionDays == null) return { jobs: 0, runs: 0 };
+): Promise<{ jobs: number; runs: number; samples: number }> {
+  const samples = await deleteInBatches(
+    deadline,
+    () =>
+      db.$executeRaw`
+      DELETE FROM "RunnerSample" WHERE ctid IN (
+        SELECT ctid FROM "RunnerSample"
+        WHERE "installationId" = ${installationId}
+          AND "sampledAt" < ${new Date(deadline.now() - SAMPLE_RETENTION_DAYS * DAY_MS)}
+        LIMIT ${BATCH})`,
+  );
+  if (retentionDays == null) return { jobs: 0, runs: 0, samples };
   const cutoff = new Date(deadline.now() - retentionDays * DAY_MS);
   const jobs = await deleteInBatches(
     deadline,
@@ -67,7 +80,7 @@ export async function pruneInstallation(
         WHERE "installationId" = ${installationId} AND "createdAt" < ${cutoff}
         LIMIT ${BATCH})`,
   );
-  return { jobs, runs };
+  return { jobs, runs, samples };
 }
 
 /** Tenant tables of an installation, children first; Installation goes last. */
@@ -77,6 +90,11 @@ const PURGE_TABLES = [
   "RollupDirty",
   "DailyWorkflowStat",
   "DailyJobStat",
+  "DailyRunnerStat",
+  "RunnerSample",
+  "Runner",
+  "BillingUsageItem",
+  "GitHubCredential",
   "SyncState",
   "InstallationRateLimit",
   "WebhookDelivery",

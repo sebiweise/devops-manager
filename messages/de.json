@@ -18,7 +18,8 @@
   "nav": {
     "dashboard": "Dashboard",
     "onboarding": "Installationen",
-    "settings": "Einstellungen"
+    "settings": "Einstellungen",
+    "github": "GitHub-Abrechnung"
   },
   "landing": {
     "title": "GitHub-Actions-Einblicke und -Verwaltung, selbst gehostet",
@@ -99,7 +100,10 @@
     "overview": "Übersicht",
     "repos": "Repositories",
     "workflows": "Workflows",
-    "settings": "Einstellungen"
+    "settings": "Einstellungen",
+    "runners": "Runner",
+    "queue": "Warteschlange",
+    "costs": "Kosten"
   },
   "freshness": {
     "label": "Aktualität der Daten",
@@ -356,5 +360,365 @@
     "resource": "Ressource",
     "remaining": "Verbleibend",
     "reset": "Zurückgesetzt"
+  },
+  "runnerData": {
+    "stuck": "Hängt",
+    "stuckHint": "Seit mehr als 15 Minuten in der Warteschlange und kein freier Online-Runner hat diese Labels.",
+    "noMatchingRunner": "Kein passender Runner",
+    "noMatchingRunnerHint": "Kein Runner dieser Installation hat alle diese Labels, weder online noch offline.",
+    "insufficientSamples": "Zu wenige Messpunkte",
+    "insufficientSamplesHint": "Die Runner-Messpunkte decken weniger als die Hälfte des Zeitraums ab, daher lässt sich die Auslastung nicht von Lücken zwischen den Messungen unterscheiden.",
+    "sampleInterval": "± ein Messintervall ({interval})",
+    "repoRunnersMissing": "Repository-Runner benötigen die Repository-Berechtigung Administration: read. Ohne sie sind sie nur aus Job-Daten bekannt.",
+    "orgRunnersMissing": "Organisations-Runner benötigen die Organisations-Berechtigung Self-hosted runners: read.",
+    "speedIndex": "Geschwindigkeitsindex",
+    "speedIndexHint": "Mittlere Job-Dauer auf diesem Runner im Verhältnis zu allen Runnern; 1,0 ist Durchschnitt, 0,8 ist 20 % schneller.",
+    "infraFailures": "Infrastrukturfehler",
+    "ephemeral": "kurzlebig"
+  },
+  "billingStatus": {
+    "billed": "Abgerechnete Werte aus GitHubs Billing-Usage-Bericht.",
+    "estimated": "Geschätzt aus Job-Dauern und den SKU-Preisen.",
+    "scaled": "geschätzt, auf die abgerechneten Minuten skaliert",
+    "no_permission": "Kosten sind Schätzungen: Der App wurde die Organisations-Berechtigung Administration: read nicht erteilt.",
+    "no_credential": "Kosten sind Schätzungen: Für dieses persönliche Konto ist kein Billing-Zugang hinterlegt.",
+    "unavailable": "Kosten sind Schätzungen: GitHubs Billing-Usage-Bericht ist für dieses Konto nicht verfügbar (erweiterte Billing-Plattform nötig).",
+    "credential_error": "Kosten sind Schätzungen: Der Billing-Zugang funktioniert nicht mehr.",
+    "not_synced": "Kosten sind Schätzungen, bis die erste Billing-Synchronisierung gelaufen ist.",
+    "reconnect": "Verbinde den Billing-Zugang in den GitHub-Einstellungen dieser Instanz neu.",
+    "deviation": "Schätzung und Abrechnung weichen um mehr als 15 % ab, oft wegen einer unbekannten Larger-Runner-SKU."
+  },
+  "billingCredential": {
+    "states": {
+      "none": "Kein Zugang",
+      "env": "Token aus der Umgebung",
+      "pat": "Gespeichertes Token",
+      "connected": "Mit GitHub verbunden",
+      "reconnect": "Neu verbinden nötig"
+    },
+    "expiringSoon": "Läuft am {date} ab",
+    "results": {
+      "saved": "Token für {login} gespeichert.",
+      "connected": "Verbunden als {login}.",
+      "revoked": "Zugang entfernt.",
+      "revoked_locally": "Zugang hier gelöscht, aber die Autorisierung konnte bei GitHub nicht widerrufen werden, weil Client-ID und Secret der App nicht konfiguriert sind. Widerrufe sie unter GitHub Settings > Applications > Authorized GitHub Apps.",
+      "revoke_failed": "GitHub hat den Widerruf nicht bestätigt, daher wurde nichts entfernt. Versuche es erneut, oder widerrufe die App unter GitHub Settings > Applications > Authorized GitHub Apps und entferne den Zugang danach hier.",
+      "redirect": "Weiter auf GitHub.",
+      "forbidden": "Nur Admins können Billing-Zugänge verwalten.",
+      "confirmation_mismatch": "Gib zur Bestätigung den Konto-Login ein.",
+      "invalid_token": "GitHub hat dieses Token nicht akzeptiert.",
+      "token_too_broad": "Nur fein granulare Personal Access Tokens (github_pat_...) mit der Kontoberechtigung \"Plan: read\" werden akzeptiert. Klassische Tokens haben mehr Zugriff, als Billing braucht.",
+      "login_mismatch": "Das Token gehört zu {login}, nicht zu diesem Konto.",
+      "not_configured": "Connect GitHub ist auf dieser Instanz nicht konfiguriert.",
+      "invalid_state": "Die Verbindungsanfrage ist abgelaufen oder wurde von jemand anderem gestartet. Bitte neu starten.",
+      "github_error": "GitHub ist nicht erreichbar. Bitte später erneut versuchen.",
+      "denied": "Die Autorisierung wurde auf GitHub abgebrochen."
+    }
+  },
+  "runners": {
+    "title": "Runner",
+    "summary": "{total, plural, one {# selbst gehosteter Runner} other {# selbst gehostete Runner}}: {busy} beschäftigt, {idle} frei, {offline} offline",
+    "sampled": "Runner-Status abgefragt {sampled} · Erkennung {discovered}",
+    "sampling": "Runner werden im Hintergrund abgefragt; diese Seite aktualisiert sich alle 30 Sekunden.",
+    "orgRunners": "Organisations-Runner",
+    "repoRunners": "Repository-Runner: {repo}",
+    "noSelfHosted": "Noch keine selbst gehosteten Runner bekannt. Gehostete Pools stehen unten.",
+    "caption": "Selbst gehostete Runner",
+    "name": "Runner",
+    "status": "Status",
+    "labels": "Labels",
+    "os": "OS",
+    "group": "Gruppe",
+    "lastSeen": "Zuletzt gesehen",
+    "utilisation": "Auslastung (7 Tage)",
+    "jobs": "Jobs (7 Tage)",
+    "noSamples": "noch keine Stichproben",
+    "states": {
+      "busy": "beschäftigt",
+      "idle": "frei",
+      "offline": "offline"
+    },
+    "pools": {
+      "title": "Pools",
+      "description": "Jobs je Label-Satz und Runner-Art in diesem Zeitraum. Die Auslastung selbst gehosteter Pools ist Σ beschäftigt / Σ online über die Runner, die alle Labels des Pools haben.",
+      "empty": "Keine Jobs in diesem Zeitraum.",
+      "pool": "Pool",
+      "kind": "Runner-Art",
+      "minutes": "Minuten",
+      "avgConcurrency": "Parallelität im Mittel",
+      "peakConcurrency": "Parallelität (Spitze)",
+      "queueP50": "Wartezeit p50",
+      "queueP95": "Wartezeit p95",
+      "runners": "Runner",
+      "highQueue": "Eine hohe Wartezeit p95 auf gehosteten Runnern deutet darauf hin, dass das Parallelitätslimit des Kontos erreicht ist."
+    },
+    "heatmap": {
+      "title": "Wartezeit p95 nach Wochentag und Stunde: {pool}",
+      "description": "Wie lange Jobs auf einen Runner gewartet haben, nach Wochentag und Stunde in der Zeitzone der Installation.",
+      "label": "Heatmap der Wartezeit p95 des Pools {pool} nach Wochentag und Stunde; der höchste Wert ist {max}.",
+      "noData": "keine Jobs",
+      "low": "kurz",
+      "high": "lang",
+      "cell": "{day} {hour}:00: {jobs, plural, one {# Job} other {# Jobs}}, Wartezeit p95 {p95}",
+      "weekday": "Wochentag",
+      "hour": "Stunde",
+      "jobs": "Jobs",
+      "queueP95": "Wartezeit p95"
+    },
+    "weekdays": {
+      "1": "Mo",
+      "2": "Di",
+      "3": "Mi",
+      "4": "Do",
+      "5": "Fr",
+      "6": "Sa",
+      "7": "So"
+    },
+    "concurrency": {
+      "title": "Parallelität, letzte 24 Stunden",
+      "description": "Laufende (durchgezogen) und wartende (gestrichelt) Jobs in 5-Minuten-Intervallen.",
+      "label": "Liniendiagramm laufender und wartender Jobs in 5-Minuten-Intervallen über die letzten 24 Stunden; Spitze {running} laufend und {queued} wartend.",
+      "running": "Laufend",
+      "queued": "Wartend",
+      "time": "Zeit",
+      "summary": "Spitze {running} laufend, {queued} wartend; im Mittel {avg} laufend."
+    },
+    "split": {
+      "title": "Gehostet vs. selbst gehostet",
+      "description": "Ausführungsminuten je Runner-Art in diesem Zeitraum.",
+      "label": "Balkendiagramm der Ausführungsminuten je Runner-Art, insgesamt {minutes}.",
+      "kind": "Runner-Art",
+      "jobs": "Jobs",
+      "minutes": "Minuten",
+      "billable": "Gesch. abrechenbare Minuten"
+    },
+    "compare": {
+      "title": "Gleiche Jobs auf gehosteten und selbst gehosteten Runnern",
+      "description": "Jobs mit mindestens 5 Läufen je Art in diesem Zeitraum; Δ ist die Änderung des selbst gehosteten p50 gegenüber gehostet.",
+      "empty": "Kein Job lief in diesem Zeitraum mindestens 5-mal sowohl auf gehosteten als auch auf selbst gehosteten Runnern."
+    }
+  },
+  "runner": {
+    "back": "Alle Runner",
+    "scopeOrg": "Organisations-Runner",
+    "scopeRepo": "Repository-Runner von {repo}",
+    "seen": "Zuerst gesehen {first} · zuletzt gesehen {last}",
+    "utilisation": "Auslastung ({range})",
+    "coverage": "Abdeckung durch Stichproben",
+    "coverageHint": "erfasste Online-Zeit / Zeitraum",
+    "failures": "Fehlschläge",
+    "insufficientExplain": "Stichproben decken {coverage} dieses Zeitraums ab; für einen Auslastungswert sind mindestens 50 % nötig. Stichproben nimmt der Abgleich (alle {interval} mit dem Docker-Cron-Sidecar, täglich auf Vercel) und höchstens alle 2 Minuten, solange die Runner- oder Warteschlangen-Seite offen ist.",
+    "utilChart": {
+      "title": "Auslastung pro Tag",
+      "description": "Beschäftigte Zeit / Online-Zeit pro Tag; Tage mit zu wenigen Stichproben fehlen.",
+      "label": "Liniendiagramm der täglichen Auslastung des Runners über {days} Tage.",
+      "utilisation": "Auslastung",
+      "busy": "Beschäftigt",
+      "online": "Online"
+    },
+    "status": {
+      "title": "Statusverlauf",
+      "description": "Runner-Status aus den Stichproben dieses Zeitraums (höchstens 30 Tage); Lücken hatten keine Stichprobe.",
+      "label": "Status von Runner {name} von {from} bis {to}: beschäftigt {busy}, frei {idle}, offline {offline} des Zeitfensters.",
+      "empty": "Keine Stichproben in diesem Zeitraum.",
+      "state": "Status",
+      "from": "Von",
+      "to": "Bis"
+    },
+    "distribution": {
+      "title": "Job-Dauer im Vergleich zum Pool",
+      "description": "Anteil der Jobs je Dauerbereich auf diesem Runner (durchgezogen) und bei allen Jobs mit den Labels {labels} (gestrichelt).",
+      "label": "Liniendiagramm der Verteilung der Job-Dauer dieses Runners ({runner} Jobs) im Vergleich zu seinem Pool ({pool} Jobs).",
+      "runner": "Dieser Runner",
+      "pool": "Pool",
+      "band": "Dauer",
+      "bands": {
+        "b0": "< 1 Min.",
+        "b1": "1–5 Min.",
+        "b2": "5–15 Min.",
+        "b3": "15–30 Min.",
+        "b4": "30–60 Min.",
+        "b5": "> 1 Std."
+      }
+    },
+    "topJobs": {
+      "title": "Häufigste Jobs",
+      "empty": "Keine Jobs auf diesem Runner in diesem Zeitraum.",
+      "job": "Job",
+      "workflow": "Workflow",
+      "jobs": "Jobs",
+      "failures": "Fehlschläge"
+    },
+    "recentFailures": {
+      "title": "Letzte Fehlschläge",
+      "empty": "Keine Fehlschläge in diesem Zeitraum.",
+      "conclusion": "Ergebnis",
+      "completed": "Beendet",
+      "duration": "Dauer",
+      "infra": "Infrastruktur"
+    }
+  },
+  "queue": {
+    "title": "Warteschlange",
+    "summary": "{count, plural, one {# Job} other {# Jobs}} wartend · ältester {oldest} · {stuck, plural, =0 {keiner hängt} other {# hängen}}",
+    "updated": "Aktualisiert {time}",
+    "empty": "Nichts in der Warteschlange.",
+    "groups": "Wartende Jobs nach Labels und Repository",
+    "labels": "Labels",
+    "repo": "Repository",
+    "count": "Jobs",
+    "oldest": "Ältester",
+    "p95": "Alter p95",
+    "workflows": "Workflows",
+    "flags": "Hinweise",
+    "jobs": "Wartende Jobs",
+    "job": "Job",
+    "workflow": "Workflow",
+    "age": "Alter",
+    "stuckCount": "{count} hängen",
+    "approvals": {
+      "title": "Warten auf Freigabe",
+      "description": "Jobs, die auf eine Umgebungsfreigabe warten; sie brauchen noch keinen Runner.",
+      "empty": "Kein Job wartet auf eine Freigabe."
+    }
+  },
+  "costs": {
+    "title": "Kosten",
+    "monthNav": "Monat",
+    "prev": "Vorheriger Monat",
+    "next": "Nächster Monat",
+    "current": "Aktueller Monat",
+    "synced": "Abrechnung abgeglichen {ago}",
+    "neverSynced": "Abrechnung noch nicht abgeglichen",
+    "adminLink": "Abrechnungszugang verwalten",
+    "adminError": "Letzter Abrechnungsfehler: {error}",
+    "noData": "Keine abgerechnete Nutzung und keine geschätzten Minuten in diesem Monat.",
+    "unmatched": "{count, plural, one {# Job} other {# Jobs}} auf größeren oder unbekannten Runnern passten zu keiner SKU und sind nicht in den Schätzungen enthalten.",
+    "notBilled": "nicht abgerechnet",
+    "kpi": {
+      "net": "Netto, abgerechnet",
+      "gross": "Brutto, abgerechnet",
+      "discount": "Inklusive (Rabatt)",
+      "allProducts": "Netto, alle Produkte",
+      "estUsd": "Geschätzt",
+      "estMin": "Geschätzte Minuten",
+      "projectedNet": "Hochrechnung netto, Monatsende",
+      "projectedEst": "Hochrechnung Schätzung, Monatsende",
+      "estimateFlag": "Schätzung",
+      "billedFlag": "abgerechnet"
+    },
+    "gauge": {
+      "title": "Inklusivminuten",
+      "description": "Auf das Inklusivkontingent angerechnete Minuten ({source}), mit Hochrechnung zum Monatsende ({elapsed} von {days} Tagen vergangen).",
+      "label": "{used} von {included} Inklusivminuten verbraucht; Hochrechnung {projected} bis zum Monatsende.",
+      "used": "Verbraucht: {used}",
+      "projected": "Hochrechnung: {projected}",
+      "included": "Inklusive: {included}",
+      "over": "Über den Inklusivminuten.",
+      "projectedOver": "Die Hochrechnung übersteigt die Inklusivminuten.",
+      "sources": {
+        "billed": "abgerechnet",
+        "estimate": "geschätzt"
+      },
+      "measure": "Kennzahl",
+      "minutes": "Minuten",
+      "rowUsed": "Verbraucht ({source})",
+      "rowProjected": "Hochrechnung, Monatsende",
+      "rowIncluded": "Inklusive"
+    },
+    "bySku": {
+      "title": "Nach SKU",
+      "sku": "SKU",
+      "multiplier": "Faktor",
+      "quantity": "Abgerechnete Menge",
+      "unit": "Einheit",
+      "gross": "Brutto",
+      "discount": "Rabatt",
+      "net": "Netto",
+      "estMin": "Gesch. Minuten",
+      "estUsd": "Gesch. USD"
+    },
+    "byRepo": {
+      "title": "Nach Repository",
+      "repo": "Repository"
+    },
+    "byDay": {
+      "title": "Nach Tag",
+      "description": "{kind} Minuten pro Tag (UTC).",
+      "label": "Balkendiagramm der Minuten ({kind}) pro Tag im {month}, insgesamt {minutes}.",
+      "kinds": {
+        "billed": "Abgerechnete",
+        "estimate": "Geschätzte"
+      }
+    },
+    "byWorkflow": {
+      "title": "Nach Workflow",
+      "description": "Geschätzte Minuten je Workflow, skaliert mit abgerechnet / Σ geschätzt des Repositorys und der SKU.",
+      "empty": "Keine geschätzten Minuten in diesem Monat.",
+      "workflow": "Workflow",
+      "scale": "Skalierungsfaktor",
+      "scaledMin": "Skalierte Minuten",
+      "scaledNet": "Skaliert netto"
+    },
+    "reconciliation": {
+      "title": "Schätzung vs. Abrechnung",
+      "description": "Je Repository und SKU, auf Brutto-USD.",
+      "empty": "Erscheint, sobald abgerechnete Zahlen vorliegen.",
+      "estimate": "Schätzung",
+      "billed": "Abgerechnet",
+      "deviation": "Abweichung",
+      "flag": "Prüfen",
+      "flagged": "⚠ prüfen",
+      "ok": "ok"
+    }
+  },
+  "adminGithub": {
+    "title": "GitHub-Abrechnungszugänge",
+    "intro": "Der Abrechnungsbericht von GitHub für ein persönliches Konto braucht ein Benutzer-Token. Ohne Zugang sind die Kosten eines persönlichen Kontos Schätzungen. Organisationen nutzen das Installations-Token (Organisationsberechtigung Administration: read) und brauchen hier nichts.",
+    "none": "Keine Installation eines persönlichen Kontos sichtbar.",
+    "status": "Status",
+    "login": "GitHub-Login: {login}",
+    "expires": "Token läuft ab {date}",
+    "refreshExpires": "Refresh-Token läuft ab {date}",
+    "lastUsed": "Zuletzt genutzt {ago}",
+    "lastError": "Letzter Fehler: {error}",
+    "billing": "Abrechnungsabgleich: {status}",
+    "billingSynced": "abgeglichen {ago}",
+    "neverSynced": "noch nicht abgeglichen",
+    "envNote": "GITHUB_BILLING_TOKEN ist gesetzt und gilt für diese Installation. Es wird nie gespeichert; entferne die Variable, um den Zugang hier zu verwalten.",
+    "reconnectBanner": "Die Autorisierung wurde widerrufen oder ist abgelaufen. Verbinde GitHub erneut oder speichere ein Token, um wieder abgerechnete Zahlen zu erhalten.",
+    "failed": "Die Aktion ist fehlgeschlagen. Bitte erneut versuchen.",
+    "optionA": {
+      "title": "Option A: Token speichern",
+      "description": "Ein fein granulares persönliches Zugriffstoken von {account} mit der Kontoberechtigung Plan: read. Es wird bei GitHub geprüft, verschlüsselt gespeichert und nur für die Abrechnung verwendet.",
+      "token": "Token",
+      "confirm": "Zur Bestätigung {account} eingeben",
+      "submit": "Token speichern",
+      "pending": "Wird geprüft…"
+    },
+    "optionB": {
+      "title": "Option B: Mit GitHub verbinden",
+      "description": "{account} autorisiert die App auf GitHub (User-to-Server-Token mit Rotation des Refresh-Tokens). Melde dich vorher auf GitHub als {account} an.",
+      "submit": "Mit GitHub verbinden",
+      "reconnect": "GitHub erneut verbinden",
+      "pending": "Weiterleitung…",
+      "notConfigured": "Setze GITHUB_CONNECT_ENABLED=true, GITHUB_APP_CLIENT_ID und GITHUB_APP_CLIENT_SECRET, um diese Option zu aktivieren."
+    },
+    "revoke": {
+      "title": "Zugang entfernen",
+      "description": "Löscht das gespeicherte Token und widerruft eine verbundene Autorisierung auf GitHub. Die Kosten fallen auf Schätzungen zurück.",
+      "confirm": "Zur Bestätigung {account} eingeben",
+      "submit": "Zugang entfernen",
+      "pending": "Wird entfernt…"
+    },
+    "connect": {
+      "connected": "Mit GitHub verbunden.",
+      "denied": "Die Autorisierung wurde auf GitHub abgebrochen.",
+      "invalid_state": "Die Verbindungsanfrage ist abgelaufen oder wurde von jemand anderem gestartet. Bitte neu starten.",
+      "github_error": "GitHub ist nicht erreichbar. Bitte später erneut versuchen.",
+      "login_mismatch": "Das GitHub-Konto, das die App autorisiert hat, ist nicht das Konto dieser Installation. Es wurde nichts gespeichert.",
+      "not_configured": "Mit GitHub verbinden ist auf dieser Instanz nicht eingerichtet.",
+      "forbidden": "Nur Admins können Abrechnungszugänge verwalten."
+    }
   }
 }

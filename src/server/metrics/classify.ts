@@ -140,7 +140,11 @@ export function skuOf(
   return BASE_SKU[os];
 }
 
-/** "sh:<runnerName>" for self-hosted runners, "pool:<labelKey>" otherwise. */
+/**
+ * "sh:<runnerName>" for self-hosted runners, "pool:<labelKey>" otherwise.
+ * Jobs of a repo-level runner get "shr:<repositoryId>:<runnerName>" via
+ * {@link jobRunnerKeyResolver}.
+ */
 export function runnerKeyOf(
   kind: RunnerKind,
   runnerName: string | null,
@@ -149,4 +153,58 @@ export function runnerKeyOf(
   return kind === "SELF_HOSTED" && runnerName
     ? `sh:${runnerName}`
     : `pool:${labelKey}`;
+}
+
+export type RunnerScopeRow = {
+  scope: "ORG" | "REPO";
+  repositoryId: bigint | null;
+  name: string;
+};
+
+/**
+ * DailyRunnerStat / speed-index key of a cached runner. GitHub requires
+ * runner names to be unique within one scope only, so two repositories can
+ * each have a repo runner with the same name: repo runners are keyed by
+ * repository and name ("shr:<repositoryId>:<name>"), org runners by name.
+ */
+export function runnerStatKey(r: RunnerScopeRow): string {
+  return r.scope === "REPO" && r.repositoryId != null
+    ? `shr:${r.repositoryId}:${r.name}`
+    : `sh:${r.name}`;
+}
+
+/** True for a self-hosted runner key ("sh:" or "shr:"). */
+export function isSelfHostedKey(key: string): boolean {
+  return key.startsWith("sh:") || key.startsWith("shr:");
+}
+
+/**
+ * Maps a job to its runner key, given the installation's cached runners: a
+ * self-hosted job in a repository that has a repo runner of that name
+ * belongs to that runner; any other self-hosted job to the org runner (or
+ * an unknown runner) of that name; hosted jobs to their label pool.
+ */
+export function jobRunnerKeyResolver(
+  runners: ReadonlyArray<RunnerScopeRow>,
+): (job: {
+  runnerKind: RunnerKind;
+  runnerName: string | null;
+  labelKey: string;
+  repositoryId: bigint;
+}) => string {
+  const repoRunners = new Set(
+    runners
+      .filter((r) => r.scope === "REPO" && r.repositoryId != null)
+      .map((r) => `${r.repositoryId}\u0000${r.name}`),
+  );
+  return (j) =>
+    j.runnerKind === "SELF_HOSTED" &&
+    j.runnerName &&
+    repoRunners.has(`${j.repositoryId}\u0000${j.runnerName}`)
+      ? runnerStatKey({
+          scope: "REPO",
+          repositoryId: j.repositoryId,
+          name: j.runnerName,
+        })
+      : runnerKeyOf(j.runnerKind, j.runnerName, j.labelKey);
 }

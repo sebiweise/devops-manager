@@ -3,9 +3,12 @@ import { seedRatesAsRows } from "./sku-seed";
 import {
   baseNameOf,
   classifyRunner,
+  isSelfHostedKey,
+  jobRunnerKeyResolver,
   labelKeyOf,
   runnerKeyOf,
   runnerOsOf,
+  runnerStatKey,
   skuOf,
 } from "./classify";
 import { estimateJobCost, rateFor } from "./cost";
@@ -75,6 +78,47 @@ describe("runner classification", () => {
     expect(runnerKeyOf("GITHUB_HOSTED", null, "ubuntu-latest")).toBe(
       "pool:ubuntu-latest",
     );
+  });
+});
+
+describe("runner keys", () => {
+  // repo-a (11) and repo-b (12) each have a repo runner called runner-1;
+  // runner-2 is an org runner.
+  const runners = [
+    { scope: "REPO" as const, repositoryId: 11n, name: "runner-1" },
+    { scope: "REPO" as const, repositoryId: 12n, name: "runner-1" },
+    { scope: "ORG" as const, repositoryId: null, name: "runner-2" },
+  ];
+  const keyOf = jobRunnerKeyResolver(runners);
+  const job = (repositoryId: bigint, runnerName: string | null) => ({
+    runnerKind: "SELF_HOSTED" as const,
+    runnerName,
+    labelKey: "self-hosted",
+    repositoryId,
+  });
+
+  it("keys repo runners by repository and name, so equal names stay apart", () => {
+    expect(runnerStatKey(runners[0]!)).toBe("shr:11:runner-1");
+    expect(runnerStatKey(runners[1]!)).toBe("shr:12:runner-1");
+    expect(runnerStatKey(runners[2]!)).toBe("sh:runner-2");
+    expect(keyOf(job(11n, "runner-1"))).toBe("shr:11:runner-1");
+    expect(keyOf(job(12n, "runner-1"))).toBe("shr:12:runner-1");
+  });
+
+  it("gives other self-hosted jobs to the org (or unknown) runner of that name", () => {
+    expect(keyOf(job(11n, "runner-2"))).toBe("sh:runner-2");
+    expect(keyOf(job(13n, "runner-1"))).toBe("sh:runner-1");
+    expect(
+      keyOf({
+        runnerKind: "GITHUB_HOSTED",
+        runnerName: "GitHub Actions 2",
+        labelKey: "ubuntu-latest",
+        repositoryId: 11n,
+      }),
+    ).toBe("pool:ubuntu-latest");
+    expect(isSelfHostedKey("shr:11:runner-1")).toBe(true);
+    expect(isSelfHostedKey("sh:runner-2")).toBe(true);
+    expect(isSelfHostedKey("pool:ubuntu-latest")).toBe(false);
   });
 });
 

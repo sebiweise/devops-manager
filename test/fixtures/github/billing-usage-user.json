@@ -1,0 +1,29 @@
+{
+  "$comment": "Synthetic enhanced billing usage report (GET /users/{username}/settings/billing/usage). No organizationName in the user schema. Generic placeholder names only.",
+  "usageItems": [
+    {
+      "date": "2026-11-05",
+      "product": "actions",
+      "sku": "Actions Linux",
+      "quantity": 400,
+      "unitType": "minutes",
+      "pricePerUnit": 0.008,
+      "grossAmount": 3.2,
+      "discountAmount": 3.2,
+      "netAmount": 0,
+      "repositoryName": "example-user/repo-a"
+    },
+    {
+      "date": "2026-11-06",
+      "product": "actions",
+      "sku": "Actions Windows",
+      "quantity": 50,
+      "unitType": "minutes",
+      "pricePerUnit": 0.016,
+      "grossAmount": 0.8,
+      "discountAmount": 0.3,
+      "netAmount": 0.5,
+      "repositoryName": "example-user/repo-a"
+    }
+  ]
+}

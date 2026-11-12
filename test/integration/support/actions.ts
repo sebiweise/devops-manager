@@ -46,8 +46,10 @@ type Db = typeof DbModule.db;
 export async function resetTables(db: Db) {
   await db.$executeRawUnsafe(`
     TRUNCATE "WorkflowJob", "WorkflowRun", "RollupDirty", "DailyWorkflowStat",
-      "DailyJobStat", "SyncState", "WebhookDelivery", "InstallationRateLimit",
-      "AppState", "AuditLog", "Repository", "Installation" CASCADE`);
+      "DailyJobStat", "DailyRunnerStat", "RunnerSample", "Runner",
+      "BillingUsageItem", "GitHubCredential", "SyncState", "WebhookDelivery",
+      "InstallationRateLimit", "AppState", "AuditLog", "Repository",
+      "Installation" CASCADE`);
 }
 
 export const A = 1001n; // example-user (personal account)
@@ -55,9 +57,18 @@ export const B = 2002n; // example-org (organisation)
 
 export async function seedInstallations(
   db: Db,
-  opts: { rawRetentionDays?: number; lastReconciledAt?: Date | null } = {},
+  opts: {
+    rawRetentionDays?: number;
+    lastReconciledAt?: Date | null;
+    /** Extra granted permissions (both installations). */
+    permissions?: Record<string, string>;
+  } = {},
 ) {
-  const perms = { metadata: "read", actions: "read" };
+  const perms = {
+    metadata: "read",
+    actions: "read",
+    ...(opts.permissions ?? {}),
+  };
   await db.installation.createMany({
     data: [
       {
@@ -193,6 +204,16 @@ export function makeRun(repo: { owner: string; name: string }, spec: RunSpec) {
   return { run, jobs, attempts };
 }
 
+export type FakeRunner = {
+  id: number;
+  name: string;
+  os?: string;
+  status: "online" | "offline";
+  busy: boolean;
+  labels: string[];
+  ephemeral?: boolean;
+};
+
 type RepoData = {
   owner: string;
   name: string;
@@ -233,6 +254,14 @@ export class FakeGitHub {
   readonly redelivered: number[] = [];
   hookDeliveries: HookDelivery[] = [];
   failInstallations = new Set<bigint>();
+  /** Runner lists: "repo:<owner>/<name>" or "org:<login>". */
+  runners = new Map<string, FakeRunner[]>();
+  /** Billing usage items per account login (dates are moved into the requested month). */
+  billing = new Map<string, Array<Record<string, unknown>>>();
+  /** Valid user tokens (PAT or user-to-server) and the login they belong to. */
+  userTokens = new Map<string, string>();
+  /** Status the billing endpoints answer with instead of data. */
+  billingStatus: number | null = null;
   /** Runs GitHub no longer has (log retention): their job lists answer 404. */
   expiredRuns = new Set<number>();
   now = Date.now();
@@ -260,10 +289,51 @@ export class FakeGitHub {
   clients(): GitHubClients {
     return {
       app: () => this.api(null),
-      installation: async (installationId, purpose) => {
+      installation: async (installationId, purpose, granted) => {
+        // Like the token broker: a purpose without its permission fails.
+        const { permissionsFor } = await import("@/server/github/purposes");
+        permissionsFor(purpose, granted);
         this.tokens.push({ installationId, purpose });
         return this.api(installationId);
       },
+      user: (token) => this.userApi(token),
+    };
+  }
+
+  /** A client authenticated with a user token (personal billing only). */
+  userApi(token: string): GitHubApi {
+    return {
+      request: async <T>(
+        route: string,
+        params: Record<string, unknown> = {},
+      ) => {
+        this.requests.push({
+          installationId: null,
+          route,
+          params: { ...params, userToken: true },
+        });
+        const login = this.userTokens.get(token);
+        if (!login) throw new HttpError(401);
+        if (route !== "GET /users/{username}/settings/billing/usage")
+          throw new HttpError(404);
+        if (String(params.username) !== login) throw new HttpError(403);
+        return {
+          status: 200,
+          headers: this.headers(),
+          data: this.billingReport(login, params),
+        } as GhResponse<T>;
+      },
+    };
+  }
+
+  private billingReport(login: string, params: Record<string, unknown>) {
+    if (this.billingStatus) throw new HttpError(this.billingStatus);
+    const ym = `${params.year}-${String(params.month).padStart(2, "0")}`;
+    return {
+      usageItems: (this.billing.get(login) ?? []).map((i) => ({
+        ...i,
+        date: String(i.date).replace(/^d{4}-d{2}/, ym),
+      })),
     };
   }
 
@@ -399,6 +469,35 @@ export class FakeGitHub {
           for (const j of r.jobs) if (j.id === Number(params.job_id)) return j;
         throw new HttpError(404);
       }
+      case "GET /repos/{owner}/{repo}/actions/runners": {
+        // Further repos of the same owner exist for runner lists only.
+        const key = `repo:${String(params.owner)}/${String(params.repo)}`;
+        const expected = REPOS[String(installationId)];
+        if (
+          installationId === null ||
+          !expected ||
+          params.owner !== expected.owner ||
+          (params.repo !== expected.name && !this.runners.has(key))
+        )
+          throw new HttpError(installationId === null ? 401 : 404);
+        const list = this.runners.get(key) ?? [];
+        return { total_count: list.length, runners: list.map(ghRunner) };
+      }
+      case "GET /orgs/{org}/actions/runners": {
+        if (installationId === null) throw new HttpError(401);
+        const expected = REPOS[String(installationId)];
+        if (!expected || params.org !== expected.owner)
+          throw new HttpError(404);
+        const list = this.runners.get(`org:${expected.owner}`) ?? [];
+        return { total_count: list.length, runners: list.map(ghRunner) };
+      }
+      case "GET /organizations/{org}/settings/billing/usage": {
+        if (installationId === null) throw new HttpError(401);
+        const expected = REPOS[String(installationId)];
+        if (!expected || params.org !== expected.owner)
+          throw new HttpError(404);
+        return this.billingReport(expected.owner, params);
+      }
       case "GET /app/hook/deliveries":
         if (installationId !== null) throw new HttpError(401);
         return [...this.hookDeliveries].sort((a, b) => b.id - a.id);
@@ -417,4 +516,16 @@ function matchesCreated(t: number, created: string): boolean {
   if (created.startsWith(">=")) return t >= Date.parse(created.slice(2));
   const [a, b] = created.split("..");
   return t >= Date.parse(a!) && t <= Date.parse(b!) + 999;
+}
+
+function ghRunner(r: FakeRunner) {
+  return {
+    id: r.id,
+    name: r.name,
+    os: r.os ?? "Linux",
+    status: r.status,
+    busy: r.busy,
+    ephemeral: r.ephemeral ?? false,
+    labels: r.labels.map((name, i) => ({ id: i + 1, name, type: "read-only" })),
+  };
 }

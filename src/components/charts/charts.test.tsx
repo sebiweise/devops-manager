@@ -4,11 +4,14 @@ import { describe, expect, it } from "vitest";
 import en from "../../../messages/en.json";
 import { ChartFrame } from "./chart-frame";
 import { DataTable } from "./data-table";
+import { Gauge } from "./gauge";
+import { Heatmap } from "./heatmap";
 import { Legend } from "./legend";
 import { LineChart } from "./line-chart";
 import { RunTimeline } from "./run-timeline";
 import { Sparkline } from "./sparkline";
 import { StackedBarChart } from "./stacked-bar-chart";
+import { StateStrip } from "./state-strip";
 
 /**
  * Accessibility contract of the charts (design §7): role="img" with an
@@ -185,5 +188,68 @@ describe("ChartFrame", () => {
     expect(html).toContain('aria-label="chart"');
     expect(html).toContain("Success");
     expect(html).not.toContain("<table");
+  });
+});
+
+describe("Heatmap, Gauge and StateStrip (M2)", () => {
+  it("heatmap cells carry tooltips and intensity steps, empty cells stay muted", () => {
+    const html = render(
+      <Heatmap
+        label="Queue heatmap"
+        rows={["Mon"]}
+        columns={["00", "01"]}
+        max={100}
+        scaleLabels={["no jobs", "short", "long"]}
+        cells={[
+          [
+            { value: 100, title: "Mon 00:00" },
+            { value: null, title: "Mon 01:00" },
+          ],
+        ]}
+      />,
+    );
+    expect(html).toContain('aria-label="Queue heatmap"');
+    expect(html).toContain(
+      'title="Mon 00:00" class="h-4 rounded-[2px] bg-chart-1"',
+    );
+    expect(html).toContain(
+      'title="Mon 01:00" class="h-4 rounded-[2px] bg-muted"',
+    );
+    expect(html).toContain("no jobs");
+  });
+
+  it("gauge positions used, projection and the included marker", () => {
+    const html = render(
+      <Gauge
+        label="gauge"
+        usedPct={25}
+        projectedPct={75}
+        markerPct={50}
+        over={false}
+        legend={{ used: "Used", projected: "Projected", marker: "Included" }}
+      />,
+    );
+    expect(html).toContain('aria-label="gauge"');
+    expect(html).toContain("width:25%");
+    expect(html).toContain("left:25%;width:50%");
+    expect(html).toContain("left:calc(50% - 1px)");
+    expect(html).toContain("Included");
+  });
+
+  it("state strip positions segments and names every state", () => {
+    const html = render(
+      <StateStrip
+        label="status"
+        segments={[{ kind: "busy", from: 0.5, to: 1 }]}
+        stateLabels={{ busy: "busy", idle: "idle", offline: "offline" }}
+        startLabel="a"
+        endLabel="b"
+      />,
+    );
+    expect(html).toContain('aria-label="status"');
+    expect(html).toContain("left:50%");
+    expect(html).toContain('title="busy"');
+    expect(html).toContain(">idle</li>");
+    expect(html).toContain(">offline</li>");
   });
 });

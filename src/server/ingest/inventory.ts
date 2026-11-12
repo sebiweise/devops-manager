@@ -3,6 +3,7 @@ import { env } from "@/env";
 import { isAllowedAccount } from "@/server/authz/config";
 import { db } from "@/server/db";
 import { forgetInstallationTokens } from "@/server/github/app";
+import { revokeCredentialsOfGitHubUser } from "./billing-credential";
 import type {
   AppAuthorizationEvent,
   GhInstallation,
@@ -231,11 +232,14 @@ export async function handleRepositoryEvent(
  * `github_app_authorization.revoked`: a GitHub user revoked the App's user
  * authorisation. The GitHub login link of that user is deleted, and so are the
  * user's sessions (sessions do not record their provider, so all of them go).
+ * A "Connect GitHub" billing credential of that GitHub user is wiped and
+ * marked "reconnect required" (design §3.4).
  */
 export async function handleAppAuthorizationEvent(
   event: AppAuthorizationEvent,
 ) {
   if (event.action !== "revoked") return;
+  await revokeCredentialsOfGitHubUser(BigInt(event.sender.id));
   const accounts = await db.account.findMany({
     where: { providerId: "github", accountId: String(event.sender.id) },
     select: { id: true, userId: true },

@@ -48,6 +48,20 @@ const emptyToUndefined = (value: unknown) =>
 const optionalString = z.preprocess(emptyToUndefined, z.string().optional());
 const flag = (fallback: boolean) =>
   z.preprocess(emptyToUndefined, z.stringbool().default(fallback));
+/**
+ * GITHUB_BILLING_TOKEN: a fine-grained PAT (`github_pat_`), never a classic
+ * token, so the secret cannot do more than read billing (design §3.4).
+ */
+export const billingTokenSchema = z.preprocess(
+  emptyToUndefined,
+  z
+    .string()
+    .regex(
+      /^github_pat_[A-Za-z0-9_]{20,250}$/,
+      "must be a fine-grained personal access token (github_pat_...) with only Plan: read; classic tokens are refused",
+    )
+    .optional(),
+);
 const secret32 = z.string().min(32, "must be at least 32 characters");
 const base64Key = z
   .string()
@@ -129,7 +143,7 @@ export const env = createEnv({
       .min(1, "list the GitHub accounts whose installations are accepted"),
 
     // Personal billing (M2)
-    GITHUB_BILLING_TOKEN: optionalString,
+    GITHUB_BILLING_TOKEN: billingTokenSchema,
     GITHUB_CONNECT_ENABLED: flag(false),
 
     // Management
