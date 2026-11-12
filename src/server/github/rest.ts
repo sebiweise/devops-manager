@@ -324,8 +324,40 @@ export type GhPull = {
   mergeable_state?: string;
   merge_commit_sha?: string | null;
   title?: string;
+  user?: { login: string } | null;
   head: { sha: string };
 };
+
+export type GhPullCommit = {
+  author?: { login: string } | null;
+  commit: { message: string; author?: { name?: string; email?: string } };
+};
+
+const MAX_COMMIT_PAGES = 3; // GitHub lists at most 250 commits of a PR.
+
+/** The commits of a PR (`GET /pulls/{n}/commits`), oldest first. */
+export async function listPullCommits(
+  api: GitHubApi,
+  repo: Repo,
+  number: number,
+): Promise<GhPullCommit[]> {
+  const out: GhPullCommit[] = [];
+  for (let page = 1; page <= MAX_COMMIT_PAGES; page++) {
+    const res = await api.request<GhPullCommit[]>(
+      "GET /repos/{owner}/{repo}/pulls/{pull_number}/commits",
+      {
+        owner: repo.ownerLogin,
+        repo: repo.name,
+        pull_number: number,
+        per_page: 100,
+        page,
+      },
+    );
+    out.push(...res.data);
+    if (res.data.length < 100) break;
+  }
+  return out;
+}
 
 export async function getPull(
   api: GitHubApi,

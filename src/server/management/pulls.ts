@@ -13,9 +13,11 @@ import { githubErrorInfo } from "@/server/github/errors";
 import { mergePurposeFor } from "@/server/github/purposes";
 import {
   getPull,
+  listPullCommits,
   listPullFiles,
   mergePull,
   type GhPull,
+  type GhPullCommit,
   type MergeMethod,
 } from "@/server/github/rest";
 
@@ -34,8 +36,11 @@ import {
  *   `.github/workflows/` changes, `act.merge` otherwise. Both are narrowed to
  *   the PR's repository and never cached.
  * - With MERGE_AUDIT_TRAILER on, the merge commit message gets
- *   `DevOps-Manager-Audit: <auditId>` (no user name or email goes into the
- *   repository).
+ *   `DevOps-Manager-Audit: <auditId>` (no app user's name or email goes into
+ *   the repository), appended to the body GitHub would write by default:
+ *   the PR title for a merge commit, the squashed commit messages and their
+ *   co-authors for a squash. A rebase merge has no merge commit, so it gets
+ *   no trailer; the audit row records `auditTrailer: false`.
  */
 
 export const AUDIT_TRAILER = "DevOps-Manager-Audit";
@@ -50,6 +55,55 @@ export const ACKNOWLEDGEABLE_STATES: ReadonlySet<string> = new Set([
   "behind",
   "has_hooks",
 ]);
+
+const CO_AUTHOR = /^co-authored-by:\s*(.+)$/i;
+
+/**
+ * The commit message for a merge with the audit trailer, or null when the
+ * method writes no merge commit message (rebase). The default body is kept:
+ * the PR title for "merge"; for "squash" the body of a single commit, or the
+ * list of commit messages, with the Co-authored-by trailers GitHub adds for
+ * commit authors other than the PR's author.
+ */
+export function trailerMessage(
+  method: MergeMethod,
+  pull: { title?: string; user?: { login: string } | null },
+  commits: readonly GhPullCommit[],
+  trailer: string,
+): string | null {
+  if (method === "rebase") return null;
+  if (method === "merge")
+    return pull.title ? `${pull.title}\n\n${trailer}` : trailer;
+  const coAuthors: string[] = [];
+  const addCoAuthor = (line: string) => {
+    if (!coAuthors.some((c) => c.toLowerCase() === line.toLowerCase()))
+      coAuthors.push(line);
+  };
+  const bodies = commits.map((c) => {
+    const kept: string[] = [];
+    for (const line of c.commit.message.replace(/\r\n/g, "\n").split("\n")) {
+      const m = line.trim().match(CO_AUTHOR);
+      if (m) addCoAuthor(`Co-authored-by: ${m[1]!.trim()}`);
+      else kept.push(line);
+    }
+    return kept.join("\n").trim();
+  });
+  for (const c of commits) {
+    const { name, email } = c.commit.author ?? {};
+    if (c.author?.login && c.author.login === pull.user?.login) continue;
+    if (name && email) addCoAuthor(`Co-authored-by: ${name} <${email}>`);
+  }
+  const body =
+    bodies.length === 1
+      ? bodies[0]!.split("\n").slice(1).join("\n").trim()
+      : bodies
+          .filter((b) => b.length > 0)
+          .map((b) => `* ${b}`)
+          .join("\n\n");
+  return [body, [...coAuthors, trailer].join("\n")]
+    .filter((part) => part.length > 0)
+    .join("\n\n");
+}
 
 export type MergeInput = {
   installationId: bigint;
@@ -102,12 +156,16 @@ export async function mergePullRequest(
   const { session } = begun;
   if (repo.archived) return { status: "refused", reason: "archived" };
 
+  const trailer = deps.mergeAuditTrailer && input.method !== "rebase";
   let pull: GhPull;
   let files: string[];
+  let commits: GhPullCommit[] = [];
   try {
     const read = await session.api("read.pulls", [repo.id]);
     pull = await getPull(read, repo, input.number);
     files = await listPullFiles(read, repo, input.number);
+    if (trailer && input.method === "squash")
+      commits = await listPullCommits(read, repo, input.number);
   } catch (error) {
     const info = githubErrorInfo(error);
     if (info.status === 404)
@@ -171,6 +229,7 @@ export async function mergePullRequest(
         workflowsTouched,
         mergeableState: state,
         acknowledgedNotClean: state !== "clean",
+        auditTrailer: trailer,
       },
     },
     purpose,
@@ -179,8 +238,16 @@ export async function mergePullRequest(
       const res = await mergePull(api, repo, input.number, {
         sha: input.sha,
         method: input.method,
-        ...(deps.mergeAuditTrailer
-          ? { commitMessage: `${AUDIT_TRAILER}: ${auditId}` }
+        ...(trailer
+          ? {
+              commitMessage:
+                trailerMessage(
+                  input.method,
+                  pull,
+                  commits,
+                  `${AUDIT_TRAILER}: ${auditId}`,
+                ) ?? undefined,
+            }
           : {}),
       });
       let after: GhPull | null = null;

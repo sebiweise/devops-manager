@@ -163,7 +163,9 @@ export function MergePanel({
       ) : null}
       <p className="text-xs text-muted-foreground">
         {tm("actingAsNote")}
-        {mergeAuditTrailer ? ` ${t("trailerNote")}` : ""}
+        {mergeAuditTrailer
+          ? ` ${t(method === "rebase" ? "trailerRebaseNote" : "trailerNote")}`
+          : ""}
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <Button

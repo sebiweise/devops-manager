@@ -127,7 +127,11 @@ repositories. Every action is audited with the app user who triggered it.
 
 - `MERGE_AUDIT_TRAILER=true` adds `DevOps-Manager-Audit: <auditId>` to merge
   commits, so a merge by the App's bot can be traced to its audit entry
-  without putting a user's name or email into the repository.
+  without putting a user's name or email into the repository. The trailer
+  is appended to GitHub's default body (the PR title for a merge commit, the
+  squashed commit messages with their `Co-authored-by` lines for a squash).
+  A rebase merge writes no merge commit, so it gets no trailer; the audit
+  entry records `auditTrailer: false`.
 - Variables are not secrets. With the installation's redaction setting on,
   viewers and operators see values masked, and the audit log stores only a
   sha256 and the length, plus a copy sealed with `TOKEN_ENCRYPTION_KEY` so a

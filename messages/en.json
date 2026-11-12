@@ -1035,6 +1035,7 @@
       "manyFilesNote": "This pull request changes more than 100 files. The server checks for workflow changes before merging.",
       "acknowledge": "GitHub reports the merge state {state}, not CLEAN. Merge anyway.",
       "trailerNote": "The merge commit gets a DevOps-Manager-Audit trailer with the audit entry id.",
+      "trailerRebaseNote": "A rebase merge writes no merge commit, so it gets no DevOps-Manager-Audit trailer; the audit entry notes that.",
       "merge": "Merge",
       "merging": "Merging…",
       "mergeFor": "Merge pull request #{number} in {repo}",

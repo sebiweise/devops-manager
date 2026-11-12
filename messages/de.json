@@ -1035,6 +1035,7 @@
       "manyFilesNote": "Dieser Pull Request ändert mehr als 100 Dateien. Der Server prüft vor dem Merge auf Workflow-Änderungen.",
       "acknowledge": "GitHub meldet den Merge-Status {state}, nicht CLEAN. Trotzdem mergen.",
       "trailerNote": "Der Merge-Commit erhält einen DevOps-Manager-Audit-Trailer mit der Id des Audit-Eintrags.",
+      "trailerRebaseNote": "Ein Rebase-Merge schreibt keinen Merge-Commit und erhält daher keinen DevOps-Manager-Audit-Trailer; der Audit-Eintrag vermerkt das.",
       "merge": "Mergen",
       "merging": "Wird gemergt…",
       "mergeFor": "Pull Request #{number} in {repo} mergen",

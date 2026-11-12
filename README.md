@@ -346,7 +346,9 @@ app user triggered the action, their role and sign-in provider.
   uses the `Workflows` permission only for PRs that change
   `.github/workflows`. Without `Workflows: write` such PRs show why they
   cannot be merged. `MERGE_AUDIT_TRAILER=true` adds a
-  `DevOps-Manager-Audit: <auditId>` trailer to merge commits.
+  `DevOps-Manager-Audit: <auditId>` trailer to merge and squash commits,
+  after GitHub's default body (the PR title, or the squashed commit messages
+  and their co-authors); a rebase merge has no merge commit and gets none.
 - **Dependabot** (`/o/<account>/dependabot`, and the repository's tab):
   read-only alerts by severity and repository, with package, ecosystem,
   advisory, fixed-in version and the matching open Dependabot PR.

@@ -46,6 +46,12 @@ export type FakePull = {
   author: string;
   checks: string | null;
   mergeCommitSha?: string;
+  commits: Array<{
+    message: string;
+    login: string;
+    name: string;
+    email: string;
+  }>;
 };
 
 export type Token = {
@@ -151,6 +157,14 @@ export class FakeManagedGitHub {
       files: ["package.json"],
       author: "dependabot[bot]",
       checks: "SUCCESS",
+      commits: [
+        {
+          message: `Bump example-lib\n\nBumps example-lib to ${pull.number}.0.0.`,
+          login: pull.author ?? "dependabot[bot]",
+          name: "dependabot[bot]",
+          email: "bot@example.com",
+        },
+      ],
       ...pull,
     };
     this.pulls.set(`${pull.repoId}#${pull.number}`, full);
@@ -408,8 +422,26 @@ export class FakeManagedGitHub {
           mergeable: pr.mergeable,
           mergeable_state: pr.mergeableState,
           merge_commit_sha: pr.mergeCommitSha ?? null,
+          user: { login: pr.author },
           head: { sha: pr.headSha },
         });
+      }
+      case "GET /repos/{owner}/{repo}/pulls/{pull_number}/commits": {
+        const repo = this.repoOf(token, p);
+        this.need(token, "pull_requests", "read");
+        const pr = this.pulls.get(`${repo.id}#${Number(p.pull_number)}`);
+        if (!pr) this.fail(404, "Not Found");
+        const perPage = Number(p.per_page ?? 30);
+        const page = Number(p.page ?? 1);
+        return this.ok(
+          pr.commits.slice((page - 1) * perPage, page * perPage).map((c) => ({
+            author: { login: c.login },
+            commit: {
+              message: c.message,
+              author: { name: c.name, email: c.email },
+            },
+          })),
+        );
       }
       case "GET /repos/{owner}/{repo}/pulls/{pull_number}/files": {
         const repo = this.repoOf(token, p);

@@ -1556,9 +1556,75 @@ describe.skipIf(!DATABASE_URL)("management", () => {
         deps({ mergeAuditTrailer: true }),
       );
       if (res.status !== "succeeded") throw new Error(res.status);
+      // A single-commit squash keeps the commit's body.
       expect(gh.writes()[0]!.params.commit_message).toBe(
-        `DevOps-Manager-Audit: ${res.auditId}`,
+        `Bumps example-lib to 7.0.0.\n\nDevOps-Manager-Audit: ${res.auditId}`,
       );
+
+      // A multi-commit squash keeps the commit list and the co-authors.
+      gh.addPull({
+        repoId: 11,
+        number: 8,
+        author: "example-user",
+        commits: [
+          {
+            message: "Add feature\n\nCo-authored-by: Pair <pair@example.com>",
+            login: "example-user",
+            name: "Example User",
+            email: "user@example.com",
+          },
+          {
+            message: "Fix tests",
+            login: "example-helper",
+            name: "Example Helper",
+            email: "helper@example.com",
+          },
+        ],
+      });
+      const squash = await merge(
+        "ADMIN",
+        { number: 8 },
+        deps({ mergeAuditTrailer: true }),
+      );
+      if (squash.status !== "succeeded") throw new Error(squash.status);
+      expect(gh.writes()[1]!.params.commit_message).toBe(
+        [
+          "* Add feature",
+          "",
+          "* Fix tests",
+          "",
+          "Co-authored-by: Pair <pair@example.com>",
+          "Co-authored-by: Example Helper <helper@example.com>",
+          `DevOps-Manager-Audit: ${squash.auditId}`,
+        ].join("\n"),
+      );
+
+      // A merge commit keeps the PR title as its body.
+      gh.addPull({ repoId: 11, number: 9 });
+      const mergeCommit = await merge(
+        "ADMIN",
+        { number: 9, method: "merge" },
+        deps({ mergeAuditTrailer: true }),
+      );
+      if (mergeCommit.status !== "succeeded")
+        throw new Error(mergeCommit.status);
+      expect(gh.writes()[2]!.params.commit_message).toBe(
+        `Update dependency 9\n\nDevOps-Manager-Audit: ${mergeCommit.auditId}`,
+      );
+
+      // A rebase has no merge commit: no message, recorded in the audit row.
+      gh.addPull({ repoId: 11, number: 10 });
+      const rebase = await merge(
+        "ADMIN",
+        { number: 10, method: "rebase" },
+        deps({ mergeAuditTrailer: true }),
+      );
+      if (rebase.status !== "succeeded") throw new Error(rebase.status);
+      expect(gh.writes()[3]!.params.commit_message).toBeUndefined();
+      const rows = await auditRows();
+      expect(
+        rows.map((r) => (r.params as { auditTrailer: boolean }).auditTrailer),
+      ).toEqual([true, true, true, false]);
     });
 
     it("lists open PRs with checks, mergeability and chips", async () => {
