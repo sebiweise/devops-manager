@@ -364,7 +364,9 @@
       "pulls": "Pull requests",
       "variables": "Variables",
       "dependabot": "Dependabot"
-    }
+    },
+    "openAlerts": "Open alerts",
+    "alertsTab": "{count} · {high} high"
   },
   "runs": {
     "filters": "Run filters",
@@ -382,7 +384,8 @@
     "attempt": "attempt {n}",
     "first": "Newest runs",
     "older": "Older runs",
-    "actions": "Actions"
+    "actions": "Actions",
+    "trigger": "Branch · event · actor"
   },
   "status": {
     "SUCCESS": "success",
@@ -463,7 +466,18 @@
     "selfHostedP95": "Self-hosted p95",
     "queueCompare": "Queue time, 95 % (hosted / self-hosted)",
     "delta": "Δ p50",
-    "recentRuns": "Recent runs"
+    "recentRuns": "Recent runs",
+    "subtitle": "last {range}",
+    "flakyHint": "{rate} flaky ({count} recovered on re-run)",
+    "firstTryLabel": "First-try success",
+    "firstTryInfo": "Runs that succeeded on their first attempt, without a re-run.",
+    "p50Info": "Half of the runs took less than this total duration.",
+    "moreCharts": "More charts: success rate, queue time, minutes",
+    "slowestJobs": "Slowest jobs",
+    "jobsHint": "One row per job and runner group (labels); sorted by 95 % duration.",
+    "showTop": "Show the top {n} only",
+    "showAll": "Show all {n} jobs",
+    "compareHint": "Jobs with at least 5 runs on each kind; Δ is the change of the typical duration on self-hosted runners."
   },
   "run": {
     "noRunner": "no runner",
@@ -1380,7 +1394,8 @@
     "banner": {
       "title": "This repository is ignored. No data is loaded for it.",
       "purging": "Deleting stored data…",
-      "since": "Ignored {when}."
+      "since": "Ignored {when}.",
+      "at": "Ignored on"
     },
     "settings": {
       "title": "Ignored repositories ({count})",

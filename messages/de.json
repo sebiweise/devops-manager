@@ -364,7 +364,9 @@
       "pulls": "Pull Requests",
       "variables": "Variablen",
       "dependabot": "Dependabot"
-    }
+    },
+    "openAlerts": "Offene Warnungen",
+    "alertsTab": "{count} · {high} hoch"
   },
   "runs": {
     "filters": "Lauffilter",
@@ -382,7 +384,8 @@
     "attempt": "Versuch {n}",
     "first": "Neueste Läufe",
     "older": "Ältere Läufe",
-    "actions": "Aktionen"
+    "actions": "Aktionen",
+    "trigger": "Branch · Ereignis · Auslöser"
   },
   "status": {
     "SUCCESS": "erfolgreich",
@@ -463,7 +466,18 @@
     "selfHostedP95": "Selbst gehostet p95",
     "queueCompare": "Wartezeit, 95 % (gehostet / selbst gehostet)",
     "delta": "Δ p50",
-    "recentRuns": "Letzte Läufe"
+    "recentRuns": "Letzte Läufe",
+    "subtitle": "letzte {range}",
+    "flakyHint": "{rate} instabil ({count} bei Wiederholung ok)",
+    "firstTryLabel": "Erfolg im ersten Versuch",
+    "firstTryInfo": "Läufe, die im ersten Versuch erfolgreich waren, ohne Wiederholung.",
+    "p50Info": "Die Hälfte der Läufe brauchte weniger als diese Gesamtdauer.",
+    "moreCharts": "Weitere Diagramme: Erfolgsquote, Wartezeit, Minuten",
+    "slowestJobs": "Langsamste Jobs",
+    "jobsHint": "Eine Zeile pro Job und Runner-Gruppe (Labels); sortiert nach 95-%-Dauer.",
+    "showTop": "Nur die ersten {n} zeigen",
+    "showAll": "Alle {n} Jobs zeigen",
+    "compareHint": "Jobs mit mindestens 5 Läufen je Art; Δ ist die Änderung der typischen Dauer auf Self-hosted Runnern."
   },
   "run": {
     "noRunner": "kein Runner",
@@ -1380,7 +1394,8 @@
     "banner": {
       "title": "Dieses Repository wird ignoriert. Es werden keine Daten geladen.",
       "purging": "Gespeicherte Daten werden gelöscht…",
-      "since": "Ignoriert {when}."
+      "since": "Ignoriert {when}.",
+      "at": "Ignoriert am"
     },
     "settings": {
       "title": "Ignorierte Repositories ({count})",

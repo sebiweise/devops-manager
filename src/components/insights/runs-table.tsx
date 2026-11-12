@@ -1,23 +1,20 @@
 import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { EmptyState } from "@/components/data/empty-state";
+import { RunStatusBadge } from "@/components/data/status-badge";
 import { RunActions } from "@/components/management/run-actions";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { formatDuration, shortSha } from "@/lib/format";
 import type { RunListItem } from "@/server/data/insights";
-import { StatusBadge } from "./status-badge";
-import { runHref } from "./workflow-link";
+import { runHref, workflowHref } from "./workflow-link";
 
 /**
- * Paginated run list (repo detail and workflow pages). With `actions` (only
- * passed for operators and admins while management is on) each row gets
- * re-run, re-run failed and cancel; force cancel lives on the run page.
+ * The run list of the repository's Runs tab and the workflow page (UI
+ * overhaul §2.7): run number with attempt and commit, status badge,
+ * workflow, the trigger (branch · event · actor) as one muted line,
+ * duration and age. With `actions` (operators and admins while management
+ * is on) each row gets re-run, re-run failed and cancel; force cancel lives
+ * on the run page. Below `md` the trigger moves into the row expander.
  */
 export async function RunsTable({
   accountLogin,
@@ -25,97 +22,153 @@ export async function RunsTable({
   caption,
   showWorkflow = true,
   actions,
+  now = new Date(),
 }: {
   accountLogin: string;
   runs: ReadonlyArray<RunListItem>;
   caption: string;
   showWorkflow?: boolean;
   actions?: { installationId: string };
+  now?: Date;
 }) {
   const t = await getTranslations("runs");
   const format = await getFormatter();
-  if (runs.length === 0)
-    return <p className="text-sm text-muted-foreground">{t("empty")}</p>;
+  const columns: Column<RunListItem>[] = [
+    {
+      id: "run",
+      label: t("run"),
+      header: t("run"),
+      cell: (r) => (
+        <div className="flex flex-col">
+          <span className="flex items-baseline gap-1.5">
+            <Link
+              href={runHref(accountLogin, r.id)}
+              className="font-medium underline-offset-2 hover:underline"
+            >
+              {r.runNumber != null ? `#${r.runNumber}` : r.id}
+            </Link>
+            {r.runAttempt > 1 ? (
+              <span className="text-xs text-muted-foreground">
+                {t("attempt", { n: r.runAttempt })}
+              </span>
+            ) : null}
+          </span>
+          <span className="font-mono text-xs text-muted-foreground">
+            {shortSha(r.headSha)}
+          </span>
+        </div>
+      ),
+    },
+    {
+      id: "status",
+      label: t("status"),
+      header: t("status"),
+      cell: (r) => (
+        <RunStatusBadge status={r.status} conclusion={r.conclusion} />
+      ),
+    },
+    ...(showWorkflow
+      ? [
+          {
+            id: "workflow",
+            label: t("workflow"),
+            header: t("workflow"),
+            className: "max-w-48 truncate",
+            cell: (r: RunListItem) =>
+              r.workflowId ? (
+                <Link
+                  href={workflowHref(
+                    accountLogin,
+                    r.repoFullName,
+                    r.workflowId,
+                  )}
+                  className="underline-offset-2 hover:underline"
+                >
+                  {r.workflowName}
+                </Link>
+              ) : (
+                r.workflowName
+              ),
+          } satisfies Column<RunListItem>,
+        ]
+      : []),
+    {
+      id: "trigger",
+      label: t("trigger"),
+      header: t("trigger"),
+      hideBelow: "md",
+      className: "max-w-64",
+      cell: (r) => (
+        <span className="flex min-w-0 flex-wrap gap-x-1.5 text-sm">
+          <span className="max-w-40 truncate font-medium">
+            {r.headBranch ?? "—"}
+          </span>
+          <span className="text-muted-foreground">
+            {[r.event, r.actorLogin].filter(Boolean).join(" · ")}
+          </span>
+        </span>
+      ),
+    },
+    {
+      id: "duration",
+      label: t("duration"),
+      header: t("duration"),
+      align: "right",
+      cell: (r) => formatDuration(r.durationS),
+    },
+    {
+      id: "created",
+      label: t("created"),
+      header: t("created"),
+      align: "right",
+      hideBelow: "md",
+      cell: (r) => (
+        <time
+          dateTime={r.createdAt}
+          title={format.dateTime(new Date(r.createdAt), {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })}
+          className="text-xs whitespace-nowrap text-muted-foreground"
+        >
+          {format.relativeTime(new Date(r.createdAt), now)}
+        </time>
+      ),
+    },
+    ...(actions
+      ? [
+          {
+            id: "actions",
+            label: t("actions"),
+            header: t("actions"),
+            hideBelow: "md" as const,
+            cell: (r: RunListItem) => (
+              <RunActions
+                installationId={actions.installationId}
+                compact
+                run={{
+                  id: r.id,
+                  repoFullName: r.repoFullName,
+                  workflowName: r.workflowName,
+                  runNumber: r.runNumber,
+                  runAttempt: r.runAttempt,
+                  status: r.status,
+                  conclusion: r.conclusion,
+                  isPlaceholder: r.isPlaceholder,
+                }}
+              />
+            ),
+          } satisfies Column<RunListItem>,
+        ]
+      : []),
+  ];
   return (
-    <Table>
-      <caption className="sr-only">{caption}</caption>
-      <TableHeader>
-        <TableRow>
-          <TableHead>{t("run")}</TableHead>
-          {showWorkflow ? <TableHead>{t("workflow")}</TableHead> : null}
-          <TableHead>{t("status")}</TableHead>
-          <TableHead>{t("branch")}</TableHead>
-          <TableHead>{t("event")}</TableHead>
-          <TableHead>{t("actor")}</TableHead>
-          <TableHead className="text-right">{t("duration")}</TableHead>
-          <TableHead className="text-right">{t("created")}</TableHead>
-          {actions ? <TableHead>{t("actions")}</TableHead> : null}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {runs.map((r) => (
-          <TableRow key={r.id}>
-            <TableCell>
-              <Link
-                href={runHref(accountLogin, r.id)}
-                className="font-medium underline-offset-2 hover:underline"
-              >
-                {r.runNumber != null ? `#${r.runNumber}` : r.id}
-              </Link>
-              {r.runAttempt > 1 ? (
-                <span className="ml-1 text-xs text-muted-foreground">
-                  {t("attempt", { n: r.runAttempt })}
-                </span>
-              ) : null}
-              <div className="font-mono text-xs text-muted-foreground">
-                {shortSha(r.headSha)}
-              </div>
-            </TableCell>
-            {showWorkflow ? (
-              <TableCell className="max-w-48 truncate">
-                {r.workflowName}
-              </TableCell>
-            ) : null}
-            <TableCell>
-              <StatusBadge status={r.status} conclusion={r.conclusion} />
-            </TableCell>
-            <TableCell className="max-w-40 truncate">
-              {r.headBranch ?? "—"}
-            </TableCell>
-            <TableCell>{r.event ?? "—"}</TableCell>
-            <TableCell>{r.actorLogin ?? "—"}</TableCell>
-            <TableCell className="text-right tabular-nums">
-              {formatDuration(r.durationS)}
-            </TableCell>
-            <TableCell className="text-right text-xs whitespace-nowrap text-muted-foreground">
-              <time dateTime={r.createdAt}>
-                {format.dateTime(new Date(r.createdAt), {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                })}
-              </time>
-            </TableCell>
-            {actions ? (
-              <TableCell>
-                <RunActions
-                  installationId={actions.installationId}
-                  compact
-                  run={{
-                    id: r.id,
-                    repoFullName: r.repoFullName,
-                    workflowName: r.workflowName,
-                    runNumber: r.runNumber,
-                    runAttempt: r.runAttempt,
-                    status: r.status,
-                    conclusion: r.conclusion,
-                    isPlaceholder: r.isPlaceholder,
-                  }}
-                />
-              </TableCell>
-            ) : null}
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <DataTable
+      caption={caption}
+      columns={columns}
+      rows={runs}
+      rowKey={(r) => r.id}
+      empty={<EmptyState quiet message={t("empty")} />}
+    />
   );
 }
