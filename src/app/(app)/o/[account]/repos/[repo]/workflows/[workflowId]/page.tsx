@@ -41,6 +41,7 @@ import {
   listRuns,
   parseRange,
 } from "@/server/data/insights";
+import { getManagementState } from "@/server/data/management";
 
 export const metadata = { title: "Workflow" };
 
@@ -69,9 +70,10 @@ export default async function WorkflowPage({
   // The workflow must belong to the repository of the URL.
   if (detail.repositoryId !== repo.id) notFound();
 
-  const [t, locale, recent] = await Promise.all([
+  const [t, locale, state, recent] = await Promise.all([
     getTranslations(),
     getLocale(),
+    orNotFound(getManagementState(scope, installation.id)),
     orNotFound(
       listRuns(scope, installation.id, {
         repositoryId: BigInt(repo.id),
@@ -321,6 +323,11 @@ export default async function WorkflowPage({
           runs={recent.runs}
           caption={t("workflow.recentRuns")}
           showWorkflow={false}
+          actions={
+            state.canOperate
+              ? { installationId: String(installation.id) }
+              : undefined
+          }
         />
       </section>
     </div>

@@ -6,6 +6,12 @@ import { RunFilters } from "@/components/insights/run-filters";
 import { RunsTable } from "@/components/insights/runs-table";
 import { repoHref } from "@/components/insights/workflow-link";
 import { WorkflowsTable } from "@/components/insights/workflows-table";
+import { ManagementBanner } from "@/components/management/management-banner";
+import {
+  DependabotSection,
+  PullsSection,
+  VariablesSection,
+} from "@/components/management/sections";
 import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
 import {
   decodeCursor,
@@ -17,16 +23,22 @@ import {
   type SearchParams,
 } from "@/lib/insights-view";
 import { cn } from "@/lib/utils";
+import { hasRole } from "@/server/authz/roles";
 import {
   findRepositoryByName,
   listRuns,
   listWorkflowStats,
   parseRange,
 } from "@/server/data/insights";
+import {
+  getManagementState,
+  type ManagementState,
+} from "@/server/data/management";
 
 export const metadata = { title: "Repository" };
 
-const TABS = ["workflows", "runs"] as const;
+const TABS = ["workflows", "runs", "pulls", "variables", "dependabot"] as const;
+type Tab = (typeof TABS)[number];
 
 export default async function RepoPage({
   params,
@@ -45,10 +57,30 @@ export default async function RepoPage({
   );
   if (!repo) notFound();
 
-  const t = await getTranslations();
+  const [t, state] = await Promise.all([
+    getTranslations(),
+    orNotFound(getManagementState(scope, installation.id)),
+  ]);
   const login = installation.accountLogin;
   const base = repoHref(login, repo.fullName);
-  const tab = param(sp, "tab") === "runs" ? "runs" : "workflows";
+  const requested = param(sp, "tab");
+  const tab: Tab = (TABS as readonly string[]).includes(requested ?? "")
+    ? (requested as Tab)
+    : "workflows";
+  const section = {
+    scope,
+    installationId: installation.id,
+    accountLogin: login,
+    state,
+    repositoryId: String(repo.id),
+  };
+  // Run actions need operator, merges and variable edits admin.
+  const bannerRole =
+    tab === "runs"
+      ? "OPERATOR"
+      : tab === "pulls" || tab === "variables"
+        ? "ADMIN"
+        : null;
   const range = parseRange(param(sp, "range") ?? "30d");
 
   return (
@@ -94,9 +126,33 @@ export default async function RepoPage({
           </Link>
         ))}
       </nav>
-      <p className="text-xs text-muted-foreground">{t("repo.laterTabs")}</p>
+      {bannerRole && hasRole(scope.role, bannerRole) ? (
+        <ManagementBanner
+          state={state}
+          settingsHref={
+            hasRole(scope.role, "ADMIN")
+              ? accountPath(login, "/settings")
+              : undefined
+          }
+        />
+      ) : null}
 
-      {tab === "workflows" ? (
+      {tab === "pulls" ? (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-medium">{t("repo.tab.pulls")}</h2>
+          <PullsSection {...section} />
+        </section>
+      ) : tab === "variables" ? (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-medium">{t("repo.tab.variables")}</h2>
+          <VariablesSection {...section} />
+        </section>
+      ) : tab === "dependabot" ? (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-medium">{t("repo.tab.dependabot")}</h2>
+          <DependabotSection {...section} />
+        </section>
+      ) : tab === "workflows" ? (
         <WorkflowsTab
           scope={scope}
           installationId={installation.id}
@@ -114,6 +170,7 @@ export default async function RepoPage({
           login={login}
           base={base}
           sp={sp}
+          state={state}
         />
       )}
     </div>
@@ -164,7 +221,8 @@ async function RunsTab({
   login,
   base,
   sp,
-}: TabProps) {
+  state,
+}: TabProps & { state: ManagementState }) {
   const t = await getTranslations();
   const values = {
     branch: textFilter(param(sp, "branch")),
@@ -189,6 +247,11 @@ async function RunsTab({
         accountLogin={login}
         runs={runs}
         caption={t("repo.tab.runs")}
+        actions={
+          state.canOperate
+            ? { installationId: String(installationId) }
+            : undefined
+        }
       />
       <div className="flex gap-3 text-sm">
         {before ? (

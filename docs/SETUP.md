@@ -98,3 +98,52 @@ With Docker secrets use `GITHUB_APP_PRIVATE_KEY_FILE=/run/secrets/github_app_key
 The App acts as itself (`<slug>[bot]`). Rulesets and branch protection apply
 to it like to any actor. If merges by the App should bypass a ruleset, add the
 App to the ruleset's bypass list; the app never does this on its own.
+
+## Management
+
+Management actions (re-run and cancel, variables, merges) are performed by the
+App with installation tokens narrowed to the action and its target
+repositories. Every action is audited with the app user who triggered it.
+
+- `MANAGEMENT_ENABLED=false` is the global kill switch: every action answers
+  403 and the instance is read-only. Pair it with the read-only manifest.
+- Each installation also has its own toggle, **off by default**. An admin turns
+  it on in the installation settings; the change is audited.
+- Roles: viewers read, operators re-run and cancel, admins manage variables,
+  merge pull requests and change settings. Roles are re-resolved on every
+  action, so an allowlist change takes effect immediately.
+- `VARIABLE_PRESETS` lists the runs-on switch variables offered for bulk
+  changes. The default is `LINUX_RUNNER` (`self-hosted`, `ubuntu-latest`) and
+  `MACOS_RUNNER` (`self-hosted`, `macos-latest`) at repository scope. Put
+  instance-specific values, such as the label of your own runner pool, in the
+  instance env only, for example:
+
+  ```sh
+  VARIABLE_PRESETS='[{"name":"LINUX_RUNNER","values":["runner-1","ubuntu-latest"],"scope":"repository"}]'
+  ```
+
+  Workflows consume the variable with a fallback:
+  `runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}`.
+
+- `MERGE_AUDIT_TRAILER=true` adds `DevOps-Manager-Audit: <auditId>` to merge
+  commits, so a merge by the App's bot can be traced to its audit entry
+  without putting a user's name or email into the repository. The trailer
+  is appended to GitHub's default body (the PR title for a merge commit, the
+  squashed commit messages with their `Co-authored-by` lines for a squash).
+  A rebase merge writes no merge commit, so it gets no trailer; the audit
+  entry records `auditTrailer: false`.
+- Variables are not secrets. With the installation's redaction setting on,
+  viewers and operators see values masked, and the audit log stores only a
+  sha256 and the length, plus a copy sealed with `TOKEN_ENCRYPTION_KEY` so a
+  bulk change can still be reverted. Sealed copies stay readable through one
+  key rotation (`TOKEN_ENCRYPTION_KEY_PREVIOUS`); batches recorded under an
+  older key can no longer be reverted.
+- The audit log is hash-chained per installation. **Verify** recomputes the
+  chain and reports the first entry that was changed, removed or inserted
+  outside the app. Final outcomes are sealed with a result hash; an outcome
+  edited back to `PENDING`, a removed result hash or an entry without an
+  outcome for over an hour is reported as well. The newest entry of each
+  chain is also kept in `AuditChainHead` (a trigger lets it only move
+  forward) and logged as `audit chain head`, so removing the newest entries
+  is detected. Keep the application logs in an external sink if the head
+  should survive a full database rewrite.
