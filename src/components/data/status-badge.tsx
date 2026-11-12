@@ -13,6 +13,8 @@ import {
   Hourglass,
   LoaderCircle,
   Lock,
+  TrendingDown,
+  TrendingUp,
   TriangleAlert,
   Unplug,
   UserRoundCheck,
@@ -64,6 +66,9 @@ const DEFS = {
   archived: { icon: Archive, tone: "muted" },
   fork: { icon: GitFork, tone: "muted" },
   ignored: { icon: EyeOff, tone: "muted", info: true },
+  // workflows
+  regression: { icon: TrendingUp, tone: "warning", info: true },
+  successDrop: { icon: TrendingDown, tone: "warning", info: true },
   // costs
   deviation: { icon: TriangleAlert, tone: "warning", info: true },
 } as const satisfies Record<string, BadgeDef>;

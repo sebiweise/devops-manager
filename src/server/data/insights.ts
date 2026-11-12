@@ -1153,16 +1153,29 @@ export async function listWorkflowStatsPage(
   installationId: bigint,
   query: WorkflowQuery,
   now: Date = new Date(),
-): Promise<Page<WorkflowStat> & { repositories: number }> {
+): Promise<
+  Page<WorkflowStat> & {
+    repositories: number;
+    /** Workflows with runs in the range, before search and filters. */
+    workflows: number;
+    /** Repositories with runs in the range, for the repository filter. */
+    repositoryOptions: Array<{ id: string; fullName: string }>;
+  }
+> {
   const all = await listWorkflowStats(
     scope,
     installationId,
     { range: query.range ?? "7d" },
     now,
   );
+  const repos = new Map(all.map((w) => [w.repositoryId, w.repoFullName]));
   return {
     ...pageWorkflows(all, query),
-    repositories: new Set(all.map((w) => w.repositoryId)).size,
+    repositories: repos.size,
+    workflows: all.length,
+    repositoryOptions: [...repos.entries()]
+      .map(([id, fullName]) => ({ id, fullName }))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName)),
   };
 }
 

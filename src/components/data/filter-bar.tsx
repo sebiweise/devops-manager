@@ -255,6 +255,50 @@ export function QuickViews({
   );
 }
 
+/**
+ * A select that writes one URL param (e.g. the repository filter `?repo=`);
+ * the empty option removes it.
+ */
+export function ParamSelect({
+  label,
+  param,
+  options,
+  allLabel,
+}: {
+  label: string;
+  param: string;
+  options: ReadonlyArray<{ value: string; label: string }>;
+  allLabel: string;
+}) {
+  const router = useRouter();
+  const sp = useSearchParams();
+  const href = useHref();
+  const id = useId();
+  const value = first(new URLSearchParams(sp.toString()), param) ?? "";
+  return (
+    <span className="flex items-center gap-2 text-sm">
+      <label htmlFor={id} className="text-muted-foreground">
+        {label}
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) =>
+          router.replace(href({ [param]: e.target.value || undefined }))
+        }
+        className="h-8 max-w-56 rounded-md border bg-background px-2 text-sm"
+      >
+        <option value="">{allLabel}</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
+}
+
 /** "Clear filters", shown only while a search or filter is active. */
 export function ClearFilters({ keys = ["q", "f"] }: { keys?: string[] }) {
   const t = useTranslations("table");

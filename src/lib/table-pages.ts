@@ -5,7 +5,7 @@ import type {
   QueueJobDto,
   RunnerDto,
 } from "@/server/data/runners";
-import { MIN_SAMPLES } from "./insights-view";
+import { enoughData, MIN_SAMPLES } from "./insights-view";
 import { pageRows, type Page } from "./paging";
 import type {
   CostRepoFilter,
@@ -65,8 +65,9 @@ export function pageWorkflows(
       runs: (w) => w.summary.runs,
       success: (w) => w.summary.successRate,
       flaky: (w) => w.summary.flakyRate,
-      p50: (w) => w.summary.p50,
-      p95: (w) => w.summary.p95,
+      // Percentiles of too few runs sort last, like the "few runs" cell.
+      p50: (w) => (enoughData(w.summary.n) ? w.summary.p50 : null),
+      p95: (w) => (enoughData(w.summary.n) ? w.summary.p95 : null),
       minutes: (w) => w.billableMinEst,
     },
     tiebreak: (a, b) =>

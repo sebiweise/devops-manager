@@ -412,8 +412,36 @@
     "workflow": "Workflow",
     "runs": "Läufe",
     "success": "Erfolg",
-    "regressionBadge": "{metric}-Regression",
-    "successDropBadge": "Erfolgseinbruch"
+    "regressionBadge": "{metric} langsamer",
+    "successDropBadge": "Erfolg eingebrochen",
+    "subtitle": "{workflows, plural, =0 {Keine Workflows} one {# Workflow} other {# Workflows}} in {repos, plural, one {# Repository} other {# Repositories}} · letzte {range}",
+    "aboutValues": "Zu diesen Werten",
+    "search": "Workflow oder Repository suchen",
+    "repoFilter": "Repository",
+    "allRepos": "Alle Repositories",
+    "noMatch": "Kein Workflow passt zum Filter.",
+    "fewRuns": "wenige Läufe",
+    "flaky": "Instabil",
+    "flakySub": "bei Wiederholung ok",
+    "p50Short": "Typisch",
+    "p50Sub": "Median",
+    "p95Short": "95 % innerhalb",
+    "p95Sub": "Dauer",
+    "chips": {
+      "label": "Workflows filtern",
+      "regressed": "Langsamer geworden",
+      "flaky": "Instabil",
+      "lowSuccess": "Niedriger Erfolg"
+    },
+    "sortBy": {
+      "name": "Name {dir, select, asc {A–Z} other {Z–A}}",
+      "runs": "Läufe {dir, select, asc {wenigste zuerst} other {meiste zuerst}}",
+      "success": "Erfolg {dir, select, asc {niedrigster zuerst} other {höchster zuerst}}",
+      "flaky": "Instabil {dir, select, asc {wenigste zuerst} other {meiste zuerst}}",
+      "p50": "Typische Dauer {dir, select, asc {kürzeste zuerst} other {längste zuerst}}",
+      "p95": "95-%-Dauer {dir, select, asc {kürzeste zuerst} other {längste zuerst}}",
+      "minutes": "Minuten {dir, select, asc {wenigste zuerst} other {meiste zuerst}}"
+    }
   },
   "workflow": {
     "notEnough": "Nur {n} abgeschlossene Läufe in diesem Zeitraum; Perzentile brauchen mindestens {min}.",
@@ -465,11 +493,11 @@
   },
   "leaderboards": {
     "title": "Workflows",
-    "slowest": "Am langsamsten (95 %)",
-    "flakiest": "Am instabilsten",
-    "mostMinutes": "Meiste geschätzte Minuten",
-    "lowestSuccess": "Niedrigste Erfolgsquote",
-    "regressions": "Größte Regressionen",
+    "slowest": "Langsamste (95 %)",
+    "flakiest": "Instabilste",
+    "mostMinutes": "Meiste Minuten",
+    "lowestSuccess": "Niedrigster Erfolg",
+    "regressions": "Regressionen",
     "empty": "In diesem Zeitraum gibt es nichts anzuzeigen.",
     "ratio": "{metric} {ratio}×",
     "note": "Perzentile und Erfolgsquoten brauchen mindestens 10 abgeschlossene Läufe; Werte mit ~ stammen aus Tageshistogrammen."
@@ -1490,6 +1518,14 @@
     "deviation": {
       "label": "Abweichung",
       "info": "Die Schätzung weicht um mehr als 15 % von der GitHub-Abrechnung ab."
+    },
+    "regression": {
+      "label": "Langsamer",
+      "info": "In den letzten 7 Tagen ist dieser Workflow deutlich langsamer geworden als in den 28 Tagen davor."
+    },
+    "successDrop": {
+      "label": "Erfolg eingebrochen",
+      "info": "Die Erfolgsquote der letzten 7 Tage liegt 10 Punkte oder mehr unter den 28 Tagen davor."
     }
   },
   "breadcrumbs": {

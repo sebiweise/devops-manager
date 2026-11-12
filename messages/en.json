@@ -412,8 +412,36 @@
     "workflow": "Workflow",
     "runs": "Runs",
     "success": "Success",
-    "regressionBadge": "{metric} regression",
-    "successDropBadge": "success drop"
+    "regressionBadge": "{metric} slower",
+    "successDropBadge": "Success drop",
+    "subtitle": "{workflows, plural, =0 {No workflows} one {# workflow} other {# workflows}} in {repos, plural, one {# repository} other {# repositories}} · last {range}",
+    "aboutValues": "About these values",
+    "search": "Search workflow or repository",
+    "repoFilter": "Repository",
+    "allRepos": "All repositories",
+    "noMatch": "No workflow matches the filter.",
+    "fewRuns": "few runs",
+    "flaky": "Flaky",
+    "flakySub": "passed on re-run",
+    "p50Short": "Typical",
+    "p50Sub": "median",
+    "p95Short": "95 % within",
+    "p95Sub": "duration",
+    "chips": {
+      "label": "Filter workflows",
+      "regressed": "Regressed",
+      "flaky": "Flaky",
+      "lowSuccess": "Low success"
+    },
+    "sortBy": {
+      "name": "Name {dir, select, asc {A–Z} other {Z–A}}",
+      "runs": "Runs {dir, select, asc {fewest first} other {most first}}",
+      "success": "Success {dir, select, asc {lowest first} other {highest first}}",
+      "flaky": "Flaky {dir, select, asc {least first} other {most first}}",
+      "p50": "Typical duration {dir, select, asc {shortest first} other {longest first}}",
+      "p95": "95 % duration {dir, select, asc {shortest first} other {longest first}}",
+      "minutes": "Minutes {dir, select, asc {fewest first} other {most first}}"
+    }
   },
   "workflow": {
     "notEnough": "Only {n} completed runs in this range; percentiles need at least {min}.",
@@ -467,9 +495,9 @@
     "title": "Workflows",
     "slowest": "Slowest (95 %)",
     "flakiest": "Flakiest",
-    "mostMinutes": "Most estimated minutes",
-    "lowestSuccess": "Lowest success rate",
-    "regressions": "Biggest regressions",
+    "mostMinutes": "Most minutes",
+    "lowestSuccess": "Lowest success",
+    "regressions": "Regressions",
     "empty": "Nothing to show in this range.",
     "ratio": "{metric} {ratio}×",
     "note": "Percentiles and success rates need at least 10 completed runs; values with ~ come from daily histograms."
@@ -1490,6 +1518,14 @@
     "deviation": {
       "label": "Deviation",
       "info": "The estimate differs from GitHub's bill by more than 15 %."
+    },
+    "regression": {
+      "label": "Slower",
+      "info": "Over the last 7 days this workflow got clearly slower than in the 28 days before."
+    },
+    "successDrop": {
+      "label": "Success drop",
+      "info": "The success rate of the last 7 days is 10 points or more below the 28 days before."
     }
   },
   "breadcrumbs": {
