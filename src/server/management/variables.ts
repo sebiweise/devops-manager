@@ -23,16 +23,20 @@ import {
   findRepoTarget,
   findRepoTargets,
   getManagementState,
+  listRepoTargets,
   type RepoTarget,
 } from "@/server/data/management";
 import { forgetVariables } from "@/server/data/variables";
 import { githubErrorInfo } from "@/server/github/errors";
 import { missingOf } from "@/server/github/purposes";
 import {
+  addOrgVariableRepo,
   deleteOrgVariable as ghDeleteOrgVariable,
   deleteRepoVariable as ghDeleteRepoVariable,
   getOrgVariable,
   getRepoVariable,
+  listOrgVariableRepos,
+  removeOrgVariableRepo,
   writeOrgVariable,
   writeRepoVariable,
   type OrgVisibility,
@@ -950,7 +954,14 @@ async function readOrgCurrent(
 ) {
   try {
     const api = await session.api("read.org_variables");
-    return { ok: true as const, value: await getOrgVariable(api, org, name) };
+    const value = await getOrgVariable(api, org, name);
+    // The full selection (all pages, including repos outside this
+    // installation), so it can be kept and recorded in `before`.
+    const selection =
+      value?.visibility === "selected"
+        ? await listOrgVariableRepos(api, org, name)
+        : null;
+    return { ok: true as const, value, selection };
   } catch (error) {
     return {
       ok: false as const,
@@ -961,6 +972,47 @@ async function readOrgCurrent(
       } satisfies Denial,
     };
   }
+}
+
+type OrgSelectionPlan = {
+  /** The whole selection for POST/PATCH; null keeps GitHub's selection. */
+  replace: number[] | null;
+  add: number[];
+  remove: number[];
+  /** The selection afterwards; null when the visibility is not "selected". */
+  final: number[] | null;
+};
+
+/**
+ * How to reach the requested selection. The editor only knows this
+ * installation's repos, so a variable that stays "selected" is changed with
+ * per-repo add/remove calls: repos outside the installation (or beyond what
+ * the editor shows) keep their access, and an unchanged selection is not
+ * sent at all. A new "selected" variable, or one switching to "selected",
+ * gets the requested list.
+ */
+async function planOrgSelection(
+  actor: ActionActor,
+  installationId: bigint,
+  visibility: OrgVisibility,
+  requested: number[],
+  current: number[] | null,
+): Promise<OrgSelectionPlan> {
+  if (visibility !== "selected")
+    return { replace: null, add: [], remove: [], final: null };
+  if (!current)
+    return { replace: requested, add: [], remove: [], final: requested };
+  const known = new Set(
+    (await listRepoTargets(actor.scope, installationId)).map((r) =>
+      Number(r.id),
+    ),
+  );
+  const want = new Set(requested);
+  const have = new Set(current);
+  const add = requested.filter((r) => !have.has(r));
+  const remove = current.filter((r) => known.has(r) && !want.has(r));
+  const final = [...current.filter((r) => !remove.includes(r)), ...add];
+  return { replace: null, add, remove, final };
 }
 
 export async function setOrgVariable(
@@ -1009,16 +1061,26 @@ export async function setOrgVariable(
 
   const redact = session.installation.redactVariableValues;
   const id = session.installation.id;
-  const selectedIds = selected.map((r) => String(r.id));
+  const plan = await planOrgSelection(
+    actor,
+    input.installationId,
+    input.visibility,
+    selected.map((r) => Number(r.id)),
+    current.selection,
+  );
   const before: OrgVariableState = current.value
-    ? { value: current.value.value, visibility: current.value.visibility }
+    ? {
+        value: current.value.value,
+        visibility: current.value.visibility,
+        ...(current.selection
+          ? { selectedRepositoryIds: current.selection.map(String) }
+          : {}),
+      }
     : null;
   const after: OrgVariableState = {
     value: input.value,
     visibility: input.visibility,
-    ...(input.visibility === "selected"
-      ? { selectedRepositoryIds: selectedIds }
-      : {}),
+    ...(plan.final ? { selectedRepositoryIds: plan.final.map(String) } : {}),
   };
   return recordAndExecute(
     session,
@@ -1036,18 +1098,34 @@ export async function setOrgVariable(
     "act.org_variables",
     undefined,
     async (api) => {
-      const res = await writeOrgVariable(
+      let res = await writeOrgVariable(
         api,
         inst.accountLogin,
         {
           name: input.name,
           value: input.value,
           visibility: input.visibility,
-          selectedRepositoryIds: selected.map((r) => Number(r.id)),
+          ...(plan.replace ? { selectedRepositoryIds: plan.replace } : {}),
         },
         current.value !== null,
       );
       forgetVariables(id);
+      // Selection changes one repo at a time, so repos outside this
+      // installation keep their access.
+      for (const repoId of plan.add)
+        res = await addOrgVariableRepo(
+          api,
+          inst.accountLogin,
+          input.name,
+          repoId,
+        );
+      for (const repoId of plan.remove)
+        res = await removeOrgVariableRepo(
+          api,
+          inst.accountLogin,
+          input.name,
+          repoId,
+        );
       return { data: { before, after }, ...res };
     },
   );
@@ -1102,6 +1180,9 @@ export async function deleteOrgVariable(
   const before: OrgVariableState = {
     value: current.value.value,
     visibility: current.value.visibility,
+    ...(current.selection
+      ? { selectedRepositoryIds: current.selection.map(String) }
+      : {}),
   };
   return recordAndExecute(
     session,

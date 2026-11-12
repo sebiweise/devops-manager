@@ -211,19 +211,61 @@ export async function listOrgVariables(
   return out;
 }
 
+/** Every repository selected for an org variable, through all pages. */
 export async function listOrgVariableRepos(
   api: GitHubApi,
   org: string,
   name: string,
 ): Promise<number[]> {
-  const res = await api.request<{
-    repositories: Array<{ id: number }>;
-  }>("GET /orgs/{org}/actions/variables/{name}/repositories", {
-    org,
-    name,
-    per_page: 100,
-  });
-  return res.data.repositories.map((r) => r.id);
+  const out: number[] = [];
+  for (let page = 1; page <= 100; page++) {
+    const res = await api.request<{
+      total_count: number;
+      repositories: Array<{ id: number }>;
+    }>("GET /orgs/{org}/actions/variables/{name}/repositories", {
+      org,
+      name,
+      per_page: 100,
+      page,
+    });
+    out.push(...res.data.repositories.map((r) => r.id));
+    if (
+      res.data.repositories.length < 100 ||
+      out.length >= res.data.total_count
+    )
+      return out;
+  }
+  throw new Error("organisation variable has too many selected repositories");
+}
+
+/** Adds one repository to an org variable's selection, leaving the others. */
+export async function addOrgVariableRepo(
+  api: GitHubApi,
+  org: string,
+  name: string,
+  repositoryId: number,
+): Promise<Written> {
+  return written(
+    await api.request(
+      "PUT /orgs/{org}/actions/variables/{name}/repositories/{repository_id}",
+      { org, name, repository_id: repositoryId },
+    ),
+  );
+}
+
+/** Removes one repository from an org variable's selection. */
+export async function removeOrgVariableRepo(
+  api: GitHubApi,
+  org: string,
+  name: string,
+  repositoryId: number,
+): Promise<Written> {
+  return written(
+    await api.request(
+      "DELETE /orgs/{org}/actions/variables/{name}/repositories/{repository_id}",
+      { org, name, repository_id: repositoryId },
+    ),
+  );
 }
 
 export async function writeOrgVariable(
@@ -233,6 +275,10 @@ export async function writeOrgVariable(
     name: string;
     value: string;
     visibility: OrgVisibility;
+    /**
+     * Replaces the whole selection. Leave it out to keep GitHub's current
+     * selection (PATCH only).
+     */
     selectedRepositoryIds?: number[];
   },
   exists: boolean,
@@ -242,7 +288,8 @@ export async function writeOrgVariable(
     name: input.name,
     value: input.value,
     visibility: input.visibility,
-    ...(input.visibility === "selected"
+    ...(input.visibility === "selected" &&
+    (input.selectedRepositoryIds !== undefined || !exists)
       ? { selected_repository_ids: input.selectedRepositoryIds ?? [] }
       : {}),
   };

@@ -1257,6 +1257,73 @@ describe.skipIf(!DATABASE_URL)("management", () => {
       expect(gh.variable(101, "LINUX_RUNNER")).toBe("ubuntu-latest");
     });
 
+    it("keeps an org variable's selection outside the installation and beyond one page", async () => {
+      // 150 repos outside this installation plus its own repo-b (22).
+      const outside = Array.from({ length: 150 }, (_, i) => 9000 + i);
+      gh.orgVariables.set(
+        "example-org",
+        new Map([
+          [
+            "LINUX_RUNNER",
+            {
+              value: "ubuntu-latest",
+              visibility: "selected",
+              selected: [...outside, 22],
+            },
+          ],
+        ]),
+      );
+      const matrix = await variablesData.listVariableMatrix(
+        actor("VIEWER").scope,
+        B,
+        gh.clients(),
+      );
+      if (matrix.status !== "ok" || matrix.org?.status !== "ok")
+        throw new Error("matrix");
+      // The editor shows this installation's part of the selection.
+      expect(matrix.org.variables[0]!.selectedRepositoryIds).toEqual(["22"]);
+
+      const change = (selectedRepositoryIds: bigint[], value: string) =>
+        variables.setOrgVariable(
+          actor("ADMIN"),
+          {
+            installationId: B,
+            name: "LINUX_RUNNER",
+            value,
+            visibility: "selected",
+            selectedRepositoryIds,
+            typed: "LINUX_RUNNER",
+            idempotencyKey: key(),
+          },
+          deps(),
+        );
+      // Only the value changes: the selection is not sent at all.
+      const res = await change([22n], "self-hosted");
+      expect(res.status).toBe("succeeded");
+      const stored = () =>
+        gh.orgVariables.get("example-org")!.get("LINUX_RUNNER")!;
+      expect(stored()).toMatchObject({ value: "self-hosted" });
+      expect(stored().selected).toHaveLength(151);
+      const patch = gh.requests.find((r) =>
+        r.route.startsWith("PATCH /orgs/"),
+      )!;
+      expect(patch.params).not.toHaveProperty("selected_repository_ids");
+      const [row] = await auditRows();
+      const params = row!.params as {
+        before: { selectedRepositoryIds: string[] };
+        after: { selectedRepositoryIds: string[] };
+      };
+      expect(params.before.selectedRepositoryIds).toHaveLength(151);
+      expect(params.after.selectedRepositoryIds).toHaveLength(151);
+
+      // Deselecting repo-b removes only repo-b.
+      expect((await change([], "self-hosted")).status).toBe("succeeded");
+      expect(stored().selected).toEqual(outside);
+      // Selecting it again adds only repo-b.
+      expect((await change([22n], "self-hosted")).status).toBe("succeeded");
+      expect(stored().selected).toEqual([...outside, 22]);
+    });
+
     it("manages organisation variables on org installations only", async () => {
       const set = await variables.setOrgVariable(
         actor("ADMIN"),

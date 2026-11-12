@@ -347,10 +347,27 @@ export class FakeManagedGitHub {
         this.need(token, "organization_actions_variables", "read");
         const v = vars.get(String(p.name));
         if (!v) this.fail(404, "Not Found");
+        const perPage = Number(p.per_page ?? 30);
+        const page = Number(p.page ?? 1);
         return this.ok({
           total_count: v.selected.length,
-          repositories: v.selected.map((id) => ({ id })),
+          repositories: v.selected
+            .slice((page - 1) * perPage, page * perPage)
+            .map((id) => ({ id })),
         });
+      }
+      case "PUT /orgs/{org}/actions/variables/{name}/repositories/{repository_id}":
+      case "DELETE /orgs/{org}/actions/variables/{name}/repositories/{repository_id}": {
+        const vars = this.orgOf(token, p);
+        this.need(token, "organization_actions_variables", "write");
+        const v = vars.get(String(p.name));
+        if (!v) this.fail(404, "Not Found");
+        if (v.visibility !== "selected")
+          this.fail(409, "Visibility is not set to selected");
+        const repoId = Number(p.repository_id);
+        v.selected = v.selected.filter((r) => r !== repoId);
+        if (route.startsWith("PUT")) v.selected.push(repoId);
+        return this.ok(null, 204);
       }
       case "POST /orgs/{org}/actions/variables":
       case "PATCH /orgs/{org}/actions/variables/{name}": {
@@ -360,10 +377,14 @@ export class FakeManagedGitHub {
         if (route.startsWith("POST") && exists)
           this.fail(409, "Already exists");
         if (route.startsWith("PATCH") && !exists) this.fail(404, "Not Found");
+        // Without selected_repository_ids GitHub keeps the selection.
+        const kept = vars.get(String(p.name))?.selected ?? [];
         vars.set(String(p.name), {
           value: String(p.value),
           visibility: String(p.visibility),
-          selected: ((p.selected_repository_ids as number[]) ?? []).slice(),
+          selected: (
+            (p.selected_repository_ids as number[] | undefined) ?? kept
+          ).slice(),
         });
         return this.ok(null, route.startsWith("POST") ? 201 : 204);
       }

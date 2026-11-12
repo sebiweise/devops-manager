@@ -326,7 +326,10 @@ app user triggered the action, their role and sign-in provider.
   hidden and the audit log keeps only a hash and the length. Admins create,
   edit (dialog with old → new) and delete (variable name typed) variables;
   organisation installations with Organization `Variables` also get the
-  organisation variables with their visibility. **Bulk set** applies one
+  organisation variables with their visibility; a change of the selected
+  repositories adds or removes single repositories, so repositories outside
+  the installation keep their access, and the previous selection is
+  recorded in the audit log. **Bulk set** applies one
   value to the selected repositories after a preview diff and the typed
   name, using the presets from `VARIABLE_PRESETS` (default `LINUX_RUNNER`
   and `MACOS_RUNNER`). The batch history links to **Revert batch**, which
