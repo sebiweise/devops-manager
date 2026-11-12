@@ -55,7 +55,9 @@ No images are kept in the repository; the [local demo](CONTRIBUTING.md#local-dem
 renders every page with synthetic data (example-org, example-user,
 repo-a..) for your own screenshots. Every page works in English and German,
 in light and dark mode (System, Light or Dark in the user menu) and down to
-phone width, where secondary columns move into a row's "More" disclosure.
+phone width, where secondary columns move into a detail row that the
+chevron at the start of each row opens, so tables fit without scrolling
+sideways.
 
 - **Accounts & organisations** (start page): one card per account that opens
   its overview, with runs and success rate over 7 days (with the change), the
@@ -65,7 +67,9 @@ phone width, where secondary columns move into a row's "More" disclosure.
   slowest workflows across all accounts.
 - **Account header**: the account switcher in the app header, the freshness
   chip ("Data updated 3 min ago", Sync now), one time range for all insights
-  pages, Settings & sync for admins, and the sections grouped into Insights,
+  pages (the last 24 hours, or the last 7, 30, 90 or 365 calendar days
+  including today in the installation's time zone, the same window on every
+  page and on the start page), Settings & sync for admins, and the sections grouped into Insights,
   Manage and Audit.
 - **Overview**: six KPIs that link to their section, runs and durations per
   day, week or month depending on the range, and two lists: what needs
