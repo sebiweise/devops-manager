@@ -17,7 +17,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
-    "onboarding": "Installationen",
+    "onboarding": "GitHub-App-Installationen",
     "settings": "Einstellungen",
     "github": "GitHub-Abrechnung"
   },
@@ -27,7 +27,7 @@
     "signIn": "Anmelden",
     "toDashboard": "Dashboard öffnen",
     "privacyTitle": "Was gespeichert wird",
-    "privacy": "Normalisierte Metadaten von Läufen und Jobs, Logins der GitHub-Akteure, E-Mail, Name und Gruppen-Snapshot der App-Nutzer sowie Audit-Einträge. Rohdaten bleiben standardmäßig 90 Tage, Tagesaggregate dauerhaft. Logs und Secrets werden nie gespeichert.",
+    "privacy": "Normalisierte Metadaten von Läufen und Jobs, Logins der GitHub-Akteure, E-Mail, Name und Gruppen-Snapshot der App-Nutzer sowie Audit-Einträge. Rohdaten bleiben standardmäßig 90 Tage, Tagesauswertungen dauerhaft. Logs und Secrets werden nie gespeichert.",
     "selfHost": "Auf Vercel mit Neon bereitstellen oder mit Docker Compose betreiben."
   },
   "login": {
@@ -46,7 +46,7 @@
   },
   "dashboard": {
     "title": "Dashboard",
-    "installations": "{count, plural, =0 {Keine Installationen} one {# Installation} other {# Installationen}}",
+    "installations": "{count, plural, =0 {Keine Konten} one {# Konto} other {# Konten}}",
     "repositories": "{count, plural, =0 {Keine Repositories} one {# Repository} other {# Repositories}}",
     "liveSource": "live von GitHub",
     "storedSource": "vom letzten Abgleich (GitHub nicht erreichbar)",
@@ -59,7 +59,7 @@
     "open": "Öffnen"
   },
   "onboarding": {
-    "title": "Installationen",
+    "title": "GitHub-App-Installationen",
     "intro": "Installationen der GitHub App, die zu einem erlaubten Konto gehören.",
     "install": "Auf GitHub installieren",
     "installHint": "Damit neben einem persönlichen Konto auch Organisationen abgedeckt sind, muss die App auf \"Any account\" installierbar sein; Installationen von Konten außerhalb von ALLOWED_ACCOUNTS werden ignoriert.",
@@ -96,7 +96,7 @@
     }
   },
   "accountNav": {
-    "label": "Installation",
+    "label": "Bereiche des Kontos",
     "overview": "Übersicht",
     "repos": "Repositories",
     "workflows": "Workflows",
@@ -117,7 +117,7 @@
     "staleTitle": "Daten sind möglicherweise veraltet",
     "reasons": {
       "noWebhook": "Seit über 6 Stunden kein Webhook, obwohl Läufe existieren. Prüfe, ob die Webhook-URL erreichbar ist.",
-      "noReconcile": "Seit über 24 Stunden kein Abgleich. Prüfe den Cron-Job oder nutze „Jetzt synchronisieren“.",
+      "noReconcile": "Seit über 24 Stunden kein Abgleich mit GitHub. Prüfe den Cron-Job oder nutze „Jetzt synchronisieren“.",
       "failedDeliveries": "{count, plural, one {# Webhook-Zustellung ist} other {# Webhook-Zustellungen sind}} fehlgeschlagen und warten auf Wiederholung."
     }
   },
@@ -141,9 +141,9 @@
     "day": "Tag",
     "runs": "Läufe",
     "successRate": "Erfolgsquote",
-    "p50": "p50",
-    "p95": "p95",
-    "queueP95": "Wartezeit p95",
+    "p50": "typisch (Median)",
+    "p95": "95 % fertig innerhalb",
+    "queueP95": "Wartezeit (95 %)",
     "minutes": "Gesch. Minuten",
     "runsPerDay": {
       "title": "Läufe pro Tag",
@@ -152,13 +152,13 @@
     },
     "duration": {
       "title": "Laufdauer",
-      "description": "p50 (durchgezogen) und p95 (gestrichelt) der Gesamtdauer pro Tag.",
-      "label": "Liniendiagramm von p50 und p95 der Laufdauer pro Tag über {days} Tage."
+      "description": "Typische (Median, durchgezogen) und 95-%-Gesamtdauer (gestrichelt) pro Tag.",
+      "label": "Liniendiagramm der typischen und der 95-%-Laufdauer pro Tag über {days} Tage."
     },
     "queue": {
       "title": "Wartezeit",
-      "description": "p95 der Zeit, die Jobs pro Tag auf einen Runner gewartet haben.",
-      "label": "Liniendiagramm der p95-Wartezeit pro Tag über {days} Tage."
+      "description": "Zeit, in der 95 % der Jobs pro Tag einen Runner bekamen.",
+      "label": "Liniendiagramm der Wartezeit (95 %) pro Tag über {days} Tage."
     },
     "successChart": {
       "title": "Erfolgsquote",
@@ -173,7 +173,7 @@
   },
   "overview": {
     "title": "Übersicht",
-    "noRuns": "In diesem Zeitraum gibt es noch keine abgeschlossenen Läufe. Neue Läufe kommen per Webhook, ältere über den Backfill.",
+    "noRuns": "In diesem Zeitraum gibt es noch keine abgeschlossenen Läufe. Neue Läufe kommen per Webhook, ältere über den Verlaufsimport.",
     "regressions": "Regressionen",
     "noRegressions": "Kein Workflow ist in den letzten 7 Tagen langsamer geworden.",
     "regression": "{metric} {recent} gegenüber {baseline} in den 28 Tagen davor ({ratio}×)",
@@ -188,29 +188,41 @@
     "runs": "Läufe ({range})",
     "successRate": "Erfolgsquote",
     "delta7d": "{delta} gegenüber den 7 Tagen davor",
-    "p50": "Dauer p50",
-    "p95": "Dauer p95",
+    "p50": "Typische Dauer (p50)",
+    "p95": "95 % fertig innerhalb (p95)",
     "samples": "n = {n}",
-    "queueP95": "Wartezeit p95",
+    "queueP95": "Wartezeit, 95 % (p95)",
     "minutes": "Gesch. Minuten",
     "minutesHint": "Schätzung aus Jobdauern"
   },
   "repos": {
     "title": "Repositories",
     "filter": "Repositories filtern",
-    "apply": "Anwenden",
     "changeSelection": "Repository-Auswahl auf GitHub ändern",
     "repo": "Repository",
     "lastRun": "Letzter Lauf",
-    "runs7d": "Läufe 7 T.",
-    "success7d": "Erfolg 7 T.",
-    "p50": "p50 7 T.",
-    "minutes30d": "Gesch. Minuten 30 T.",
-    "trend": "14 Tage",
+    "trend": "Trend · letzte 14 Tage",
     "noRuns": "noch keine Läufe",
     "sparkline": "Läufe der letzten 14 Tage: {runs} Läufe, {failures} fehlgeschlagen.",
     "noMatch": "Kein Repository passt zum Filter.",
-    "minutesNote": "Minuten sind Schätzungen aus Jobdauern (pro Job aufgerundet, mit SKU-Multiplikatoren); abgerechnete Nutzung folgt mit M2. Offene PRs und Dependabot-Warnungen folgen mit M3."
+    "runs": "Läufe · {range}",
+    "success": "Erfolg · {range}",
+    "p50Range": "Typische Dauer · {range}",
+    "minutes": "Gesch. Minuten · {range}",
+    "openPrs": "Offene PRs",
+    "alerts": "Warnungen",
+    "alertsHigh": "{count} hoch oder kritisch",
+    "subtitle": "{count, plural, =0 {Keine Repositories} one {# Repository} other {# Repositories}} · {ignored} ignoriert",
+    "chips": {
+      "label": "Repositories filtern",
+      "failing": "Fehlschlagend",
+      "forks": "Forks",
+      "private": "Privat",
+      "archived": "Archiviert",
+      "ignored": "Ignorierte anzeigen"
+    },
+    "approx": "Außerhalb der Rohdatenaufbewahrung: Werte aus Tagesauswertungen (~).",
+    "apply": "Anwenden"
   },
   "repo": {
     "defaultBranch": "Standard-Branch {branch}",
@@ -278,10 +290,10 @@
     "firstTry": "beim ersten Versuch {rate}",
     "flakyRate": "Instabilitätsquote",
     "flakyRuns": "{count, plural, one {# Lauf bei Wiederholung erfolgreich} other {# Läufe bei Wiederholung erfolgreich}}",
-    "jobs": "Jobs nach Pool",
+    "jobs": "Jobs nach Runner-Gruppe (Labels)",
     "noJobs": "Keine abgeschlossenen Jobs in diesem Zeitraum.",
     "job": "Job",
-    "pool": "Pool",
+    "pool": "Runner-Gruppe (Labels)",
     "count": "Jobs",
     "failureRate": "Fehler",
     "flaky": "Instabile Läufe",
@@ -291,7 +303,7 @@
     "selfHostedP50": "Selbst gehostet p50",
     "hostedP95": "Gehostet p95",
     "selfHostedP95": "Selbst gehostet p95",
-    "queueCompare": "Wartezeit p95 (gehostet / selbst gehostet)",
+    "queueCompare": "Wartezeit, 95 % (gehostet / selbst gehostet)",
     "delta": "Δ p50",
     "recentRuns": "Letzte Läufe"
   },
@@ -301,13 +313,13 @@
     "wait": "Warten auf Freigabe",
     "execution": "Ausführung",
     "timeline": "Job-Zeitleiste",
-    "timelineDescription": "Warteschlange (gepunktet), Warten auf Freigabe (schraffiert) und Ausführung (gefüllt) pro Job; unterstrichene Jobs liegen auf dem kritischen Pfad.",
+    "timelineDescription": "Warteschlange (gepunktet), Warten auf Freigabe (schraffiert) und Ausführung (gefüllt) pro Job; unterstrichene Jobs liegen auf der längsten Kette abhängiger Jobs.",
     "timelineLabel": "Zeitleiste von {jobs} Jobs über {span}.",
-    "critical": "kritischer Pfad",
+    "critical": "längste Kette abhängiger Jobs",
     "live": "live",
     "sha": "Commit",
     "attempts": "Versuche",
-    "placeholder": "Für diesen Lauf sind bisher nur Job-Ereignisse angekommen; die Laufdetails ergänzt der nächste Abgleich.",
+    "placeholder": "Für diesen Lauf sind bisher nur Job-Ereignisse angekommen; die Laufdetails ergänzt der nächste Abgleich mit GitHub.",
     "wall": "Gesamtdauer",
     "compute": "Rechenzeit",
     "parallelism": "Parallelität",
@@ -323,7 +335,7 @@
   },
   "leaderboards": {
     "title": "Workflows",
-    "slowest": "Am langsamsten (p95)",
+    "slowest": "Am langsamsten (95 %)",
     "flakiest": "Am instabilsten",
     "mostMinutes": "Meiste geschätzte Minuten",
     "lowestSuccess": "Niedrigste Erfolgsquote",
@@ -337,19 +349,19 @@
     "lastWebhook": "Letzter Webhook",
     "lastReconcile": "Letzter Abgleich",
     "lastReconcileStatus": "Ergebnis des letzten Abgleichs",
-    "lagP50": "Verarbeitungsverzug p50",
-    "lagP95": "Verarbeitungsverzug p95",
-    "dirty": "Ausstehende Aggregate",
+    "lagP50": "Verzögerung bis zur Anzeige (typisch)",
+    "lagP95": "Verzögerung bis zur Anzeige (95 %)",
+    "dirty": "Tagesauswertungen, die neu berechnet werden",
     "dirtyHint": "Tage, die neu berechnet werden",
-    "backfillDays": "Backfill-Tage",
+    "backfillDays": "Importierter Zeitraum (Tage)",
     "repos": "Repositories",
-    "cursor": "Abgeglichen bis",
-    "backfill": "Backfill",
+    "cursor": "Neuester importierter Lauf",
+    "backfill": "Verlaufsimport",
     "state": "Zustand",
     "lastError": "Letzter Fehler",
-    "backfillOf": "Backfill-Fortschritt von {repo}",
+    "backfillOf": "Fortschritt des Verlaufsimports von {repo}",
     "done": "fertig",
-    "needsResync": "Neuabgleich ausstehend",
+    "needsResync": "Neuimport geplant",
     "ok": "ok",
     "deliveries": "Webhook-Zustellungen (24 Std.)",
     "status": "Status",
@@ -379,14 +391,14 @@
     "sampleInterval": "± ein Messintervall ({interval})",
     "repoRunnersMissing": "Repository-Runner benötigen die Repository-Berechtigung Administration: read. Ohne sie sind sie nur aus Job-Daten bekannt.",
     "orgRunnersMissing": "Organisations-Runner benötigen die Organisations-Berechtigung Self-hosted runners: read.",
-    "speedIndex": "Geschwindigkeitsindex",
+    "speedIndex": "Tempo vs. GitHub-gehostet (1,0 = gleich)",
     "speedIndexHint": "Mittlere Job-Dauer auf diesem Runner im Verhältnis zu allen Runnern; 1,0 ist Durchschnitt, 0,8 ist 20 % schneller.",
     "infraFailures": "Infrastrukturfehler",
     "ephemeral": "kurzlebig"
   },
   "billingStatus": {
     "billed": "Abgerechnete Werte aus GitHubs Billing-Usage-Bericht.",
-    "estimated": "Geschätzt aus Job-Dauern und den SKU-Preisen.",
+    "estimated": "Geschätzt aus Job-Dauern und den Preisen je Runner-Typ.",
     "scaled": "geschätzt, auf die abgerechneten Minuten skaliert",
     "no_permission": "Kosten sind Schätzungen: Der App wurde die Organisations-Berechtigung Administration: read nicht erteilt.",
     "no_credential": "Kosten sind Schätzungen: Für dieses persönliche Konto ist kein Billing-Zugang hinterlegt.",
@@ -394,7 +406,7 @@
     "credential_error": "Kosten sind Schätzungen: Der Billing-Zugang funktioniert nicht mehr.",
     "not_synced": "Kosten sind Schätzungen, bis die erste Billing-Synchronisierung gelaufen ist.",
     "reconnect": "Verbinde den Billing-Zugang in den GitHub-Einstellungen dieser Instanz neu.",
-    "deviation": "Schätzung und Abrechnung weichen um mehr als 15 % ab, oft wegen einer unbekannten Larger-Runner-SKU."
+    "deviation": "Schätzung und Abrechnung weichen um mehr als 15 % ab, oft wegen eines unbekannten größeren Runner-Typs."
   },
   "billingCredential": {
     "states": {
@@ -430,7 +442,7 @@
     "sampling": "Runner werden im Hintergrund abgefragt; diese Seite aktualisiert sich alle 30 Sekunden.",
     "orgRunners": "Organisations-Runner",
     "repoRunners": "Repository-Runner: {repo}",
-    "noSelfHosted": "Noch keine selbst gehosteten Runner bekannt. Gehostete Pools stehen unten.",
+    "noSelfHosted": "Noch keine selbst gehosteten Runner bekannt. Gehostete Runner-Gruppen stehen unten.",
     "caption": "Selbst gehostete Runner",
     "name": "Runner",
     "status": "Status",
@@ -447,31 +459,31 @@
       "offline": "offline"
     },
     "pools": {
-      "title": "Pools",
-      "description": "Jobs je Label-Satz und Runner-Art in diesem Zeitraum. Die Auslastung selbst gehosteter Pools ist Σ beschäftigt / Σ online über die Runner, die alle Labels des Pools haben.",
+      "title": "Runner-Gruppen (Labels)",
+      "description": "Jobs je Label-Satz und Runner-Art in diesem Zeitraum. Die Auslastung selbst gehosteter Gruppen ist Σ beschäftigt / Σ online über die Runner, die alle Labels der Gruppe haben.",
       "empty": "Keine Jobs in diesem Zeitraum.",
-      "pool": "Pool",
+      "pool": "Runner-Gruppe (Labels)",
       "kind": "Runner-Art",
       "minutes": "Minuten",
       "avgConcurrency": "Parallelität im Mittel",
       "peakConcurrency": "Parallelität (Spitze)",
-      "queueP50": "Wartezeit p50",
-      "queueP95": "Wartezeit p95",
+      "queueP50": "Wartezeit, typisch (p50)",
+      "queueP95": "Wartezeit, 95 % (p95)",
       "runners": "Runner",
-      "highQueue": "Eine hohe Wartezeit p95 auf gehosteten Runnern deutet darauf hin, dass das Parallelitätslimit des Kontos erreicht ist."
+      "highQueue": "Eine lange Wartezeit (95 %) auf gehosteten Runnern deutet darauf hin, dass das Parallelitätslimit des Kontos erreicht ist."
     },
     "heatmap": {
-      "title": "Wartezeit p95 nach Wochentag und Stunde: {pool}",
-      "description": "Wie lange Jobs auf einen Runner gewartet haben, nach Wochentag und Stunde in der Zeitzone der Installation.",
-      "label": "Heatmap der Wartezeit p95 des Pools {pool} nach Wochentag und Stunde; der höchste Wert ist {max}.",
+      "title": "Wartezeit (95 %) nach Wochentag und Stunde: {pool}",
+      "description": "Wie lange Jobs auf einen Runner gewartet haben, nach Wochentag und Stunde in der Zeitzone des Kontos.",
+      "label": "Heatmap der Wartezeit (95 %) der Runner-Gruppe {pool} nach Wochentag und Stunde; der höchste Wert ist {max}.",
       "noData": "keine Jobs",
       "low": "kurz",
       "high": "lang",
-      "cell": "{day} {hour}:00: {jobs, plural, one {# Job} other {# Jobs}}, Wartezeit p95 {p95}",
+      "cell": "{day} {hour}:00: {jobs, plural, one {# Job} other {# Jobs}}, Wartezeit 95 % {p95}",
       "weekday": "Wochentag",
       "hour": "Stunde",
       "jobs": "Jobs",
-      "queueP95": "Wartezeit p95"
+      "queueP95": "Wartezeit (95 %)"
     },
     "weekdays": {
       "1": "Mo",
@@ -502,7 +514,7 @@
     },
     "compare": {
       "title": "Gleiche Jobs auf gehosteten und selbst gehosteten Runnern",
-      "description": "Jobs mit mindestens 5 Läufen je Art in diesem Zeitraum; Δ ist die Änderung des selbst gehosteten p50 gegenüber gehostet.",
+      "description": "Jobs mit mindestens 5 Läufen je Art in diesem Zeitraum; Δ ist die Änderung der typischen Dauer (p50) selbst gehostet gegenüber gehostet.",
       "empty": "Kein Job lief in diesem Zeitraum mindestens 5-mal sowohl auf gehosteten als auch auf selbst gehosteten Runnern."
     }
   },
@@ -515,7 +527,7 @@
     "coverage": "Abdeckung durch Stichproben",
     "coverageHint": "erfasste Online-Zeit / Zeitraum",
     "failures": "Fehlschläge",
-    "insufficientExplain": "Stichproben decken {coverage} dieses Zeitraums ab; für einen Auslastungswert sind mindestens 50 % nötig. Stichproben nimmt der Abgleich (alle {interval} mit dem Docker-Cron-Sidecar, täglich auf Vercel) und höchstens alle 2 Minuten, solange die Runner- oder Warteschlangen-Seite offen ist.",
+    "insufficientExplain": "Stichproben decken {coverage} dieses Zeitraums ab; für einen Auslastungswert sind mindestens 50 % nötig. Stichproben nimmt der Abgleich mit GitHub (alle {interval} mit dem Docker-Cron-Sidecar, täglich auf Vercel) und höchstens alle 2 Minuten, solange die Runner- oder Warteschlangen-Seite offen ist.",
     "utilChart": {
       "title": "Auslastung pro Tag",
       "description": "Beschäftigte Zeit / Online-Zeit pro Tag; Tage mit zu wenigen Stichproben fehlen.",
@@ -534,11 +546,11 @@
       "to": "Bis"
     },
     "distribution": {
-      "title": "Job-Dauer im Vergleich zum Pool",
+      "title": "Job-Dauer im Vergleich zur Runner-Gruppe",
       "description": "Anteil der Jobs je Dauerbereich auf diesem Runner (durchgezogen) und bei allen Jobs mit den Labels {labels} (gestrichelt).",
-      "label": "Liniendiagramm der Verteilung der Job-Dauer dieses Runners ({runner} Jobs) im Vergleich zu seinem Pool ({pool} Jobs).",
+      "label": "Liniendiagramm der Verteilung der Job-Dauer dieses Runners ({runner} Jobs) im Vergleich zu seiner Runner-Gruppe ({pool} Jobs).",
       "runner": "Dieser Runner",
-      "pool": "Pool",
+      "pool": "Runner-Gruppe",
       "band": "Dauer",
       "bands": {
         "b0": "< 1 Min.",
@@ -576,7 +588,7 @@
     "repo": "Repository",
     "count": "Jobs",
     "oldest": "Ältester",
-    "p95": "Alter p95",
+    "p95": "Alter (95 %)",
     "workflows": "Workflows",
     "flags": "Hinweise",
     "jobs": "Wartende Jobs",
@@ -601,7 +613,7 @@
     "adminLink": "Abrechnungszugang verwalten",
     "adminError": "Letzter Abrechnungsfehler: {error}",
     "noData": "Keine abgerechnete Nutzung und keine geschätzten Minuten in diesem Monat.",
-    "unmatched": "{count, plural, one {# Job} other {# Jobs}} auf größeren oder unbekannten Runnern passten zu keiner SKU und sind nicht in den Schätzungen enthalten.",
+    "unmatched": "{count, plural, one {# Job} other {# Jobs}} auf größeren oder unbekannten Runnern passten zu keinem Runner-Typ und sind nicht in den Schätzungen enthalten.",
     "notBilled": "nicht abgerechnet",
     "kpi": {
       "net": "Netto, abgerechnet",
@@ -635,8 +647,8 @@
       "rowIncluded": "Inklusive"
     },
     "bySku": {
-      "title": "Nach SKU",
-      "sku": "SKU",
+      "title": "Nach Runner-Typ",
+      "sku": "Runner-Typ",
       "multiplier": "Faktor",
       "quantity": "Abgerechnete Menge",
       "unit": "Einheit",
@@ -648,7 +660,9 @@
     },
     "byRepo": {
       "title": "Nach Repository",
-      "repo": "Repository"
+      "repo": "Repository",
+      "ignored": "Ignorierte Repositories ({count})",
+      "ignoredInfo": "Von GitHub abgerechnet; ignorierte Repositories werden nicht einzeln ausgewiesen."
     },
     "byDay": {
       "title": "Nach Tag",
@@ -661,7 +675,7 @@
     },
     "byWorkflow": {
       "title": "Nach Workflow",
-      "description": "Geschätzte Minuten je Workflow, skaliert mit abgerechnet / Σ geschätzt des Repositorys und der SKU.",
+      "description": "Geschätzte Minuten je Workflow, skaliert mit abgerechnet / Σ geschätzt des Repositorys und Runner-Typs.",
       "empty": "Keine geschätzten Minuten in diesem Monat.",
       "workflow": "Workflow",
       "scale": "Skalierungsfaktor",
@@ -670,7 +684,7 @@
     },
     "reconciliation": {
       "title": "Schätzung vs. Abrechnung",
-      "description": "Je Repository und SKU, auf Brutto-USD.",
+      "description": "Je Repository und Runner-Typ, auf Brutto-USD.",
       "empty": "Erscheint, sobald abgerechnete Zahlen vorliegen.",
       "estimate": "Schätzung",
       "billed": "Abgerechnet",
@@ -778,7 +792,8 @@
       "mergeability_unknown": "GitHub prüft noch, ob der Pull Request gemergt werden kann. Versuche es gleich erneut.",
       "needs_acknowledgement": "Der Merge-Status ist {state}. Bestätige die Warnung, um trotzdem zu mergen.",
       "branch_protection": "Der Branch-Schutz ist nicht erfüllt (erforderliche Reviews, Checks oder Regeln). Der Merge ist möglich, sobald sie erfüllt sind.",
-      "too_many_pulls": "Wähle höchstens 50 Pull Requests aus."
+      "too_many_pulls": "Wähle höchstens 50 Pull Requests aus.",
+      "no_repositories": "Mindestens ein Repository auswählen."
     },
     "bulk": {
       "create": "anlegen",
@@ -864,7 +879,37 @@
       "params": "Parameter",
       "revertBatch": "Sammeländerung zurücknehmen",
       "newest": "Neueste",
-      "older": "Ältere Einträge"
+      "older": "Ältere Einträge",
+      "actionLabel": {
+        "RUN_RERUN": "Lauf neu gestartet",
+        "RUN_RERUN_FAILED": "Fehlgeschlagene Jobs neu gestartet",
+        "RUN_CANCEL": "Lauf abgebrochen",
+        "RUN_FORCE_CANCEL": "Lauf erzwungen abgebrochen",
+        "VAR_CREATE": "Variable angelegt",
+        "VAR_UPDATE": "Variable geändert",
+        "VAR_DELETE": "Variable gelöscht",
+        "VAR_BULK": "Variable in mehreren Repositories gesetzt",
+        "VAR_BULK_REVERT": "Sammeländerung zurückgenommen",
+        "ORG_VAR_CREATE": "Organisationsvariable angelegt",
+        "ORG_VAR_UPDATE": "Organisationsvariable geändert",
+        "ORG_VAR_DELETE": "Organisationsvariable gelöscht",
+        "PR_MERGE": "Pull Request gemergt",
+        "PR_BULK_MERGE": "Pull Requests gesammelt gemergt",
+        "SYNC_NOW": "Abgleich gestartet",
+        "MANAGEMENT_TOGGLE": "Verwaltung umgeschaltet",
+        "SETTINGS_UPDATE": "Einstellungen geändert",
+        "DATA_PURGE": "Daten gelöscht",
+        "DELIVERY_REPLAY": "Webhook-Zustellung wiederholt",
+        "ROLE_UPDATE": "Rolle geändert",
+        "USER_DISABLE": "Benutzer deaktiviert",
+        "USER_ENABLE": "Benutzer aktiviert",
+        "SKU_RATE_UPDATE": "Runner-Preis geändert",
+        "BILLING_CREDENTIAL_SET": "Abrechnungszugriff gespeichert",
+        "BILLING_CREDENTIAL_CONNECT": "Abrechnungszugriff verbunden",
+        "BILLING_CREDENTIAL_REVOKE": "Abrechnungszugriff entfernt",
+        "REPO_IGNORE": "Repository ignoriert",
+        "REPO_UNIGNORE": "Ignorieren aufgehoben"
+      }
     },
     "typeToConfirm": "Zur Bestätigung {text} eingeben",
     "missingPermission": "Der GitHub App fehlt die nötige Berechtigung: {permissions}. Ein Admin kann sie in den Installationseinstellungen der App auf GitHub erteilen.",
@@ -1123,7 +1168,7 @@
       "truncated": "Nur die ersten 200 Repositories werden angezeigt."
     },
     "settings": {
-      "title": "Installationseinstellungen",
+      "title": "Einstellungen & Abgleich",
       "stateOn": "An.",
       "stateOff": "Aus.",
       "globalOff": "Die Verwaltung ist für die ganze Instanz ausgeschaltet (MANAGEMENT_ENABLED=false), daher lässt sich das hier nicht ändern.",
@@ -1144,5 +1189,248 @@
         "turnOff": "Ausschalten"
       }
     }
+  },
+  "ignore": {
+    "action": {
+      "ignore": "Ignorieren",
+      "unignore": "Nicht mehr ignorieren",
+      "ignoreSelected": "Auswahl ignorieren ({count})",
+      "unignoreAll": "Alle wieder aufnehmen ({count})"
+    },
+    "badge": {
+      "ignored": "Ignoriert",
+      "fork": "Fork",
+      "private": "Privat",
+      "archived": "Archiviert"
+    },
+    "dialog": {
+      "titleIgnore": "{count, plural, one {# Repository ignorieren?} other {# Repositories ignorieren?}}",
+      "titleUnignore": "{count, plural, one {# Repository nicht mehr ignorieren?} other {# Repositories nicht mehr ignorieren?}}",
+      "listLabel": "Repositories",
+      "bodyIgnore": "Für diese Repositories werden keine Daten mehr geladen. Gespeicherte Läufe, Jobs und Runner-Daten werden gelöscht, Tagesauswertungen neu berechnet. GitHub-Kosten bleiben als „Ignorierte Repositories“ in den Summen. Beim Aufheben wird der Verlauf erneut importiert.",
+      "bodyUnignore": "Für diese Repositories werden wieder Daten geladen. Der Verlauf wird neu importiert.",
+      "confirmIgnore": "{count, plural, one {Mir ist klar, dass die gespeicherten Daten dieses Repositorys gelöscht werden.} other {Mir ist klar, dass die gespeicherten Daten dieser # Repositories gelöscht werden.}}",
+      "confirmUnignore": "{count, plural, one {Den Verlauf dieses Repositorys erneut importieren.} other {Den Verlauf dieser # Repositories erneut importieren.}}",
+      "submitIgnore": "{count, plural, one {Repository ignorieren} other {# Repositories ignorieren}}",
+      "submitUnignore": "{count, plural, one {Nicht mehr ignorieren} other {# Repositories nicht mehr ignorieren}}"
+    },
+    "result": {
+      "ignored": "{count, plural, one {# Repository ignoriert.} other {# Repositories ignoriert.}} Gespeicherte Daten werden gelöscht.",
+      "unignored": "{count, plural, one {# Repository wird wieder geladen.} other {# Repositories werden wieder geladen.}} Der Verlauf wird neu importiert.",
+      "failed": "{count} fehlgeschlagen."
+    },
+    "banner": {
+      "title": "Dieses Repository wird ignoriert. Es werden keine Daten geladen.",
+      "purging": "Gespeicherte Daten werden gelöscht…",
+      "since": "Ignoriert {when}."
+    },
+    "settings": {
+      "title": "Ignorierte Repositories ({count})",
+      "description": "Ignorierte Repositories bleiben mit ihrem Zustand sichtbar, es werden aber keine Läufe, Jobs, Runner, Pull Requests oder Warnungen geladen. Ihre GitHub-Kosten zählen weiter als „Ignorierte Repositories“ in den Summen.",
+      "empty": "Es wird kein Repository ignoriert.",
+      "repo": "Repository",
+      "ignoredBy": "Ignoriert von",
+      "state": "Gespeicherte Daten",
+      "actions": "Aktionen",
+      "purged": "Gelöscht",
+      "addTitle": "Repositories ignorieren"
+    },
+    "list": {
+      "label": "Repositories, die ignoriert werden können",
+      "search": "Nach Name filtern",
+      "forksOnly": "Nur Forks",
+      "selectShown": "Alle angezeigten auswählen ({count})",
+      "clearShown": "Auswahl aufheben",
+      "empty": "Kein Repository passt."
+    }
+  },
+  "table": {
+    "range": "{from}-{to} von {total}",
+    "noRows": "Keine Zeilen",
+    "pagination": "Seiten",
+    "previous": "Zurück",
+    "next": "Weiter",
+    "pageN": "Seite {page}",
+    "rowsPerPage": "Zeilen pro Seite",
+    "clearFilters": "Filter zurücksetzen",
+    "selectAllMatching": "Alle {n} Treffer auswählen",
+    "selectPage": "Alle Zeilen dieser Seite auswählen",
+    "selectRow": "{name} auswählen",
+    "selected": "{count} ausgewählt",
+    "selection": "Auswahl",
+    "clearSelection": "Auswahl aufheben",
+    "sortBy": "Nach {column} sortieren, {dir}",
+    "ascending": "aufsteigend",
+    "descending": "absteigend",
+    "details": "Details",
+    "more": "Mehr",
+    "info": "Was bedeutet {label}?",
+    "search": "Suchen",
+    "filters": "Filter",
+    "sort": "Sortierung",
+    "quickViews": "Schnellansichten",
+    "showAsTable": "Als Tabelle",
+    "cursorNewest": "Die {count} neuesten",
+    "cursorShown": "{count} ältere",
+    "older": "Ältere Läufe",
+    "newest": "Neueste Läufe"
+  },
+  "badge": {
+    "SUCCESS": {
+      "label": "Erfolgreich"
+    },
+    "FAILURE": {
+      "label": "Fehlgeschlagen"
+    },
+    "TIMED_OUT": {
+      "label": "Zeitüberschreitung"
+    },
+    "STARTUP_FAILURE": {
+      "label": "Startfehler"
+    },
+    "CANCELLED": {
+      "label": "Abgebrochen"
+    },
+    "SKIPPED": {
+      "label": "Übersprungen"
+    },
+    "NEUTRAL": {
+      "label": "Neutral"
+    },
+    "STALE": {
+      "label": "Veraltet"
+    },
+    "ACTION_REQUIRED": {
+      "label": "Aktion nötig"
+    },
+    "QUEUED": {
+      "label": "Wartet"
+    },
+    "REQUESTED": {
+      "label": "Angefordert"
+    },
+    "PENDING": {
+      "label": "Ausstehend"
+    },
+    "WAITING": {
+      "label": "Wartet auf Freigabe"
+    },
+    "IN_PROGRESS": {
+      "label": "Läuft"
+    },
+    "COMPLETED": {
+      "label": "Abgeschlossen"
+    },
+    "busy": {
+      "label": "Beschäftigt"
+    },
+    "idle": {
+      "label": "Frei"
+    },
+    "offline": {
+      "label": "Offline"
+    },
+    "stuck": {
+      "label": "Hängt fest",
+      "info": "Hängt fest: seit über 10 Minuten hat kein Runner den Job übernommen, obwohl ein passender existiert."
+    },
+    "noRunner": {
+      "label": "Kein passender Runner",
+      "info": "Kein Runner online hat alle Labels, die der Job verlangt."
+    },
+    "approval": {
+      "label": "Wartet auf Freigabe",
+      "info": "Der Job wartet auf eine Umgebungsfreigabe; diese Zeit zählt nicht als Wartezeit."
+    },
+    "private": {
+      "label": "Privat"
+    },
+    "archived": {
+      "label": "Archiviert"
+    },
+    "fork": {
+      "label": "Fork"
+    },
+    "ignored": {
+      "label": "Ignoriert",
+      "info": "Für dieses Repository werden keine Daten geladen; ein Admin hat es ignoriert."
+    },
+    "deviation": {
+      "label": "Abweichung",
+      "info": "Die Schätzung weicht um mehr als 15 % von der GitHub-Abrechnung ab."
+    }
+  },
+  "breadcrumbs": {
+    "label": "Brotkrümelnavigation",
+    "accounts": "Konten",
+    "workflow": "Workflow „{name}“",
+    "run": "Lauf #{number}",
+    "runAttempt": "Lauf #{number} (Versuch {attempt})",
+    "sections": {
+      "repos": "Repositories",
+      "workflows": "Workflows",
+      "runners": "Runner",
+      "queue": "Warteschlange",
+      "costs": "Kosten",
+      "settings": "Einstellungen & Abgleich",
+      "audit": "Audit-Log"
+    }
+  },
+  "gettingStarted": {
+    "title": "Erste Schritte",
+    "waiting": "Warten auf den ersten Workflow-Lauf",
+    "steps": {
+      "installed": "GitHub-App installiert",
+      "import": "Verlaufsimport",
+      "webhook": "Erster Webhook empfangen"
+    },
+    "done": "erledigt",
+    "pending": "noch nicht",
+    "settings": "Einstellungen & Abgleich"
+  },
+  "shell": {
+    "freshness": {
+      "title": "Aktualität der Daten",
+      "updated": "Daten aktualisiert {ago}",
+      "notYet": "Noch keine Daten",
+      "never": "nie",
+      "stale": "(möglicherweise veraltet)",
+      "staleHint": "Die Daten sind möglicherweise veraltet; siehe Hinweis unten.",
+      "lastWebhook": "Letzter Webhook",
+      "lastSync": "Letzter Abgleich",
+      "settings": "Einstellungen & Abgleich"
+    },
+    "loading": "Wird geladen…"
+  },
+  "errors": {
+    "title": "Etwas ist schiefgelaufen",
+    "description": "Die Seite konnte nicht geladen werden. Bitte erneut versuchen; schlägt es weiter fehl, steht der Grund im Server-Log.",
+    "retry": "Erneut versuchen",
+    "backToAccount": "Zur Kontoübersicht",
+    "backToStart": "Zur Startseite",
+    "digest": "Fehlerkennung: {digest}"
+  },
+  "meta": {
+    "dashboard": "Konten & Organisationen",
+    "overview": "Übersicht",
+    "repos": "Repositories",
+    "repo": "Repository",
+    "workflows": "Workflows",
+    "workflow": "Workflow",
+    "runners": "Runner",
+    "runner": "Runner",
+    "queue": "Warteschlange",
+    "costs": "Kosten",
+    "audit": "Audit-Log",
+    "pulls": "Pull Requests",
+    "dependabot": "Dependabot",
+    "variables": "Variablen",
+    "variablesBulk": "Variable gesammelt setzen",
+    "batch": "Sammeländerung zurücknehmen",
+    "settings": "Einstellungen & Abgleich",
+    "run": "Lauf",
+    "userSettings": "Einstellungen",
+    "onboarding": "GitHub-App-Installationen",
+    "billingAccess": "Abrechnungszugriff"
   }
 }
