@@ -39,9 +39,11 @@ import { currentRole, type TenantScope } from "./scope";
  *    and nothing else happens.
  * 4. Live authz: the role is re-resolved from the DB and env (no session
  *    cache). No role: 401 and the user's sessions are revoked. Too low: a
- *    DENIED audit row and 403. The App must hold the purpose's permissions
- *    (refreshed from GitHub when older than 10 minutes); otherwise
- *    "permission not granted" and no GitHub call.
+ *    DENIED audit row and 403; the denial spends a rate-limit token first,
+ *    and without one it is answered as rate limited and not recorded. The
+ *    App must hold the purpose's permissions (refreshed from GitHub when
+ *    older than 10 minutes); otherwise "permission not granted" and no
+ *    GitHub call.
  * 5. Rate limit: 30 mutations per minute per user, one token per bulk item.
  * 6. Confirmation: `ActionSession.confirm` (TYPED must equal the variable or
  *    repo name).
@@ -335,6 +337,15 @@ export async function beginAction(
   const session = new ActionSession(actor, spec, inst, role, provider, deps);
 
   if (!hasRole(role, spec.role)) {
+    // A denial spends a rate-limit token before its audit row is written, so
+    // a user below the required role cannot grow the chain without bound
+    // (each row takes the installation's advisory lock).
+    const denied = await consumeActionTokens(actor.user.id, 1, deps.now());
+    if (!denied.ok)
+      return {
+        ok: false,
+        result: { status: "rate_limited", retryAfterS: denied.retryAfterS },
+      };
     await session.record({ params: {}, status: "DENIED" });
     return { ok: false, result: { status: "forbidden" } };
   }

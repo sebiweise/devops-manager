@@ -291,6 +291,13 @@ describe.skipIf(!DATABASE_URL)("management", () => {
       expect(gh.tokens).toHaveLength(0);
     });
 
+    it("rate-limits denials before they are recorded", async () => {
+      for (let i = 0; i < 30; i++)
+        expect(await rerun("VIEWER")).toEqual({ status: "forbidden" });
+      expect(await rerun("VIEWER")).toMatchObject({ status: "rate_limited" });
+      expect(await db.auditLog.count()).toBe(30);
+    });
+
     it("an operator can re-run and cancel but cannot change variables or merge", async () => {
       gh.addPull({ repoId: 11, number: 1 });
       expect((await rerun("OPERATOR")).status).toBe("succeeded");
