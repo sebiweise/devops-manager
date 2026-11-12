@@ -10,7 +10,7 @@
     "private": "private",
     "archived": "archived",
     "personalAccount": "Personal account",
-    "organization": "Organization",
+    "organization": "Organisation",
     "notEnoughData": "not enough data",
     "yes": "yes",
     "no": "no"
@@ -1661,8 +1661,8 @@
       "none": "No account matches."
     },
     "type": {
-      "ORGANIZATION": "Org",
-      "USER": "User"
+      "ORGANIZATION": "Organisation",
+      "USER": "Personal account"
     },
     "theme": {
       "label": "Theme",

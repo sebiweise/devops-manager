@@ -1661,8 +1661,8 @@
       "none": "Kein Konto passt."
     },
     "type": {
-      "ORGANIZATION": "Org",
-      "USER": "Benutzer"
+      "ORGANIZATION": "Organisation",
+      "USER": "Persönliches Konto"
     },
     "theme": {
       "label": "Darstellung",

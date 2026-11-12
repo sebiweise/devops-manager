@@ -68,13 +68,7 @@ export function AccountSwitcher({
           <span className="max-w-36 truncate font-medium sm:max-w-56">
             {currentAccount?.login ?? t("switcher.all")}
           </span>
-          {currentAccount ? (
-            <span className="hidden rounded-full border px-1.5 text-xs text-muted-foreground sm:inline">
-              {currentAccount.type === "ORGANIZATION"
-                ? t("type.ORGANIZATION")
-                : t("type.USER")}
-            </span>
-          ) : null}
+          {/* The account header below names the type; the icon is enough here. */}
           <ChevronsUpDown
             aria-hidden="true"
             className="size-3.5 text-muted-foreground"
