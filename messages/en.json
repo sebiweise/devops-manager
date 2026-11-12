@@ -222,7 +222,13 @@
       "ignored": "Show ignored"
     },
     "approx": "Beyond raw retention: values come from daily summaries (~).",
-    "apply": "Apply"
+    "apply": "Apply",
+    "colRuns": "Runs",
+    "colSuccess": "Success",
+    "colP50": "Typical duration",
+    "colMinutes": "Est. minutes",
+    "colTrend": "Trend",
+    "colTrendWindow": "last 14 days"
   },
   "repo": {
     "defaultBranch": "default branch {branch}",

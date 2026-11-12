@@ -222,7 +222,13 @@
       "ignored": "Ignorierte anzeigen"
     },
     "approx": "Außerhalb der Rohdatenaufbewahrung: Werte aus Tagesauswertungen (~).",
-    "apply": "Anwenden"
+    "apply": "Anwenden",
+    "colRuns": "Läufe",
+    "colSuccess": "Erfolg",
+    "colP50": "Typische Dauer",
+    "colMinutes": "Gesch. Minuten",
+    "colTrend": "Trend",
+    "colTrendWindow": "letzte 14 Tage"
   },
   "repo": {
     "defaultBranch": "Standard-Branch {branch}",

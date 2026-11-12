@@ -1,3 +1,4 @@
+import { TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -81,6 +82,15 @@ export default async function ReposPage({
   const rangeLabel = t(`filters.ranges.${range}`);
   const canIgnore = hasRole(scope.role, "ADMIN") && state.globalEnabled;
   const dash = <span aria-hidden="true">—</span>;
+  // Column name with its window below, so headers stay narrow (also in German).
+  const twoLine = (name: string, window: string) => (
+    <span className="inline-flex flex-col leading-tight">
+      <span>{name}</span>
+      <span className="text-xs font-normal text-muted-foreground">
+        {window}
+      </span>
+    </span>
+  );
   const metric = (r: RepoStat, v: React.ReactNode) => (r.ignored ? dash : v);
 
   const columns: Column<RepoStat>[] = [
@@ -126,7 +136,7 @@ export default async function ReposPage({
               status={r.lastRun.status}
               conclusion={r.lastRun.conclusion}
             />
-            <span className="max-w-40 truncate text-xs text-muted-foreground">
+            <span className="hidden max-w-40 truncate text-xs text-muted-foreground sm:inline">
               {r.lastRun.workflowName}
             </span>
           </Link>
@@ -137,23 +147,25 @@ export default async function ReposPage({
     {
       id: "runs",
       label: t("repos.runs", { range: rangeLabel }),
-      header: t("repos.runs", { range: rangeLabel }),
+      header: twoLine(t("repos.colRuns"), rangeLabel),
       sortKey: "runs",
       align: "right",
+      hideBelow: "md",
       cell: (r) => metric(r, formatNumber(r.runs, locale)),
     },
     {
       id: "success",
       label: t("repos.success", { range: rangeLabel }),
-      header: t("repos.success", { range: rangeLabel }),
+      header: twoLine(t("repos.colSuccess"), rangeLabel),
       sortKey: "success",
       align: "right",
+      hideBelow: "md",
       cell: (r) => metric(r, formatPercent(r.successRate, locale)),
     },
     {
       id: "p50",
       label: t("repos.p50Range", { range: rangeLabel }),
-      header: t("repos.p50Range", { range: rangeLabel }),
+      header: twoLine(t("repos.colP50"), rangeLabel),
       sortKey: "p50",
       align: "right",
       hideBelow: "lg",
@@ -166,7 +178,7 @@ export default async function ReposPage({
     {
       id: "minutes",
       label: t("repos.minutes", { range: rangeLabel }),
-      header: t("repos.minutes", { range: rangeLabel }),
+      header: twoLine(t("repos.colMinutes"), rangeLabel),
       sortKey: "minutes",
       align: "right",
       hideBelow: "lg",
@@ -213,9 +225,15 @@ export default async function ReposPage({
           >
             {formatNumber(r.openAlertCount, locale)}
             {r.openAlertHighCount ? (
-              <span className="text-status-critical">
-                {" "}
-                ({r.openAlertHighCount})
+              <span className="ml-1 inline-flex items-center gap-0.5 text-xs text-muted-foreground">
+                <TriangleAlert
+                  aria-hidden="true"
+                  className="size-3 text-status-warning"
+                />
+                {formatNumber(r.openAlertHighCount, locale)}
+                <span className="sr-only">
+                  {t("repos.alertsHigh", { count: r.openAlertHighCount })}
+                </span>
               </span>
             ) : null}
           </Link>
@@ -224,7 +242,7 @@ export default async function ReposPage({
     {
       id: "trend",
       label: t("repos.trend"),
-      header: t("repos.trend"),
+      header: twoLine(t("repos.colTrend"), t("repos.colTrendWindow")),
       hideBelow: "lg",
       cell: (r) => {
         if (r.ignored) return dash;

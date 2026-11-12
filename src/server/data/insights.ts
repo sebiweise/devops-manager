@@ -744,7 +744,7 @@ export async function listRepoStats(
         where: { installationId, removedAt: null, ignoredAt: { not: null } },
       }),
       db.repository.count({
-        where: { installationId, removedAt: null, fork: true },
+        where: { installationId, ...activeRepoWhere, fork: true },
       }),
     ]),
   ]);

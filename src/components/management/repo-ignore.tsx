@@ -158,13 +158,17 @@ export function RepoIgnoreButton({
     mode === "ignore"
       ? t("dialog.titleIgnore", { count: repos.length })
       : t("dialog.titleUnignore", { count: repos.length });
+  const text =
+    label ?? (mode === "ignore" ? t("action.ignore") : t("action.unignore"));
   return (
     <ActionDialog
-      trigger={
-        label ?? (mode === "ignore" ? t("action.ignore") : t("action.unignore"))
-      }
+      trigger={text}
+      // A row action names its repository; the visible text stays the start
+      // of the accessible name.
       triggerLabel={
-        repos.length === 1 ? `${title} ${repos[0]!.fullName}` : undefined
+        !label && repos.length === 1
+          ? `${text} ${repos[0]!.fullName}`
+          : undefined
       }
       title={title}
       triggerVariant={variant}
