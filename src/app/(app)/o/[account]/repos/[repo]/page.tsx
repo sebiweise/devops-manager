@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { getFormatter, getTranslations } from "next-intl/server";
 import { RangeFilter } from "@/components/insights/range-filter";
 import { RunFilters } from "@/components/insights/run-filters";
 import { RunsTable } from "@/components/insights/runs-table";
 import { repoHref } from "@/components/insights/workflow-link";
 import { WorkflowsTable } from "@/components/insights/workflows-table";
 import { ManagementBanner } from "@/components/management/management-banner";
+import { RepoIgnoreButton } from "@/components/management/repo-ignore";
+import { Badge } from "@/components/ui/badge";
 import {
   DependabotSection,
   PullsSection,
@@ -34,8 +36,9 @@ import {
   getManagementState,
   type ManagementState,
 } from "@/server/data/management";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Repository" };
+export const generateMetadata = accountMeta("repo");
 
 const TABS = ["workflows", "runs", "pulls", "variables", "dependabot"] as const;
 type Tab = (typeof TABS)[number];
@@ -62,6 +65,63 @@ export default async function RepoPage({
     orNotFound(getManagementState(scope, installation.id)),
   ]);
   const login = installation.accountLogin;
+  if (repo.ignored) {
+    // No data tabs for an ignored repository: only what it is and its state.
+    const format = await getFormatter();
+    return (
+      <div className="flex flex-col gap-4">
+        <div>
+          <p className="text-sm text-muted-foreground">
+            <Link href={accountPath(login, "/repos")} className="underline">
+              {t("repos.title")}
+            </Link>
+          </p>
+          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold">
+            {repo.fullName}
+            <Badge variant="outline">{t("ignore.badge.ignored")}</Badge>
+            {repo.fork ? (
+              <Badge variant="outline">{t("ignore.badge.fork")}</Badge>
+            ) : null}
+            {repo.private ? (
+              <Badge variant="secondary">{t("ignore.badge.private")}</Badge>
+            ) : null}
+            {repo.archived ? (
+              <Badge variant="outline">{t("ignore.badge.archived")}</Badge>
+            ) : null}
+          </h1>
+        </div>
+        <section
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-4"
+        >
+          <div className="flex flex-col gap-1 text-sm">
+            <p className="font-medium">{t("ignore.banner.title")}</p>
+            {repo.ignoredAt ? (
+              <p className="text-muted-foreground">
+                {t("ignore.banner.since", {
+                  when: format.relativeTime(new Date(repo.ignoredAt)),
+                })}
+              </p>
+            ) : null}
+            {!repo.purged ? (
+              <p className="text-muted-foreground">
+                {t("ignore.banner.purging")}
+              </p>
+            ) : null}
+          </div>
+          {hasRole(scope.role, "ADMIN") && state.globalEnabled ? (
+            <RepoIgnoreButton
+              installationId={String(installation.id)}
+              mode="unignore"
+              repos={[
+                { id: repo.id, fullName: repo.fullName, fork: repo.fork },
+              ]}
+            />
+          ) : null}
+        </section>
+      </div>
+    );
+  }
   const base = repoHref(login, repo.fullName);
   const requested = param(sp, "tab");
   const tab: Tab = (TABS as readonly string[]).includes(requested ?? "")

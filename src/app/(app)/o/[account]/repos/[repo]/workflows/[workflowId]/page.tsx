@@ -42,8 +42,9 @@ import {
   parseRange,
 } from "@/server/data/insights";
 import { getManagementState } from "@/server/data/management";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Workflow" };
+export const generateMetadata = accountMeta("workflow");
 
 export default async function WorkflowPage({
   params,
@@ -61,7 +62,7 @@ export default async function WorkflowPage({
     installation.id,
     decodeURIComponent(repoParam),
   );
-  if (!repo) notFound();
+  if (!repo || repo.ignored) notFound();
   const range = parseRange(param(sp, "range") ?? "30d");
   const id = BigInt(workflowId);
   const detail = await orNotFound(

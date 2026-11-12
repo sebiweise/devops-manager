@@ -80,6 +80,7 @@ const KNOWN_REFUSALS = new Set([
   "unchanged",
   "variable_not_found",
   "too_many_repositories",
+  "no_repositories",
   "no_writable_repositories",
   "not_revertible",
   "values_unavailable",

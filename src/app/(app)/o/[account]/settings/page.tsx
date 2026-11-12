@@ -5,6 +5,11 @@ import { KpiGrid, KpiTile } from "@/components/insights/kpi-tile";
 import { ManagementBanner } from "@/components/management/management-banner";
 import { ManagementSettings } from "@/components/management/management-settings";
 import {
+  RepoIgnoreButton,
+  RepoIgnoreList,
+} from "@/components/management/repo-ignore";
+import { Badge } from "@/components/ui/badge";
+import {
   Table,
   TableBody,
   TableCell,
@@ -18,8 +23,13 @@ import { formatDuration, formatNumber, formatPercent } from "@/lib/format";
 import { hasRole } from "@/server/authz/roles";
 import { getSyncHealth } from "@/server/data/insights";
 import { getManagementState } from "@/server/data/management";
+import {
+  listIgnorableRepositories,
+  listIgnoredRepositories,
+} from "@/server/data/repos";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Installation settings" };
+export const generateMetadata = accountMeta("settings");
 
 const DELIVERY_STATUSES = [
   "PROCESSED",
@@ -43,13 +53,17 @@ export default async function InstallationSettingsPage({
   const { account } = await params;
   const { scope, installation } = await loadAccount(account);
   if (!hasRole(scope.role, "ADMIN")) notFound();
-  const [t, format, locale, health, state] = await Promise.all([
-    getTranslations(),
-    getFormatter(),
-    getLocale(),
-    orNotFound(getSyncHealth(scope, installation.id, env.BACKFILL_DAYS)),
-    orNotFound(getManagementState(scope, installation.id)),
-  ]);
+  const [t, format, locale, health, state, ignored, ignorable] =
+    await Promise.all([
+      getTranslations(),
+      getFormatter(),
+      getLocale(),
+      orNotFound(getSyncHealth(scope, installation.id, env.BACKFILL_DAYS)),
+      orNotFound(getManagementState(scope, installation.id)),
+      orNotFound(listIgnoredRepositories(scope, installation.id)),
+      orNotFound(listIgnorableRepositories(scope, installation.id)),
+    ]);
+  const installationId = String(installation.id);
   const when = (iso: string | null) =>
     iso ? (
       <time dateTime={iso}>{format.relativeTime(new Date(iso))}</time>
@@ -65,11 +79,107 @@ export default async function InstallationSettingsPage({
         </h1>
         {!state.globalEnabled ? <ManagementBanner state={state} /> : null}
         <ManagementSettings
-          installationId={String(installation.id)}
+          installationId={installationId}
           globalEnabled={state.globalEnabled}
           managementEnabled={state.installationEnabled}
           redactVariableValues={state.redactVariableValues}
         />
+      </section>
+
+      <section className="flex flex-col gap-3" aria-labelledby="ignored-repos">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="ignored-repos" className="text-xl font-semibold">
+            {t("ignore.settings.title", { count: ignored.length })}
+          </h2>
+          {state.globalEnabled && ignored.length > 1 ? (
+            <RepoIgnoreButton
+              installationId={installationId}
+              mode="unignore"
+              label={t("ignore.action.unignoreAll", { count: ignored.length })}
+              repos={ignored.map((r) => ({
+                id: r.repositoryId,
+                fullName: r.fullName,
+                fork: r.fork,
+              }))}
+            />
+          ) : null}
+        </div>
+        <p className="max-w-prose text-sm text-muted-foreground">
+          {t("ignore.settings.description")}
+        </p>
+        {ignored.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {t("ignore.settings.empty")}
+          </p>
+        ) : (
+          <Table>
+            <caption className="sr-only">
+              {t("ignore.settings.title", { count: ignored.length })}
+            </caption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("ignore.settings.repo")}</TableHead>
+                <TableHead>{t("ignore.settings.ignoredBy")}</TableHead>
+                <TableHead>{t("ignore.settings.state")}</TableHead>
+                <TableHead>
+                  <span className="sr-only">
+                    {t("ignore.settings.actions")}
+                  </span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {ignored.map((r) => (
+                <TableRow key={r.repositoryId}>
+                  <TableCell className="font-medium">
+                    <span className="mr-2">{r.fullName}</span>
+                    {r.fork ? (
+                      <Badge variant="outline">{t("ignore.badge.fork")}</Badge>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {r.ignoredBy ?? "—"}
+                    {" · "}
+                    {when(r.ignoredAt)}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {r.purged
+                      ? t("ignore.settings.purged")
+                      : t("ignore.banner.purging")}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {state.globalEnabled ? (
+                      <RepoIgnoreButton
+                        installationId={installationId}
+                        mode="unignore"
+                        repos={[
+                          {
+                            id: r.repositoryId,
+                            fullName: r.fullName,
+                            fork: r.fork,
+                          },
+                        ]}
+                      />
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+        {state.globalEnabled ? (
+          <details className="rounded-lg border p-3">
+            <summary className="cursor-pointer font-medium">
+              {t("ignore.settings.addTitle")}
+            </summary>
+            <div className="mt-3">
+              <RepoIgnoreList
+                installationId={installationId}
+                repos={ignorable}
+              />
+            </div>
+          </details>
+        ) : null}
       </section>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
