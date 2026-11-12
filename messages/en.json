@@ -721,5 +721,67 @@
       "not_configured": "Connect GitHub is not configured on this instance.",
       "forbidden": "Only admins can manage billing credentials."
     }
+  },
+  "management": {
+    "actingAsNote": "Actions are performed by the GitHub App, so GitHub shows the App's bot as the actor. The audit log records who triggered them.",
+    "variablesNotSecrets": "Variables are not secrets: their values are visible to every role (unless redaction is on) and recorded in the audit log.",
+    "disabledGlobal": "Management is turned off for this instance.",
+    "disabledInstallation": "Management is turned off for this installation. An admin can turn it on in the installation settings.",
+    "result": {
+      "succeeded": "Done.",
+      "failed": "GitHub refused the action: {message}",
+      "pending": "This action is still running.",
+      "unauthorized": "Your access has ended. Sign in again.",
+      "forbidden": "Your role cannot do this.",
+      "management_disabled_global": "Management is turned off for this instance.",
+      "management_disabled_installation": "Management is turned off for this installation.",
+      "permission_not_granted": "The GitHub App has not been granted the permission this needs: {permissions}.",
+      "rate_limited": "Too many actions. Try again in {seconds} s.",
+      "confirmation_mismatch": "The confirmation does not match.",
+      "conflict": "This dialog was already used. Close it and try again.",
+      "replayed": "This action was already submitted; showing its result."
+    },
+    "refused": {
+      "attempt_limit": "This run reached GitHub's limit of 50 attempts.",
+      "cancel_first": "Cancel the run first. Force cancel is offered afterwards.",
+      "force_cancel_too_early": "Force cancel is possible 60 s after a cancel. Try again in {seconds} s.",
+      "invalid_name": "Use letters, digits and underscores, not starting with a digit or GITHUB_, at most 255 characters.",
+      "invalid_value": "Values must not be empty and are limited to 48 KB.",
+      "archived": "The repository is archived.",
+      "not_selected": "The repository is not in the installation's selection.",
+      "unreadable": "The current value could not be read from GitHub.",
+      "drifted": "The value changed after the batch; it is left as it is.",
+      "stale_preview": "The value changed since the dialog opened. Review the new value and try again.",
+      "unchanged": "Nothing to change.",
+      "variable_not_found": "The variable does not exist.",
+      "too_many_repositories": "Select at most 500 repositories.",
+      "no_writable_repositories": "None of the selected repositories can be written.",
+      "not_revertible": "Only bulk changes can be reverted.",
+      "values_unavailable": "The recorded values can no longer be decrypted, so the batch cannot be reverted.",
+      "already_reverted": "This batch has already been reverted.",
+      "nothing_to_revert": "Nothing to revert.",
+      "not_organization": "Organisation variables exist only for organisations.",
+      "pr_not_found": "The pull request was not found.",
+      "already_merged": "The pull request is already merged.",
+      "not_open": "The pull request is closed.",
+      "draft": "Draft pull requests cannot be merged.",
+      "not_mergeable": "The pull request has conflicts and cannot be merged.",
+      "mergeability_unknown": "GitHub is still checking whether the pull request can be merged. Try again shortly.",
+      "needs_acknowledgement": "The merge state is {state}. Confirm the warning to merge anyway."
+    },
+    "bulk": {
+      "create": "create",
+      "update": "update",
+      "restore": "restore",
+      "delete": "delete",
+      "unchanged": "unchanged",
+      "skipped": "skipped",
+      "summary": "{succeeded} succeeded, {failed} failed."
+    },
+    "audit": {
+      "verifyOk": "The audit chain is intact ({count} entries checked).",
+      "verifyBroken": "The audit chain is broken at entry {seq}: it was changed, removed or inserted outside the app.",
+      "unsealed": "{count} older entries have no recorded result hash."
+    }
   }
 }
