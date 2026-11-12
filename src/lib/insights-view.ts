@@ -1,11 +1,7 @@
-import type {
-  Freshness,
-  JobBreakdown,
-  WorkflowStat,
-} from "@/server/data/insights";
+import type { Freshness, JobBreakdown } from "@/server/data/insights";
 
 /**
- * View logic of the insights pages: sorting, leaderboards, the hosted vs
+ * View logic of the insights pages: sorting, the hosted vs
  * self-hosted comparison and the stale-banner reasons. Pure functions over
  * the DTOs of `src/server/data/insights`.
  */
@@ -111,64 +107,6 @@ export function staleReasons(f: Freshness, now: Date): StaleReason[] {
     out.push("noReconcile");
   if (f.failedDeliveries + f.deadDeliveries > 0) out.push("failedDeliveries");
   return out;
-}
-
-// ---------- workflow leaderboards ----------
-
-export type Leaderboards = {
-  slowest: WorkflowStat[];
-  flakiest: WorkflowStat[];
-  mostMinutes: WorkflowStat[];
-  lowestSuccess: WorkflowStat[];
-  regressions: WorkflowStat[];
-};
-
-export function leaderboards(
-  stats: ReadonlyArray<WorkflowStat>,
-  limit = 10,
-): Leaderboards {
-  const top = (
-    rows: WorkflowStat[],
-    by: (w: WorkflowStat) => number,
-    dir: 1 | -1 = -1,
-  ) =>
-    rows
-      .slice()
-      .sort(
-        (a, b) =>
-          (by(a) - by(b)) * dir ||
-          a.repoFullName.localeCompare(b.repoFullName) ||
-          a.workflowName.localeCompare(b.workflowName),
-      )
-      .slice(0, limit);
-  const all = [...stats];
-  return {
-    slowest: top(
-      all.filter((w) => w.summary.p95 != null && enoughData(w.summary.n)),
-      (w) => w.summary.p95!,
-    ),
-    flakiest: top(
-      all.filter((w) => (w.summary.flakyRate ?? 0) > 0),
-      (w) => w.summary.flakyRate!,
-    ),
-    mostMinutes: top(
-      all.filter((w) => w.billableMinEst > 0),
-      (w) => w.billableMinEst,
-    ),
-    lowestSuccess: top(
-      all.filter(
-        (w) =>
-          w.summary.successRate != null &&
-          w.summary.success + w.summary.failure >= MIN_SAMPLES,
-      ),
-      (w) => w.summary.successRate!,
-      1,
-    ),
-    regressions: top(
-      all.filter((w) => w.regression),
-      (w) => w.regression!.ratio,
-    ),
-  };
 }
 
 // ---------- hosted vs self-hosted ----------

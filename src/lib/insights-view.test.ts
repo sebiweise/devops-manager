@@ -1,15 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type {
-  Freshness,
-  JobBreakdown,
-  RunSummary,
-  WorkflowStat,
-} from "@/server/data/insights";
+import type { Freshness, JobBreakdown } from "@/server/data/insights";
 import {
   decodeCursor,
   encodeCursor,
   hostedVsSelfHosted,
-  leaderboards,
   parseConclusion,
   staleReasons,
   textFilter,
@@ -54,74 +48,6 @@ describe("staleReasons", () => {
     expect(staleReasons(freshness({ lastReconciledAt: null }), NOW)).toEqual([
       "noReconcile",
     ]);
-  });
-});
-
-const summary = (s: Partial<RunSummary>): RunSummary => ({
-  runs: 20,
-  success: 18,
-  failure: 2,
-  cancelled: 0,
-  other: 0,
-  firstTrySuccess: 18,
-  flakyRecovered: 0,
-  successRate: 0.9,
-  firstTrySuccessRate: 0.9,
-  flakyRate: 0,
-  n: 20,
-  p50: 60,
-  p95: 120,
-  queueP95: 5,
-  approx: false,
-  ...s,
-});
-
-const wf = (
-  id: string,
-  s: Partial<RunSummary>,
-  w: Partial<WorkflowStat> = {},
-) =>
-  ({
-    workflowId: id,
-    workflowName: `wf-${id}`,
-    repositoryId: "1",
-    repoFullName: "example-org/repo-a",
-    summary: summary(s),
-    billableMinEst: 0,
-    regression: null,
-    successDrop: null,
-    sparkline: [],
-    ...w,
-  }) satisfies WorkflowStat;
-
-describe("leaderboards", () => {
-  const stats = [
-    wf(
-      "1",
-      { p95: 300, flakyRate: 0.1, successRate: 0.5 },
-      { billableMinEst: 10 },
-    ),
-    wf("2", { p95: 900, n: 5 }, { billableMinEst: 40 }),
-    wf(
-      "3",
-      { p95: 100, successRate: 0.95 },
-      { regression: { metric: "p95", recent: 100, baseline: 50, ratio: 2 } },
-    ),
-    wf("4", { successRate: 0.2, success: 1, failure: 4 }),
-  ];
-  const b = leaderboards(stats);
-
-  it("ranks slowest by p95 and skips small samples", () => {
-    expect(b.slowest.map((w) => w.workflowId)).toEqual(["1", "4", "3"]);
-  });
-
-  it("ranks flaky, minutes, success and regressions", () => {
-    expect(b.flakiest.map((w) => w.workflowId)).toEqual(["1"]);
-    expect(b.mostMinutes.map((w) => w.workflowId)).toEqual(["2", "1"]);
-    // Workflow 4 has only 5 runs in the denominator.
-    expect(b.lowestSuccess[0]!.workflowId).toBe("1");
-    expect(b.lowestSuccess.map((w) => w.workflowId)).not.toContain("4");
-    expect(b.regressions.map((w) => w.workflowId)).toEqual(["3"]);
   });
 });
 

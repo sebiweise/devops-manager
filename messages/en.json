@@ -16,9 +16,7 @@
     "no": "no"
   },
   "nav": {
-    "dashboard": "Dashboard",
     "onboarding": "GitHub App installations",
-    "settings": "Settings",
     "github": "Billing access"
   },
   "landing": {
@@ -46,16 +44,8 @@
   },
   "dashboard": {
     "title": "Accounts & organisations",
-    "installations": "{count, plural, =0 {No accounts} one {# account} other {# accounts}}",
-    "repositories": "{count, plural, =0 {No repositories} one {# repository} other {# repositories}}",
-    "liveSource": "live from GitHub",
-    "storedSource": "from the last sync (GitHub unreachable)",
-    "empty": "No installations yet.",
     "emptyAdmin": "Install the GitHub App on an account to get started.",
     "emptyViewer": "No installations yet. Ask an admin to install the GitHub App.",
-    "waiting": "Waiting for the first workflow run",
-    "repo": "Repository",
-    "defaultBranch": "Default branch",
     "open": "Open overview",
     "intro": "Choose an organisation or account to see its runs, runners, queue and costs.",
     "updated": "updated {ago}",
@@ -68,7 +58,6 @@
       "minutes": "Minutes · month",
       "minutesOf": "of {included} included",
       "stuck": "{count} waiting > 15 min",
-      "noRuns": "—",
       "minutesOfEst": "of {included} included (est.)",
       "est": "estimate",
       "over": "over the included minutes"
@@ -180,7 +169,6 @@
   },
   "freshness": {
     "label": "Data freshness",
-    "pill": "last webhook {webhook} · last full sync {reconcile}",
     "never": "never",
     "refreshing": "Refreshing in the background; reload in a minute for newer data.",
     "staleTitle": "Data may be out of date",
@@ -269,15 +257,11 @@
   },
   "overview": {
     "title": "Overview",
-    "noRuns": "No completed workflow runs in this range yet. New runs arrive through webhooks; older ones through the history import.",
     "regressions": "Regressions",
-    "noRegressions": "No workflow got slower in the last 7 days.",
     "regression": "{metric} {recent} vs {baseline} over the prior 28 days ({ratio}×)",
     "flakyJobs": "Flaky jobs",
-    "noFlaky": "No job failed and then passed on a re-run.",
     "flakyRuns": "{count, plural, one {# flaky run} other {# flaky runs}}",
     "successDrops": "Success drops",
-    "noSuccessDrops": "No success rate dropped by 10 points or more.",
     "successDrop": "{recent} in the last 7 days vs {baseline} before",
     "subtitle": "Runs, durations and the queue of the last {range}.",
     "kpiLabel": "Key figures",
@@ -310,15 +294,7 @@
     "noActive": "No runs in this range."
   },
   "kpi": {
-    "runs": "Runs ({range})",
-    "successRate": "Success rate",
-    "delta7d": "{delta} vs the previous 7 days",
-    "p50": "Typical duration (p50)",
-    "p95": "95 % finished within (p95)",
-    "samples": "n = {n}",
-    "queueP95": "Queue time, 95 % (p95)",
-    "minutes": "Est. minutes",
-    "minutesHint": "estimate from job durations"
+    "samples": "n = {n}"
   },
   "repos": {
     "title": "Repositories",
@@ -328,7 +304,6 @@
     "lastRun": "Last run",
     "trend": "Trend · last 14 days",
     "noRuns": "no runs yet",
-    "sparkline": "Runs over the last 14 days: {runs} runs, {failures} failed.",
     "noMatch": "No repository matches the filter.",
     "runs": "Runs · {range}",
     "success": "Success · {range}",
@@ -433,7 +408,6 @@
     "runs": "Runs",
     "success": "Success",
     "regressionBadge": "{metric} slower",
-    "successDropBadge": "Success drop",
     "subtitle": "{workflows, plural, =0 {No workflows} one {# workflow} other {# workflows}} in {repos, plural, one {# repository} other {# repositories}} · last {range}",
     "aboutValues": "About these values",
     "search": "Search workflow or repository",
@@ -466,9 +440,6 @@
   "workflow": {
     "notEnough": "Only {n} completed runs in this range; percentiles need at least {min}.",
     "firstTry": "first try {rate}",
-    "flakyRate": "Flaky rate",
-    "flakyRuns": "{count, plural, one {# run recovered on re-run} other {# runs recovered on re-run}}",
-    "jobs": "Jobs by runner group (labels)",
     "noJobs": "No completed jobs in this range.",
     "job": "Job",
     "pool": "Runner group (labels)",
@@ -535,25 +506,19 @@
     "mostMinutes": "Most minutes",
     "lowestSuccess": "Lowest success",
     "regressions": "Regressions",
-    "empty": "Nothing to show in this range.",
-    "ratio": "{metric} {ratio}×",
     "note": "Percentiles and success rates need at least 10 completed runs; values with ~ come from daily histograms."
   },
   "syncHealth": {
-    "title": "Sync health",
     "lastWebhook": "Last webhook",
     "lastReconcile": "Last full sync",
-    "lastReconcileStatus": "Result of the last full sync",
     "lagP50": "Delay until data shows up (typical)",
     "lagP95": "Delay until data shows up (95 %)",
     "dirty": "Daily summaries waiting to be recalculated",
-    "dirtyHint": "days waiting to be recomputed",
     "backfillDays": "History import (days)",
     "repos": "Repositories",
     "cursor": "Newest run imported",
     "backfill": "History import",
     "state": "State",
-    "lastError": "Last error",
     "backfillOf": "History import progress of {repo}",
     "done": "done",
     "needsResync": "full re-import scheduled",
@@ -578,10 +543,6 @@
     "until": "History imported until"
   },
   "runnerData": {
-    "stuck": "Stuck",
-    "stuckHint": "Queued for more than 15 minutes and no free online runner has these labels.",
-    "noMatchingRunner": "No matching runner",
-    "noMatchingRunnerHint": "No runner of this installation has all of these labels, online or not.",
     "insufficientSamples": "Insufficient samples",
     "insufficientSamplesHint": "Runner samples cover less than half of the period, so utilisation cannot be told apart from gaps between samples.",
     "sampleInterval": "± one sample interval ({interval})",
@@ -633,11 +594,8 @@
   },
   "runners": {
     "title": "Runners",
-    "summary": "{total, plural, one {# self-hosted runner} other {# self-hosted runners}}: {busy} busy, {idle} idle, {offline} offline",
     "sampled": "Runner state sampled {sampled} · discovery {discovered}",
     "sampling": "Sampling runners in the background; this page refreshes every 30 seconds.",
-    "orgRunners": "Organisation runners",
-    "repoRunners": "Repository runners: {repo}",
     "noSelfHosted": "No self-hosted runners known yet. Hosted runner groups are listed below.",
     "caption": "Self-hosted runners",
     "name": "Runner",
@@ -762,7 +720,6 @@
     }
   },
   "runner": {
-    "back": "All runners",
     "scopeOrg": "Organisation runner",
     "scopeRepo": "Repository runner of {repo}",
     "seen": "First seen {first} · last seen {last}",
@@ -824,8 +781,6 @@
   },
   "queue": {
     "title": "Queue",
-    "summary": "{count, plural, one {# job} other {# jobs}} queued · oldest {oldest} · {stuck, plural, =0 {none stuck} other {# stuck}}",
-    "updated": "Updated {time}",
     "empty": "Nothing queued.",
     "groups": "Queued jobs by labels and repository",
     "labels": "Labels",
@@ -885,10 +840,6 @@
     "unmatched": "{count, plural, one {# job} other {# jobs}} on larger or unknown runners matched no runner type and are excluded from the estimates.",
     "notBilled": "not billed",
     "kpi": {
-      "net": "Net, billed",
-      "gross": "Gross, billed",
-      "discount": "Included (discount)",
-      "allProducts": "Net, all products",
       "estUsd": "Estimated",
       "estMin": "Estimated minutes",
       "projectedNet": "Projected net, month end",
@@ -931,7 +882,6 @@
       "sku": "Runner type",
       "multiplier": "Multiplier",
       "quantity": "Billed quantity",
-      "unit": "Unit",
       "gross": "Gross",
       "discount": "Discount",
       "net": "Net",
@@ -970,13 +920,9 @@
     "reconciliation": {
       "title": "Estimate vs billed",
       "description": "Per repository and runner type, on gross USD.",
-      "empty": "Shown once billed figures are available.",
       "estimate": "Estimate",
       "billed": "Billed",
       "deviation": "Deviation",
-      "flag": "Check",
-      "flagged": "⚠ check",
-      "ok": "ok",
       "allOk": "Estimates match the bill (within 15 %).",
       "billedGross": "Billed (gross)"
     },
@@ -1521,7 +1467,6 @@
     "banner": {
       "title": "This repository is ignored. No data is loaded for it.",
       "purging": "Deleting stored data…",
-      "since": "Ignored {when}.",
       "at": "Ignored on"
     },
     "settings": {
@@ -1533,16 +1478,7 @@
       "state": "Stored data",
       "actions": "Actions",
       "purged": "Deleted",
-      "addTitle": "Ignore repositories",
       "removed": "no longer in the App's selection"
-    },
-    "list": {
-      "label": "Repositories that can be ignored",
-      "search": "Filter by name",
-      "forksOnly": "Forks only",
-      "selectShown": "Select all shown ({count})",
-      "clearShown": "Clear selection",
-      "empty": "No repository matches."
     },
     "rowMenu": "Actions for {name}",
     "openOnGitHub": "Open on GitHub"
@@ -1572,7 +1508,6 @@
     "filters": "Filters",
     "sort": "Sort",
     "quickViews": "Quick views",
-    "showAsTable": "Show as table",
     "cursorNewest": "Showing {count} newest",
     "cursorShown": "Showing {count} older",
     "older": "Older runs",

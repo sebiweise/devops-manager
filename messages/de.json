@@ -16,9 +16,7 @@
     "no": "nein"
   },
   "nav": {
-    "dashboard": "Dashboard",
     "onboarding": "GitHub-App-Installationen",
-    "settings": "Einstellungen",
     "github": "Abrechnungszugriff"
   },
   "landing": {
@@ -46,16 +44,8 @@
   },
   "dashboard": {
     "title": "Konten & Organisationen",
-    "installations": "{count, plural, =0 {Keine Konten} one {# Konto} other {# Konten}}",
-    "repositories": "{count, plural, =0 {Keine Repositories} one {# Repository} other {# Repositories}}",
-    "liveSource": "live von GitHub",
-    "storedSource": "vom letzten Abgleich (GitHub nicht erreichbar)",
-    "empty": "Noch keine Installationen.",
     "emptyAdmin": "Installiere die GitHub App auf einem Konto, um zu starten.",
     "emptyViewer": "Noch keine Installationen. Bitte einen Admin, die GitHub App zu installieren.",
-    "waiting": "Warte auf den ersten Workflow-Lauf",
-    "repo": "Repository",
-    "defaultBranch": "Standard-Branch",
     "open": "Übersicht öffnen",
     "intro": "Organisation oder Konto wählen, um Läufe, Runner, Warteschlange und Kosten zu sehen.",
     "updated": "aktualisiert {ago}",
@@ -68,7 +58,6 @@
       "minutes": "Minuten · Monat",
       "minutesOf": "von {included} inklusive",
       "stuck": "{count} warten > 15 Min.",
-      "noRuns": "—",
       "minutesOfEst": "von {included} inklusive (gesch.)",
       "est": "Schätzung",
       "over": "über den inklusiven Minuten"
@@ -180,7 +169,6 @@
   },
   "freshness": {
     "label": "Aktualität der Daten",
-    "pill": "letzter Webhook {webhook} · letzter Abgleich {reconcile}",
     "never": "nie",
     "refreshing": "Wird im Hintergrund aktualisiert; in einer Minute neu laden für neuere Daten.",
     "staleTitle": "Daten sind möglicherweise veraltet",
@@ -269,15 +257,11 @@
   },
   "overview": {
     "title": "Übersicht",
-    "noRuns": "In diesem Zeitraum gibt es noch keine abgeschlossenen Läufe. Neue Läufe kommen per Webhook, ältere über den Verlaufsimport.",
     "regressions": "Regressionen",
-    "noRegressions": "Kein Workflow ist in den letzten 7 Tagen langsamer geworden.",
     "regression": "{metric} {recent} gegenüber {baseline} in den 28 Tagen davor ({ratio}×)",
     "flakyJobs": "Instabile Jobs",
-    "noFlaky": "Kein Job ist fehlgeschlagen und danach bei einer Wiederholung erfolgreich gewesen.",
     "flakyRuns": "{count, plural, one {# instabiler Lauf} other {# instabile Läufe}}",
     "successDrops": "Einbrüche der Erfolgsquote",
-    "noSuccessDrops": "Keine Erfolgsquote ist um 10 Punkte oder mehr gefallen.",
     "successDrop": "{recent} in den letzten 7 Tagen gegenüber {baseline} davor",
     "subtitle": "Läufe, Dauer und Warteschlange der letzten {range}.",
     "kpiLabel": "Kennzahlen",
@@ -310,15 +294,7 @@
     "noActive": "Keine Läufe in diesem Zeitraum."
   },
   "kpi": {
-    "runs": "Läufe ({range})",
-    "successRate": "Erfolgsquote",
-    "delta7d": "{delta} gegenüber den 7 Tagen davor",
-    "p50": "Typische Dauer (p50)",
-    "p95": "95 % fertig innerhalb (p95)",
-    "samples": "n = {n}",
-    "queueP95": "Wartezeit, 95 % (p95)",
-    "minutes": "Gesch. Minuten",
-    "minutesHint": "Schätzung aus Jobdauern"
+    "samples": "n = {n}"
   },
   "repos": {
     "title": "Repositories",
@@ -328,7 +304,6 @@
     "lastRun": "Letzter Lauf",
     "trend": "Trend · letzte 14 Tage",
     "noRuns": "noch keine Läufe",
-    "sparkline": "Läufe der letzten 14 Tage: {runs} Läufe, {failures} fehlgeschlagen.",
     "noMatch": "Kein Repository passt zum Filter.",
     "runs": "Läufe · {range}",
     "success": "Erfolg · {range}",
@@ -433,7 +408,6 @@
     "runs": "Läufe",
     "success": "Erfolg",
     "regressionBadge": "{metric} langsamer",
-    "successDropBadge": "Erfolg eingebrochen",
     "subtitle": "{workflows, plural, =0 {Keine Workflows} one {# Workflow} other {# Workflows}} in {repos, plural, one {# Repository} other {# Repositories}} · letzte {range}",
     "aboutValues": "Zu diesen Werten",
     "search": "Workflow oder Repository suchen",
@@ -466,9 +440,6 @@
   "workflow": {
     "notEnough": "Nur {n} abgeschlossene Läufe in diesem Zeitraum; Perzentile brauchen mindestens {min}.",
     "firstTry": "beim ersten Versuch {rate}",
-    "flakyRate": "Instabilitätsquote",
-    "flakyRuns": "{count, plural, one {# Lauf bei Wiederholung erfolgreich} other {# Läufe bei Wiederholung erfolgreich}}",
-    "jobs": "Jobs nach Runner-Gruppe (Labels)",
     "noJobs": "Keine abgeschlossenen Jobs in diesem Zeitraum.",
     "job": "Job",
     "pool": "Runner-Gruppe (Labels)",
@@ -535,25 +506,19 @@
     "mostMinutes": "Meiste Minuten",
     "lowestSuccess": "Niedrigster Erfolg",
     "regressions": "Regressionen",
-    "empty": "In diesem Zeitraum gibt es nichts anzuzeigen.",
-    "ratio": "{metric} {ratio}×",
     "note": "Perzentile und Erfolgsquoten brauchen mindestens 10 abgeschlossene Läufe; Werte mit ~ stammen aus Tageshistogrammen."
   },
   "syncHealth": {
-    "title": "Synchronisierungsstatus",
     "lastWebhook": "Letzter Webhook",
     "lastReconcile": "Letzter Abgleich",
-    "lastReconcileStatus": "Ergebnis des letzten Abgleichs",
     "lagP50": "Verzögerung bis zur Anzeige (typisch)",
     "lagP95": "Verzögerung bis zur Anzeige (95 %)",
     "dirty": "Tagesauswertungen, die neu berechnet werden",
-    "dirtyHint": "Tage, die neu berechnet werden",
     "backfillDays": "Importierter Zeitraum (Tage)",
     "repos": "Repositories",
     "cursor": "Neuester importierter Lauf",
     "backfill": "Verlaufsimport",
     "state": "Zustand",
-    "lastError": "Letzter Fehler",
     "backfillOf": "Fortschritt des Verlaufsimports von {repo}",
     "done": "fertig",
     "needsResync": "Neuimport geplant",
@@ -578,10 +543,6 @@
     "until": "Verlauf importiert bis"
   },
   "runnerData": {
-    "stuck": "Hängt",
-    "stuckHint": "Seit mehr als 15 Minuten in der Warteschlange und kein freier Online-Runner hat diese Labels.",
-    "noMatchingRunner": "Kein passender Runner",
-    "noMatchingRunnerHint": "Kein Runner dieser Installation hat alle diese Labels, weder online noch offline.",
     "insufficientSamples": "Zu wenige Messpunkte",
     "insufficientSamplesHint": "Die Runner-Messpunkte decken weniger als die Hälfte des Zeitraums ab, daher lässt sich die Auslastung nicht von Lücken zwischen den Messungen unterscheiden.",
     "sampleInterval": "± ein Messintervall ({interval})",
@@ -633,11 +594,8 @@
   },
   "runners": {
     "title": "Runner",
-    "summary": "{total, plural, one {# selbst gehosteter Runner} other {# selbst gehostete Runner}}: {busy} beschäftigt, {idle} frei, {offline} offline",
     "sampled": "Runner-Status abgefragt {sampled} · Erkennung {discovered}",
     "sampling": "Runner werden im Hintergrund abgefragt; diese Seite aktualisiert sich alle 30 Sekunden.",
-    "orgRunners": "Organisations-Runner",
-    "repoRunners": "Repository-Runner: {repo}",
     "noSelfHosted": "Noch keine selbst gehosteten Runner bekannt. Gehostete Runner-Gruppen stehen unten.",
     "caption": "Selbst gehostete Runner",
     "name": "Runner",
@@ -762,7 +720,6 @@
     }
   },
   "runner": {
-    "back": "Alle Runner",
     "scopeOrg": "Organisations-Runner",
     "scopeRepo": "Repository-Runner von {repo}",
     "seen": "Zuerst gesehen {first} · zuletzt gesehen {last}",
@@ -824,8 +781,6 @@
   },
   "queue": {
     "title": "Warteschlange",
-    "summary": "{count, plural, one {# Job} other {# Jobs}} wartend · ältester {oldest} · {stuck, plural, =0 {keiner hängt} other {# hängen}}",
-    "updated": "Aktualisiert {time}",
     "empty": "Nichts in der Warteschlange.",
     "groups": "Wartende Jobs nach Labels und Repository",
     "labels": "Labels",
@@ -885,10 +840,6 @@
     "unmatched": "{count, plural, one {# Job} other {# Jobs}} auf größeren oder unbekannten Runnern passten zu keinem Runner-Typ und sind nicht in den Schätzungen enthalten.",
     "notBilled": "nicht abgerechnet",
     "kpi": {
-      "net": "Netto, abgerechnet",
-      "gross": "Brutto, abgerechnet",
-      "discount": "Inklusive (Rabatt)",
-      "allProducts": "Netto, alle Produkte",
       "estUsd": "Geschätzt",
       "estMin": "Geschätzte Minuten",
       "projectedNet": "Hochrechnung netto, Monatsende",
@@ -931,7 +882,6 @@
       "sku": "Runner-Typ",
       "multiplier": "Faktor",
       "quantity": "Abgerechnete Menge",
-      "unit": "Einheit",
       "gross": "Brutto",
       "discount": "Rabatt",
       "net": "Netto",
@@ -970,13 +920,9 @@
     "reconciliation": {
       "title": "Schätzung vs. Abrechnung",
       "description": "Je Repository und Runner-Typ, auf Brutto-USD.",
-      "empty": "Erscheint, sobald abgerechnete Zahlen vorliegen.",
       "estimate": "Schätzung",
       "billed": "Abgerechnet",
       "deviation": "Abweichung",
-      "flag": "Prüfen",
-      "flagged": "⚠ prüfen",
-      "ok": "ok",
       "allOk": "Die Schätzungen passen zur Abrechnung (innerhalb von 15 %).",
       "billedGross": "Abgerechnet (brutto)"
     },
@@ -1521,7 +1467,6 @@
     "banner": {
       "title": "Dieses Repository wird ignoriert. Es werden keine Daten geladen.",
       "purging": "Gespeicherte Daten werden gelöscht…",
-      "since": "Ignoriert {when}.",
       "at": "Ignoriert am"
     },
     "settings": {
@@ -1533,16 +1478,7 @@
       "state": "Gespeicherte Daten",
       "actions": "Aktionen",
       "purged": "Gelöscht",
-      "addTitle": "Repositories ignorieren",
       "removed": "nicht mehr in der Auswahl der App"
-    },
-    "list": {
-      "label": "Repositories, die ignoriert werden können",
-      "search": "Nach Name filtern",
-      "forksOnly": "Nur Forks",
-      "selectShown": "Alle angezeigten auswählen ({count})",
-      "clearShown": "Auswahl aufheben",
-      "empty": "Kein Repository passt."
     },
     "rowMenu": "Aktionen für {name}",
     "openOnGitHub": "Auf GitHub öffnen"
@@ -1572,7 +1508,6 @@
     "filters": "Filter",
     "sort": "Sortierung",
     "quickViews": "Schnellansichten",
-    "showAsTable": "Als Tabelle",
     "cursorNewest": "Die {count} neuesten",
     "cursorShown": "{count} ältere",
     "older": "Ältere Läufe",

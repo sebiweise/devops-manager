@@ -125,9 +125,7 @@ describe("glossary (UI overhaul §5)", () => {
     /\b(reconcile[ds]?|backfill|rollups?|dirty|SKUs?|pools?|wall clock|critical path|speed index|ingestion lag)\b/i;
   const glossaryKeys = [
     "account.lastReconciled",
-    "freshness.pill",
     "freshness.reasons.noReconcile",
-    "overview.noRuns",
     "run.wall",
     "run.critical",
     "run.placeholder",
