@@ -58,10 +58,12 @@ export function InfoTip({
       <span
         id={id}
         role="tooltip"
-        className={cn(
-          "absolute top-5 left-1/2 z-20 w-64 -translate-x-1/2 rounded-md border bg-popover p-2 text-xs font-normal text-popover-foreground shadow-md",
-          open ? "block" : "sr-only",
-        )}
+        className={
+          // Closed it is only a description; no box that could widen the page.
+          open
+            ? "absolute top-5 left-1/2 z-20 block w-64 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-md border bg-popover p-2 text-xs font-normal text-popover-foreground shadow-md"
+            : "sr-only"
+        }
       >
         {children}
       </span>

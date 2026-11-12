@@ -1,13 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getFormatter, getLocale, getTranslations } from "next-intl/server";
-import { KpiGrid, KpiTile } from "@/components/insights/kpi-tile";
-import { StatusBadge } from "@/components/insights/status-badge";
-import {
-  LabelList,
-  RunnerStateBadge,
-  UtilisationValue,
-} from "@/components/runners/runner-badges";
+import { KpiStrip, KpiTile } from "@/components/data/kpi-strip";
+import { RunStatusBadge, StatusBadge } from "@/components/data/status-badge";
+import { repoHref } from "@/components/insights/workflow-link";
+import { LabelList } from "@/components/runners/runner-badges";
+import { Breadcrumbs } from "@/components/shell/breadcrumbs";
+import { PageHeader } from "@/components/shell/page-header";
 import {
   DurationVsPoolChart,
   RunnerStatusChart,
@@ -23,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { env } from "@/env";
-import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
+import { loadAccount, orNotFound } from "@/lib/account-page";
 import {
   formatDuration,
   formatNumber,
@@ -31,7 +30,9 @@ import {
   formatRatio,
 } from "@/lib/format";
 import { type SearchParams } from "@/lib/insights-view";
-import { parseRunnerKey, runnerState } from "@/lib/runners-view";
+import { first } from "@/lib/url-state";
+import { parseRunnerKey } from "@/lib/runners-view";
+import { runnerState } from "@/lib/table-pages";
 import { rangeStart } from "@/server/data/insights";
 import { getRunnerDetail } from "@/server/data/runners";
 import { accountMeta } from "@/lib/page-meta";
@@ -66,7 +67,7 @@ export default async function RunnerPage({
     orNotFound(getRunnerDetail(scope, installation.id, key, range, now)),
   ]);
   const r = detail.runner;
-  const base = accountPath(installation.accountLogin);
+  const login = installation.accountLogin;
   const u = detail.utilisation;
   const ago = (iso: string | null) =>
     iso ? format.relativeTime(new Date(iso), now) : t("freshness.never");
@@ -78,53 +79,79 @@ export default async function RunnerPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <p className="text-sm text-muted-foreground">
-            <Link href={`${base}/runners`} className="underline">
-              {t("runner.back")}
-            </Link>
-          </p>
-          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold">
-            {r.name}
-            <RunnerStateBadge state={runnerState(r)} />
-            {r.ephemeral ? (
-              <Badge variant="outline">{t("runnerData.ephemeral")}</Badge>
-            ) : null}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {r.scope === "ORG"
-              ? t("runner.scopeOrg")
-              : t("runner.scopeRepo", {
-                  repo: r.repository?.fullName || "—",
-                })}
-            {" · "}
-            {r.os}
-            {r.groupName ? ` · ${r.groupName}` : ""}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {t("runner.seen", {
-              first: ago(r.firstSeenAt),
-              last: ago(r.lastSeenAt),
-            })}
-          </p>
-          <LabelList labels={r.labels} />
-        </div>
+      <div className="flex flex-col gap-2">
+        <Breadcrumbs
+          range={first(sp, "range")}
+          items={[
+            { kind: "accounts" },
+            { kind: "account", login },
+            { kind: "section", login, section: "runners" },
+            { kind: "runner", login, key: r.key, name: r.name },
+          ]}
+        />
+        <PageHeader
+          title={
+            <span className="flex flex-wrap items-center gap-2">
+              {r.name}
+              <StatusBadge kind={runnerState(r)} />
+              {r.ephemeral ? (
+                <span className="text-sm font-normal text-muted-foreground">
+                  {t("runnerData.ephemeral")}
+                </span>
+              ) : null}
+            </span>
+          }
+          subtitle={
+            <>
+              {r.scope === "ORG" ? (
+                t("runner.scopeOrg")
+              ) : r.repository ? (
+                <Link
+                  href={repoHref(login, r.repository.fullName)}
+                  className="underline-offset-2 hover:underline"
+                >
+                  {t("runner.scopeRepo", { repo: r.repository.fullName })}
+                </Link>
+              ) : (
+                t("runner.scopeRepo", { repo: "—" })
+              )}
+              {" · "}
+              {r.os}
+              {r.groupName ? ` · ${r.groupName}` : ""}
+              {" · "}
+              {t("runner.seen", {
+                first: ago(r.firstSeenAt),
+                last: ago(r.lastSeenAt),
+              })}
+            </>
+          }
+        />
+        <LabelList labels={r.labels} />
       </div>
 
-      <KpiGrid>
-        <div className="flex flex-col gap-1 rounded-xl border bg-card p-4 text-card-foreground">
-          <dt className="text-xs text-muted-foreground">
-            {t("runner.utilisation", { range: rangeLabel })}
-          </dt>
-          <dd className="text-2xl font-semibold">
-            <UtilisationValue u={u} />
-          </dd>
-        </div>
+      <KpiStrip label={t("overview.kpiLabel")}>
+        <KpiTile
+          variant="meter"
+          label={t("runner.utilisation", { range: rangeLabel })}
+          info={t("runners.kpi.utilisationInfo")}
+          value={
+            u.insufficientSamples || u.value == null
+              ? t("runnerData.insufficientSamples")
+              : formatPercent(u.value, locale)
+          }
+          ratio={u.insufficientSamples ? null : u.value}
+          hint={
+            u.medianSampleIntervalS == null
+              ? t("runners.noSamples")
+              : t("runnerData.sampleInterval", {
+                  interval: formatDuration(u.medianSampleIntervalS),
+                })
+          }
+        />
         <KpiTile
           label={t("runner.coverage")}
+          info={t("runner.coverageHint")}
           value={formatPercent(u.coverage, locale, 0)}
-          hint={t("runner.coverageHint")}
         />
         <KpiTile
           label={t("runners.jobs")}
@@ -136,14 +163,15 @@ export default async function RunnerPage({
         />
         <KpiTile
           label={t("runnerData.infraFailures")}
+          info={t("runner.infraInfo")}
           value={formatNumber(r.infraFailures7d, locale)}
         />
         <KpiTile
           label={t("runnerData.speedIndex")}
+          info={t("runnerData.speedIndexHint")}
           value={formatRatio(r.speedIndex7d, locale)}
-          hint={t("runnerData.speedIndexHint")}
         />
-      </KpiGrid>
+      </KpiStrip>
 
       {u.insufficientSamples ? (
         <p className="rounded-xl border border-dashed p-3 text-sm">
@@ -245,7 +273,7 @@ export default async function RunnerPage({
                     </TableCell>
                     <TableCell>
                       <span className="flex flex-wrap gap-1">
-                        <StatusBadge
+                        <RunStatusBadge
                           status="COMPLETED"
                           conclusion={f.conclusion}
                         />

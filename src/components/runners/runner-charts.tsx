@@ -183,7 +183,6 @@ export function RunnerUtilisationChart({
           }))}
         />
       }
-      legend={lineLegend(series)}
       table={
         <DataTable
           caption={t("title")}

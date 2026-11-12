@@ -795,7 +795,8 @@
       "completed": "Completed",
       "duration": "Duration",
       "infra": "Infrastructure"
-    }
+    },
+    "infraInfo": "Failures that look like a runner problem (lost communication, the runner went away) rather than a failing step."
   },
   "queue": {
     "title": "Queue",

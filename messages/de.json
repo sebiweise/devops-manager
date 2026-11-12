@@ -795,7 +795,8 @@
       "completed": "Beendet",
       "duration": "Dauer",
       "infra": "Infrastruktur"
-    }
+    },
+    "infraInfo": "Fehler, die nach einem Runner-Problem aussehen (Verbindung verloren, Runner verschwunden) statt nach einem fehlschlagenden Schritt."
   },
   "queue": {
     "title": "Warteschlange",
