@@ -325,7 +325,7 @@ describe("KpiStrip, StatusBadge, PageHeader, EmptyState", () => {
       "de",
     );
     expect(html).toContain("Hängt fest");
-    expect(html).toContain("seit über 10 Minuten");
+    expect(html).toContain("seit mehr als 15 Minuten");
     expect(html).toContain("Ignoriert");
     expect(html).toContain("Fehlgeschlagen");
     expect(html).toContain("something new");
