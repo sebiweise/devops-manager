@@ -209,34 +209,46 @@
     "queueP95": "Wartezeit (95 %)",
     "minutes": "Gesch. Minuten",
     "runsPerDay": {
-      "title": "Läufe pro Tag",
-      "description": "Abgeschlossene Läufe nach Ergebnis (letzter Versuch).",
-      "label": "Gestapeltes Balkendiagramm der Läufe pro Tag nach Ergebnis über {days} Tage, insgesamt {runs} Läufe."
+      "description": "Abgeschlossene Läufe nach Ergebnis (letzter Versuch)."
     },
     "duration": {
-      "title": "Laufdauer",
-      "description": "Typische (Median, durchgezogen) und 95-%-Gesamtdauer (gestrichelt) pro Tag.",
-      "label": "Liniendiagramm der typischen und der 95-%-Laufdauer pro Tag über {days} Tage."
+      "title": "Laufdauer"
     },
     "queue": {
-      "title": "Wartezeit",
-      "description": "Zeit, in der 95 % der Jobs pro Tag einen Runner bekamen.",
-      "label": "Liniendiagramm der Wartezeit (95 %) pro Tag über {days} Tage."
+      "title": "Wartezeit"
     },
     "successChart": {
-      "title": "Erfolgsquote",
-      "description": "Erfolg / (Erfolg + Fehler) pro Tag; abgebrochene und übersprungene Läufe zählen nicht.",
-      "label": "Liniendiagramm der Erfolgsquote pro Tag über {days} Tage."
+      "title": "Erfolgsquote"
     },
     "minutesChart": {
       "title": "Geschätzte Minuten",
-      "description": "Abrechenbare Minuten, geschätzt aus Jobdauern und Runner-SKUs.",
-      "label": "Balkendiagramm der geschätzten Minuten pro Tag über {days} Tage, insgesamt {minutes}."
+      "description": "Abrechenbare Minuten, geschätzt aus Jobdauern und Runner-SKUs."
     },
     "trendTable": "Verlauf als Tabelle anzeigen",
     "trendTableEntity": "Name",
     "trendTableHint": "Läufe pro Tag; nach dem Schrägstrich die fehlgeschlagenen.",
-    "sparkTitle": "Letzte 14 Tage: {runs} Läufe, {failures} fehlgeschlagen"
+    "sparkTitle": "Letzte 14 Tage: {runs} Läufe, {failures} fehlgeschlagen",
+    "bucketName": "{bucket, select, week {Woche ab} month {Monat} other {Tag}}",
+    "runsPer": {
+      "title": "Läufe pro {bucket, select, week {Woche} month {Monat} other {Tag}}",
+      "label": "Gestapeltes Balkendiagramm der Läufe pro {bucket, select, week {Woche} month {Monat} other {Tag}} nach Ergebnis über {n} {bucket, select, week {Wochen} month {Monate} other {Tage}}, insgesamt {runs} Läufe."
+    },
+    "durationPer": {
+      "description": "Typische (Median, durchgezogen) und 95-%-Gesamtdauer (gestrichelt) pro {bucket, select, week {Woche} month {Monat} other {Tag}}.",
+      "label": "Liniendiagramm der typischen und der 95-%-Laufdauer pro {bucket, select, week {Woche} month {Monat} other {Tag}} über {n} {bucket, select, week {Wochen} month {Monate} other {Tage}}."
+    },
+    "queuePer": {
+      "description": "Zeit, in der 95 % der Jobs einen Runner bekamen, pro {bucket, select, week {Woche} month {Monat} other {Tag}}.",
+      "label": "Liniendiagramm der Wartezeit (95 %) pro {bucket, select, week {Woche} month {Monat} other {Tag}} über {n} {bucket, select, week {Wochen} month {Monate} other {Tage}}."
+    },
+    "successPer": {
+      "description": "Erfolg / (Erfolg + Fehler) pro {bucket, select, week {Woche} month {Monat} other {Tag}}; abgebrochene und übersprungene Läufe zählen nicht.",
+      "label": "Liniendiagramm der Erfolgsquote pro {bucket, select, week {Woche} month {Monat} other {Tag}} über {n} {bucket, select, week {Wochen} month {Monate} other {Tage}}."
+    },
+    "minutesPer": {
+      "label": "Balkendiagramm der geschätzten Minuten pro {bucket, select, week {Woche} month {Monat} other {Tag}} über {n} {bucket, select, week {Wochen} month {Monate} other {Tage}}, insgesamt {minutes}."
+    },
+    "hourlyNone": "Diagramme brauchen mindestens 7 Tage; für 24 Std. stehen nur die Kennzahlen oben."
   },
   "overview": {
     "title": "Übersicht",
@@ -249,7 +261,36 @@
     "flakyRuns": "{count, plural, one {# instabiler Lauf} other {# instabile Läufe}}",
     "successDrops": "Einbrüche der Erfolgsquote",
     "noSuccessDrops": "Keine Erfolgsquote ist um 10 Punkte oder mehr gefallen.",
-    "successDrop": "{recent} in den letzten 7 Tagen gegenüber {baseline} davor"
+    "successDrop": "{recent} in den letzten 7 Tagen gegenüber {baseline} davor",
+    "subtitle": "Läufe, Dauer und Warteschlange der letzten {range}.",
+    "kpiLabel": "Kennzahlen",
+    "kpi": {
+      "runs": "Läufe",
+      "runsInfo": "Abgeschlossene Workflow-Läufe (letzter Versuch) im gewählten Zeitraum.",
+      "success": "Erfolg",
+      "successInfo": "Erfolgreiche Läufe geteilt durch erfolgreiche plus fehlgeschlagene; abgebrochene und übersprungene zählen nicht.",
+      "delta7d": "{delta} ggü. 7 Tagen davor",
+      "p95": "95 % fertig innerhalb",
+      "p95Info": "95 % der Läufe waren innerhalb dieser Gesamtdauer fertig; darunter der typische Lauf (Median).",
+      "p50Hint": "typisch (Median) {p50}",
+      "minutes": "Minuten (gesch.)",
+      "minutesInfo": "Abrechenbare Minuten, geschätzt aus Jobdauern und Runner-Typen; maßgeblich ist die Abrechnung auf der Seite Kosten.",
+      "queueHint": "95 % bekamen innerhalb {queue} einen Runner",
+      "queued": "In Warteschlange",
+      "queuedInfo": "Jobs, die gerade auf einen Runner warten. Hängt fest: seit mehr als 15 Min. kein Runner.",
+      "live": "live",
+      "offline": "Runner offline",
+      "offlineInfo": "Self-hosted Runner, die registriert, aber nicht mit GitHub verbunden sind.",
+      "offlineHint": "registriert, nicht verbunden"
+    },
+    "failing": "Fehlschlagend",
+    "failingItem": "{count, plural, one {# Fehlschlag} other {# Fehlschläge}} in 7 Tagen · {rate} Erfolg",
+    "attention": "Braucht Aufmerksamkeit",
+    "showAllWorkflows": "Alle Workflows",
+    "mostActive": "Aktivste Repositories",
+    "showAllRepos": "Alle {count} Repositories",
+    "noAttention": "Nichts Auffälliges: keine Fehlschläge, Regressionen oder instabilen Jobs.",
+    "noActive": "Keine Läufe in diesem Zeitraum."
   },
   "kpi": {
     "runs": "Läufe ({range})",

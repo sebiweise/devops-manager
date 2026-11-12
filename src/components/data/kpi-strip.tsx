@@ -69,7 +69,7 @@ function Body(props: KpiTileProps) {
       </dt>
       <dd
         className={cn(
-          "flex items-center gap-1.5 font-semibold tabular-nums",
+          "flex items-center gap-1.5 font-semibold",
           variant === "hero" ? "text-4xl" : "text-2xl",
         )}
       >

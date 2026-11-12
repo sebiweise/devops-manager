@@ -209,34 +209,46 @@
     "queueP95": "Queue time (95 %)",
     "minutes": "Est. minutes",
     "runsPerDay": {
-      "title": "Runs per day",
-      "description": "Completed runs by conclusion (latest attempt).",
-      "label": "Stacked bar chart of runs per day by conclusion over {days} days, {runs} runs in total."
+      "description": "Completed runs by conclusion (latest attempt)."
     },
     "duration": {
-      "title": "Run duration",
-      "description": "Typical (median, solid) and 95 % (dashed) total duration per day.",
-      "label": "Line chart of the typical and the 95 % run duration per day over {days} days."
+      "title": "Run duration"
     },
     "queue": {
-      "title": "Queue time",
-      "description": "Time within which 95 % of jobs got a runner, per day.",
-      "label": "Line chart of the 95 % queue time per day over {days} days."
+      "title": "Queue time"
     },
     "successChart": {
-      "title": "Success rate",
-      "description": "Success / (success + failure) per day; cancelled and skipped runs are excluded.",
-      "label": "Line chart of the success rate per day over {days} days."
+      "title": "Success rate"
     },
     "minutesChart": {
       "title": "Estimated minutes",
-      "description": "Billable minutes estimated from job durations and runner SKUs.",
-      "label": "Bar chart of estimated minutes per day over {days} days, {minutes} in total."
+      "description": "Billable minutes estimated from job durations and runner SKUs."
     },
     "trendTable": "Show trend as table",
     "trendTableEntity": "Name",
     "trendTableHint": "Runs per day; after the slash the failed runs.",
-    "sparkTitle": "Last 14 days: {runs} runs, {failures} failed"
+    "sparkTitle": "Last 14 days: {runs} runs, {failures} failed",
+    "bucketName": "{bucket, select, week {Week of} month {Month} other {Day}}",
+    "runsPer": {
+      "title": "Runs per {bucket, select, week {week} month {month} other {day}}",
+      "label": "Stacked bar chart of runs per {bucket, select, week {week} month {month} other {day}} by conclusion over {n} {bucket, select, week {weeks} month {months} other {days}}, {runs} runs in total."
+    },
+    "durationPer": {
+      "description": "Typical (median, solid) and 95 % (dashed) total duration per {bucket, select, week {week} month {month} other {day}}.",
+      "label": "Line chart of the typical and the 95 % run duration per {bucket, select, week {week} month {month} other {day}} over {n} {bucket, select, week {weeks} month {months} other {days}}."
+    },
+    "queuePer": {
+      "description": "Time within which 95 % of jobs got a runner, per {bucket, select, week {week} month {month} other {day}}.",
+      "label": "Line chart of the 95 % queue time per {bucket, select, week {week} month {month} other {day}} over {n} {bucket, select, week {weeks} month {months} other {days}}."
+    },
+    "successPer": {
+      "description": "Success / (success + failure) per {bucket, select, week {week} month {month} other {day}}; cancelled and skipped runs are excluded.",
+      "label": "Line chart of the success rate per {bucket, select, week {week} month {month} other {day}} over {n} {bucket, select, week {weeks} month {months} other {days}}."
+    },
+    "minutesPer": {
+      "label": "Bar chart of estimated minutes per {bucket, select, week {week} month {month} other {day}} over {n} {bucket, select, week {weeks} month {months} other {days}}, {minutes} in total."
+    },
+    "hourlyNone": "Charts need at least 7 days; for 24 h only the figures above are shown."
   },
   "overview": {
     "title": "Overview",
@@ -249,7 +261,36 @@
     "flakyRuns": "{count, plural, one {# flaky run} other {# flaky runs}}",
     "successDrops": "Success drops",
     "noSuccessDrops": "No success rate dropped by 10 points or more.",
-    "successDrop": "{recent} in the last 7 days vs {baseline} before"
+    "successDrop": "{recent} in the last 7 days vs {baseline} before",
+    "subtitle": "Runs, durations and the queue of the last {range}.",
+    "kpiLabel": "Key figures",
+    "kpi": {
+      "runs": "Runs",
+      "runsInfo": "Completed workflow runs (latest attempt) in the selected range.",
+      "success": "Success",
+      "successInfo": "Successful runs divided by successful plus failed runs; cancelled and skipped runs are not counted.",
+      "delta7d": "{delta} vs prev. 7 days",
+      "p95": "95 % finished within",
+      "p95Info": "95 % of runs finished within this total duration; the typical (median) run is shown below.",
+      "p50Hint": "typical (median) {p50}",
+      "minutes": "Minutes (est.)",
+      "minutesInfo": "Billable minutes estimated from job durations and runner types; the bill on the Costs page is authoritative.",
+      "queueHint": "95 % got a runner within {queue}",
+      "queued": "Queued now",
+      "queuedInfo": "Jobs waiting for a runner right now. Stuck: no runner picked them up for more than 15 minutes.",
+      "live": "live",
+      "offline": "Offline runners",
+      "offlineInfo": "Self-hosted runners that are registered but not connected to GitHub.",
+      "offlineHint": "registered, not connected"
+    },
+    "failing": "Failing",
+    "failingItem": "{count, plural, one {# failure} other {# failures}} in 7 days · {rate} success",
+    "attention": "Needs attention",
+    "showAllWorkflows": "All workflows",
+    "mostActive": "Most active repositories",
+    "showAllRepos": "All {count} repositories",
+    "noAttention": "Nothing needs attention: no failures, regressions or flaky jobs.",
+    "noActive": "No runs in this range."
   },
   "kpi": {
     "runs": "Runs ({range})",

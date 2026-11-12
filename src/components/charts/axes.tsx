@@ -78,7 +78,14 @@ export function XLabels({
           key={i}
           x={x(i)}
           y={PLOT.height - 6}
-          textAnchor="middle"
+          // Edge labels are anchored inwards so they are never clipped.
+          textAnchor={
+            x(i) > PLOT.width - PLOT.right - 28
+              ? "end"
+              : x(i) < PLOT.left + 28
+                ? "start"
+                : "middle"
+          }
           className="fill-muted-foreground text-[11px]"
         >
           {labels[i]}

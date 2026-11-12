@@ -116,7 +116,12 @@ export function StackedBarChart({
               };
               return (
                 <g key={seg.key}>
-                  <rect {...rect} className={TONES[s.tone].fill} />
+                  {/* A surface-coloured edge keeps stacked segments apart. */}
+                  <rect
+                    {...rect}
+                    className={`${TONES[s.tone].fill} stroke-card`}
+                    strokeWidth={1}
+                  />
                   {s.pattern && s.pattern !== "none" ? (
                     <rect {...rect} fill={`url(#${id}-${s.pattern})`} />
                   ) : null}
