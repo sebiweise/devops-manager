@@ -329,6 +329,7 @@
     "title": "Sync health",
     "lastWebhook": "Last webhook",
     "lastReconcile": "Last reconcile",
+    "lastReconcileStatus": "Last reconcile result",
     "lagP50": "Ingestion lag p50",
     "lagP95": "Ingestion lag p95",
     "dirty": "Pending rollups",
