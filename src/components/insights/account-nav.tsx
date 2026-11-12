@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { Fragment, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,24 @@ export type AccountNavGroup = {
 
 const under = (pathname: string, prefix: string) =>
   pathname === prefix || pathname.startsWith(`${prefix}/`);
+
+/**
+ * Navigation feedback without a route-level loading boundary (which would
+ * turn 404 answers into streamed 200s): a bar under the clicked tab while
+ * its page renders.
+ */
+function PendingHint() {
+  const { pending } = useLinkStatus();
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "pointer-events-none absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full bg-series-1 opacity-0 transition-opacity",
+        pending && "animate-pulse opacity-100",
+      )}
+    />
+  );
+}
 
 export function isActive(pathname: string, item: AccountNavItem): boolean {
   if (item.exact) return pathname === item.href;
@@ -78,13 +96,14 @@ export function AccountNav({
                         href={item.href}
                         aria-current={active ? "page" : undefined}
                         className={cn(
-                          "-mb-px inline-flex border-b-2 px-3 py-2 text-sm whitespace-nowrap",
+                          "relative -mb-px inline-flex border-b-2 px-3 py-2 text-sm whitespace-nowrap",
                           active
                             ? "border-foreground font-medium text-foreground"
                             : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
                         )}
                       >
                         {item.label}
+                        <PendingHint />
                       </Link>
                     </li>
                   );

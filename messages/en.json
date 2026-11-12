@@ -1647,7 +1647,6 @@
       "settings": "Settings & sync",
       "refreshing": "A full sync with GitHub is running in the background; reload in a minute for newer data."
     },
-    "loading": "Loading…",
     "mainNav": "Main",
     "admin": "Admin",
     "userMenu": "Account menu of {email}",

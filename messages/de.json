@@ -1647,7 +1647,6 @@
       "settings": "Einstellungen & Abgleich",
       "refreshing": "Im Hintergrund läuft ein Abgleich mit GitHub; in einer Minute neu laden für neuere Daten."
     },
-    "loading": "Wird geladen…",
     "mainNav": "Hauptnavigation",
     "admin": "Admin",
     "userMenu": "Kontomenü von {email}",
