@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
+import { RunActions } from "@/components/management/run-actions";
 import {
   Table,
   TableBody,
@@ -13,17 +14,23 @@ import type { RunListItem } from "@/server/data/insights";
 import { StatusBadge } from "./status-badge";
 import { runHref } from "./workflow-link";
 
-/** Paginated run list (repo detail and workflow pages). */
+/**
+ * Paginated run list (repo detail and workflow pages). With `actions` (only
+ * passed for operators and admins while management is on) each row gets
+ * re-run, re-run failed and cancel; force cancel lives on the run page.
+ */
 export async function RunsTable({
   accountLogin,
   runs,
   caption,
   showWorkflow = true,
+  actions,
 }: {
   accountLogin: string;
   runs: ReadonlyArray<RunListItem>;
   caption: string;
   showWorkflow?: boolean;
+  actions?: { installationId: string };
 }) {
   const t = await getTranslations("runs");
   const format = await getFormatter();
@@ -42,6 +49,7 @@ export async function RunsTable({
           <TableHead>{t("actor")}</TableHead>
           <TableHead className="text-right">{t("duration")}</TableHead>
           <TableHead className="text-right">{t("created")}</TableHead>
+          {actions ? <TableHead>{t("actions")}</TableHead> : null}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -87,6 +95,24 @@ export async function RunsTable({
                 })}
               </time>
             </TableCell>
+            {actions ? (
+              <TableCell>
+                <RunActions
+                  installationId={actions.installationId}
+                  compact
+                  run={{
+                    id: r.id,
+                    repoFullName: r.repoFullName,
+                    workflowName: r.workflowName,
+                    runNumber: r.runNumber,
+                    runAttempt: r.runAttempt,
+                    status: r.status,
+                    conclusion: r.conclusion,
+                    isPlaceholder: r.isPlaceholder,
+                  }}
+                />
+              </TableCell>
+            ) : null}
           </TableRow>
         ))}
       </TableBody>
