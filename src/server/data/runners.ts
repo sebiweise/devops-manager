@@ -1132,12 +1132,37 @@ export async function listRunnersPage(
   Page<RunnerDto> &
     Omit<RunnerList, "runners"> & {
       counts: { all: number; busy: number; idle: number; offline: number };
+      /** Mean 7-day utilisation of the runners with enough samples. */
+      utilisation: number | null;
+      /** Repositories with repo-level runners, for the repository filter. */
+      repositoryOptions: Array<{ id: string; fullName: string }>;
     }
 > {
   const { runners, ...meta } = await listRunners(scope, installationId, now);
   const counts = { all: runners.length, busy: 0, idle: 0, offline: 0 };
   for (const r of runners) counts[runnerState(r)]++;
-  return { ...meta, ...pageRunners(runners, query), counts };
+  const sampled = runners.filter(
+    (r) =>
+      !r.utilisation7d.insufficientSamples && r.utilisation7d.value != null,
+  );
+  const repos = new Map(
+    runners.flatMap((r) =>
+      r.repository ? [[r.repository.id, r.repository.fullName] as const] : [],
+    ),
+  );
+  return {
+    ...meta,
+    ...pageRunners(runners, query),
+    counts,
+    utilisation:
+      sampled.length > 0
+        ? sampled.reduce((s, r) => s + r.utilisation7d.value!, 0) /
+          sampled.length
+        : null,
+    repositoryOptions: [...repos.entries()]
+      .map(([id, fullName]) => ({ id, fullName }))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName)),
+  };
 }
 
 const queueMeta = (q: LiveQueue): Omit<LiveQueue, "groups" | "jobs"> => ({

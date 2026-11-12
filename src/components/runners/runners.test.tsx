@@ -20,7 +20,6 @@ import {
   ConcurrencyChart,
   DurationVsPoolChart,
   PoolHeatmap,
-  RunnerSplitChart,
   RunnerStatusChart,
   RunnerUtilisationChart,
 } from "./runner-charts";
@@ -175,29 +174,6 @@ describe("runner charts", () => {
     expect(html).toContain('title="Mon 09:00: 4 jobs, queue time 95 % 5m 00s"');
     expect(html).toContain("bg-seq-4");
     expect(html).toContain("no jobs");
-  });
-
-  it("hosted vs self-hosted split: bars per runner kind", () => {
-    const html = render(
-      <RunnerSplitChart
-        split={[
-          {
-            runnerKind: "GITHUB_HOSTED",
-            jobs: 10,
-            minutes: 120,
-            billableMinEst: 120,
-          },
-          {
-            runnerKind: "SELF_HOSTED",
-            jobs: 12,
-            minutes: 90,
-            billableMinEst: 0,
-          },
-        ]}
-      />,
-    );
-    expect(html).toContain("210 min in total");
-    expect(html).toContain("<title>self-hosted: Minutes 90</title>");
   });
 
   it("daily utilisation leaves out days with insufficient samples", () => {

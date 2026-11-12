@@ -622,8 +622,8 @@
     "os": "OS",
     "group": "Group",
     "lastSeen": "Last seen",
-    "utilisation": "Utilisation (7 days)",
-    "jobs": "Jobs (7 days)",
+    "utilisation": "Utilisation · 7 d",
+    "jobs": "Jobs · 7 d",
     "noSamples": "no samples yet",
     "states": {
       "busy": "busy",
@@ -642,7 +642,10 @@
       "queueP50": "Queue time, typical (p50)",
       "queueP95": "Queue time, 95 % (p95)",
       "runners": "Runners",
-      "highQueue": "A long queue time (95 %) on hosted runners suggests that the account's concurrency limit is reached."
+      "highQueue": "A long queue time (95 %) on hosted runners suggests that the account's concurrency limit is reached.",
+      "showHeatmap": "Show the weekday × hour heatmap of this group",
+      "runnerCount": "{count, plural, one {# runner} other {# runners}}",
+      "noHeatmap": "No queued jobs to show by weekday and hour."
     },
     "heatmap": {
       "title": "Queue time (95 %) by weekday and hour: {pool}",
@@ -687,7 +690,51 @@
     "compare": {
       "title": "Same jobs on hosted and self-hosted runners",
       "description": "Jobs with at least 5 runs on each kind in this range; Δ is the change of the self-hosted typical duration (p50) against hosted.",
-      "empty": "No job ran at least 5 times on both hosted and self-hosted runners in this range."
+      "empty": "No job ran at least 5 times on both hosted and self-hosted runners in this range.",
+      "deltaInfo": "Change of the typical (median) duration on self-hosted runners against GitHub-hosted: negative is faster, positive slower. Sorted by the size of the change.",
+      "faster": "faster on self-hosted",
+      "slower": "slower on self-hosted",
+      "legendFaster": "faster on self-hosted",
+      "legendSlower": "slower on self-hosted"
+    },
+    "subtitle": "{total, plural, =0 {No self-hosted runners} one {# self-hosted runner} other {# self-hosted runners}} · runner groups over the last {range}",
+    "aboutData": "About sampling and permissions",
+    "views": "Runner views",
+    "view": {
+      "runners": "Runners",
+      "pools": "Runner groups (labels)",
+      "compare": "Hosted vs self-hosted"
+    },
+    "kpi": {
+      "selfHosted": "Self-hosted runners",
+      "selfHostedInfo": "Registered self-hosted runners of the organisation and its repositories.",
+      "idle": "{count} idle",
+      "busy": "Busy now",
+      "busyInfo": "Runners running a job at the last sample.",
+      "offline": "Offline",
+      "utilisation": "Utilisation",
+      "utilisationInfo": "Share of online time spent running jobs, averaged over the runners with enough samples.",
+      "utilisationHint": "last 7 days",
+      "queueP95": "Queue time (95 %)",
+      "queueP95Info": "Time within which 95 % of jobs got a runner, for the runner group that waits longest.",
+      "queueWorst": "longest: {pool}",
+      "split": "Self-hosted share",
+      "splitInfo": "Execution minutes on self-hosted runners against GitHub-hosted ones in this range."
+    },
+    "scope": "Scope",
+    "orgScope": "Organisation",
+    "allLabels": "All labels",
+    "search": "Search name or label",
+    "chips": "Filter by state",
+    "allScopes": "All scopes",
+    "noMatch": "No runner matches the filter.",
+    "moreLabels": "+{count}",
+    "sortBy": {
+      "name": "Name {dir, select, asc {A–Z} other {Z–A}}",
+      "state": "State {dir, select, asc {busy first} other {offline first}}",
+      "jobs": "Jobs {dir, select, asc {fewest first} other {most first}}",
+      "utilisation": "Utilisation {dir, select, asc {lowest first} other {highest first}}",
+      "lastSeen": "Last seen {dir, select, asc {longest ago first} other {most recent first}}"
     }
   },
   "runner": {

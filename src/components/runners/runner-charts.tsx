@@ -4,17 +4,8 @@ import { DataTable } from "@/components/charts/data-table";
 import { Heatmap } from "@/components/charts/heatmap";
 import { Legend } from "@/components/charts/legend";
 import { LineChart, type LineSeries } from "@/components/charts/line-chart";
-import {
-  StackedBarChart,
-  type BarSeries,
-} from "@/components/charts/stacked-bar-chart";
 import { StateStrip } from "@/components/charts/state-strip";
-import {
-  formatDuration,
-  formatMinutes,
-  formatNumber,
-  formatPercent,
-} from "@/lib/format";
+import { formatDuration, formatNumber, formatPercent } from "@/lib/format";
 import {
   bandShares,
   DURATION_BANDS,
@@ -24,7 +15,6 @@ import {
 import type {
   ConcurrencyDto,
   PoolDto,
-  PoolOverview,
   RunnerDayPoint,
   RunnerDetail,
 } from "@/server/data/runners";
@@ -103,57 +93,6 @@ export function ConcurrencyChart({ data }: { data: ConcurrencyDto }) {
               formatNumber(b.running, locale),
               formatNumber(b.queued, locale),
             ])}
-        />
-      }
-    />
-  );
-}
-
-/** Execution minutes per runner kind (hosted vs self-hosted split). */
-export function RunnerSplitChart({ split }: { split: PoolOverview["split"] }) {
-  const t = useTranslations("runners.split");
-  const tk = useTranslations("runnerKind");
-  const locale = useLocale();
-  const series: BarSeries[] = [
-    { key: "minutes", label: t("minutes"), tone: "secondary" },
-  ];
-  const total = split.reduce((s, k) => s + k.minutes, 0);
-  return (
-    <ChartFrame
-      title={t("title")}
-      description={t("description")}
-      chart={
-        <StackedBarChart
-          id="runner-split"
-          label={t("label", { minutes: formatMinutes(total, locale) })}
-          series={series}
-          formatY={(v) => formatNumber(v, locale)}
-          points={split.map((k) => ({
-            x: tk(k.runnerKind),
-            title: tk(k.runnerKind),
-            values: { minutes: Math.round(k.minutes) },
-          }))}
-        />
-      }
-      legend={
-        <Legend
-          items={series.map((s) => ({
-            label: s.label,
-            tone: s.tone,
-            kind: "bar" as const,
-          }))}
-        />
-      }
-      table={
-        <DataTable
-          caption={t("title")}
-          columns={[t("kind"), t("jobs"), t("minutes"), t("billable")]}
-          rows={split.map((k) => [
-            tk(k.runnerKind),
-            formatNumber(k.jobs, locale),
-            formatMinutes(k.minutes, locale),
-            formatMinutes(k.billableMinEst, locale),
-          ])}
         />
       }
     />
