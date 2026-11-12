@@ -35,3 +35,21 @@ export async function orNotFound<T>(promise: Promise<T>): Promise<T> {
 export function accountPath(accountLogin: string, rest = ""): string {
   return `/o/${encodeURIComponent(accountLogin)}${rest}`;
 }
+
+/**
+ * A live GitHub read for a page: NotFoundError becomes the 404 page, any
+ * other failure (GitHub unreachable, token not mintable) becomes null so
+ * the page can explain it instead of failing.
+ */
+export async function orUnavailable<T>(promise: Promise<T>): Promise<T | null> {
+  try {
+    return await promise;
+  } catch (error) {
+    if (error instanceof NotFoundError) notFound();
+    console.error(
+      "live read failed",
+      error instanceof Error ? error.name : "unknown",
+    );
+    return null;
+  }
+}
