@@ -2,6 +2,21 @@ import "server-only";
 import { Prisma, type RunnerKind } from "@/generated/prisma/client";
 import type { TenantScope } from "@/server/authz/scope";
 import { db } from "@/server/db";
+import type { Page } from "@/lib/paging";
+import {
+  pageQueueGroups,
+  pageQueueJobs,
+  pageRunners,
+  runnerState,
+  type ListQuery,
+} from "@/lib/table-pages";
+import type {
+  QueueFilter,
+  QueueSortKey,
+  RunnerFilter,
+  RunnerSortKey,
+} from "@/lib/table-specs";
+import { notIgnoredRepo } from "@/server/ingest/active-repos";
 import {
   jobRunnerKeyResolver,
   runnerStatKey,
@@ -33,7 +48,12 @@ import {
   type Utilisation,
 } from "@/server/metrics/runners";
 import { percentileExact, type Conclusion } from "@/server/metrics/stats";
-import { rangeStart, visibleInstallation, type InsightRange } from "./insights";
+import {
+  ignoredRepoIds,
+  rangeStart,
+  visibleInstallation,
+  type InsightRange,
+} from "./insights";
 import { NotFoundError } from "./installations";
 
 /**
@@ -73,6 +93,16 @@ type JobRow = {
 };
 
 /** Jobs that ran (or queued) inside [from, to), skipped jobs excluded. */
+/** Repo-level runners of ignored repositories are hidden. */
+async function notIgnoredRunner(
+  installationId: bigint,
+): Promise<Prisma.RunnerWhereInput> {
+  const ignored = await ignoredRepoIds(installationId);
+  return ignored.length > 0
+    ? { NOT: { scope: "REPO", repositoryId: { in: ignored } } }
+    : {};
+}
+
 async function jobsIn(
   installationId: bigint,
   from: Date,
@@ -91,6 +121,7 @@ async function jobsIn(
       AND j."createdAt" > ${new Date(from.getTime() - 5 * DAY_MS)}
       AND j."conclusion" IS DISTINCT FROM 'SKIPPED'
       AND NOT (j."runnerName" IS NULL AND j."startedAt" IS NOT NULL AND j."startedAt" = j."completedAt")
+      AND ${notIgnoredRepo("j")}
       ${extra}
     ORDER BY j."createdAt" ASC
     LIMIT ${MAX_JOB_ROWS}`;
@@ -250,7 +281,11 @@ export async function listRunners(
   const w = { from: from.getTime(), to: now.getTime() };
   const [runners, repos, jobs, keyOf] = await Promise.all([
     db.runner.findMany({
-      where: { installationId, removedAt: null },
+      where: {
+        installationId,
+        removedAt: null,
+        ...(await notIgnoredRunner(installationId)),
+      },
       orderBy: [{ scope: "asc" }, { name: "asc" }],
     }),
     db.repository.findMany({
@@ -621,7 +656,13 @@ export async function listRunnerPools(
   const windowS = (w.to - w.from) / 1000;
   const [jobs, runners, heat, keyOf] = await Promise.all([
     jobsIn(installationId, from, now),
-    db.runner.findMany({ where: { installationId, removedAt: null } }),
+    db.runner.findMany({
+      where: {
+        installationId,
+        removedAt: null,
+        ...(await notIgnoredRunner(installationId)),
+      },
+    }),
     db.$queryRaw<
       Array<{
         labelKey: string;
@@ -640,6 +681,7 @@ export async function listRunnerPools(
       FROM "WorkflowJob" j
       WHERE j."installationId" = ${installationId} AND j."queueS" IS NOT NULL
         AND j."createdAt" >= ${from} AND j."createdAt" < ${now}
+        AND ${notIgnoredRepo("j")}
       GROUP BY 1, 2, 3, 4`,
     jobKeyResolver(installationId),
   ]);
@@ -915,9 +957,14 @@ export async function getLiveQueue(
   now: Date = new Date(),
 ): Promise<LiveQueue> {
   await visibleInstallation(scope, installationId);
+  const ignored = await ignoredRepoIds(installationId);
   const [jobs, runners, repos] = await Promise.all([
     db.workflowJob.findMany({
-      where: { installationId, status: { in: ["QUEUED", "WAITING"] } },
+      where: {
+        installationId,
+        status: { in: ["QUEUED", "WAITING"] },
+        ...(ignored.length > 0 ? { repositoryId: { notIn: ignored } } : {}),
+      },
       orderBy: { createdAt: "asc" },
       take: 5_000,
       select: {
@@ -1035,9 +1082,18 @@ export async function listRunnerDailyStats(
 ): Promise<RunnerStatPoint[]> {
   const inst = await visibleInstallation(scope, installationId);
   const fromDay = localDay(rangeStart(opts.range ?? "30d", now), inst.timezone);
+  const ignored = await ignoredRepoIds(installationId);
   const rows = await db.dailyRunnerStat.findMany({
     where: {
       installationId,
+      // Repo runner stats of ignored repositories (until the purge drops them).
+      ...(ignored.length > 0
+        ? {
+            AND: ignored.map((id) => ({
+              NOT: { runnerKey: { startsWith: `shr:${id}:` } },
+            })),
+          }
+        : {}),
       day: { gte: new Date(`${fromDay}T00:00:00.000Z`) },
       ...(opts.runnerKey ? { runnerKey: opts.runnerKey } : {}),
     },
@@ -1058,4 +1114,61 @@ export async function listRunnerDailyStats(
     queueP95: histogramPercentile(mergeHistograms(r.queueHist), 0.95),
     speedIndex: r.speedIndex,
   }));
+}
+
+// ---------- paged reads (UI overhaul §4.1) ----------
+
+export type RunnerQuery = ListQuery<RunnerSortKey, RunnerFilter> & {
+  repositoryId?: string;
+};
+
+/** One page of the runners table: state chips, search by name or label, sort. */
+export async function listRunnersPage(
+  scope: TenantScope,
+  installationId: bigint,
+  query: RunnerQuery,
+  now: Date = new Date(),
+): Promise<
+  Page<RunnerDto> &
+    Omit<RunnerList, "runners"> & {
+      counts: { all: number; busy: number; idle: number; offline: number };
+    }
+> {
+  const { runners, ...meta } = await listRunners(scope, installationId, now);
+  const counts = { all: runners.length, busy: 0, idle: 0, offline: 0 };
+  for (const r of runners) counts[runnerState(r)]++;
+  return { ...meta, ...pageRunners(runners, query), counts };
+}
+
+const queueMeta = (q: LiveQueue): Omit<LiveQueue, "groups" | "jobs"> => ({
+  at: q.at,
+  approvals: q.approvals,
+  stuck: q.stuck,
+  oldestAgeS: q.oldestAgeS,
+});
+
+export type QueueQuery = ListQuery<QueueSortKey, QueueFilter> & {
+  repositoryId?: string;
+};
+
+/** The live queue grouped by labels and repository, paged (default: oldest first). */
+export async function listQueueGroups(
+  scope: TenantScope,
+  installationId: bigint,
+  query: QueueQuery,
+  now: Date = new Date(),
+): Promise<Page<QueueGroupDto> & Omit<LiveQueue, "groups" | "jobs">> {
+  const live = await getLiveQueue(scope, installationId, now);
+  return { ...queueMeta(live), ...pageQueueGroups(live.groups, query) };
+}
+
+/** The live queue as one flat list of queued jobs, paged. */
+export async function listQueuedJobs(
+  scope: TenantScope,
+  installationId: bigint,
+  query: QueueQuery,
+  now: Date = new Date(),
+): Promise<Page<QueueJobDto> & Omit<LiveQueue, "groups" | "jobs">> {
+  const live = await getLiveQueue(scope, installationId, now);
+  return { ...queueMeta(live), ...pageQueueJobs(live.jobs, query) };
 }

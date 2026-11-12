@@ -116,7 +116,12 @@ export async function getRunSteps(
   });
   if (!run) throw new NotFoundError();
   const repo = await db.repository.findFirst({
-    where: { id: run.repositoryId, installationId, removedAt: null },
+    where: {
+      id: run.repositoryId,
+      installationId,
+      removedAt: null,
+      ignoredAt: null,
+    },
     select: { id: true, ownerLogin: true, name: true },
   });
   if (!repo) return { status: "expired" };

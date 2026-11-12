@@ -27,8 +27,9 @@ import {
 } from "@/lib/format";
 import { param, withParams, type SearchParams } from "@/lib/insights-view";
 import { getCosts, parseMonth } from "@/server/data/costs";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Costs" };
+export const generateMetadata = accountMeta("costs");
 
 /**
  * Costs for all roles (design §6.6, §7 /costs): month picker, used vs
@@ -310,8 +311,37 @@ export default async function CostsPage({
                 </TableCell>
               </TableRow>
             ))}
+            {costs.ignored ? (
+              <TableRow className="text-muted-foreground italic">
+                <TableCell>
+                  {t("costs.byRepo.ignored", {
+                    count: costs.ignored.repositories,
+                  })}
+                </TableCell>
+                {billed ? (
+                  <>
+                    <TableCell className="text-right tabular-nums">
+                      {formatNumber(costs.ignored.billedQuantity, locale)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {usd(costs.ignored.grossUsd)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {usd(costs.ignored.netUsd)}
+                    </TableCell>
+                  </>
+                ) : null}
+                <TableCell className="text-right">—</TableCell>
+                <TableCell className="text-right">—</TableCell>
+              </TableRow>
+            ) : null}
           </TableBody>
         </Table>
+        {costs.ignored ? (
+          <p className="text-xs text-muted-foreground">
+            {t("costs.byRepo.ignoredInfo")}
+          </p>
+        ) : null}
       </section>
 
       <section className="flex flex-col gap-2">

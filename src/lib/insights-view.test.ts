@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type {
   Freshness,
   JobBreakdown,
-  RepoStat,
   RunSummary,
   WorkflowStat,
 } from "@/server/data/insights";
@@ -12,8 +11,6 @@ import {
   hostedVsSelfHosted,
   leaderboards,
   parseConclusion,
-  parseRepoSort,
-  sortRepoStats,
   staleReasons,
   textFilter,
   withParams,
@@ -57,60 +54,6 @@ describe("staleReasons", () => {
     expect(staleReasons(freshness({ lastReconciledAt: null }), NOW)).toEqual([
       "noReconcile",
     ]);
-  });
-});
-
-const repo = (fullName: string, r: Partial<RepoStat> = {}): RepoStat => ({
-  repositoryId: fullName,
-  fullName,
-  name: fullName.split("/")[1]!,
-  private: false,
-  archived: false,
-  lastRun: null,
-  runs7d: 0,
-  successRate7d: null,
-  p50Duration7d: null,
-  billableMinEst30d: 0,
-  sparkline: [],
-  ...r,
-});
-
-describe("sortRepoStats", () => {
-  const rows = [
-    repo("example-org/repo-b", { runs7d: 5, successRate7d: 0.5 }),
-    repo("example-org/repo-a", { runs7d: 9, successRate7d: null }),
-    repo("example-org/repo-c", { runs7d: 1, successRate7d: 0.9 }),
-  ];
-
-  it("sorts by name by default", () => {
-    expect(
-      sortRepoStats(rows, parseRepoSort(undefined), "asc").map((r) => r.name),
-    ).toEqual(["repo-a", "repo-b", "repo-c"]);
-  });
-
-  it("sorts numbers in both directions with nulls last", () => {
-    expect(sortRepoStats(rows, "success", "desc").map((r) => r.name)).toEqual([
-      "repo-c",
-      "repo-b",
-      "repo-a",
-    ]);
-    expect(sortRepoStats(rows, "success", "asc").map((r) => r.name)).toEqual([
-      "repo-b",
-      "repo-c",
-      "repo-a",
-    ]);
-    expect(sortRepoStats(rows, "runs", "desc").map((r) => r.name)).toEqual([
-      "repo-a",
-      "repo-b",
-      "repo-c",
-    ]);
-  });
-
-  it("filters case-insensitively and ignores unknown sort keys", () => {
-    expect(parseRepoSort("drop table")).toBe("name");
-    expect(
-      sortRepoStats(rows, "name", "asc", " REPO-B ").map((r) => r.name),
-    ).toEqual(["repo-b"]);
   });
 });
 

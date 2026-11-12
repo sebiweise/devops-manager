@@ -184,14 +184,23 @@ export async function findRepoTarget(
   return repo;
 }
 
-/** Active repositories of a visible installation (for matrices and live reads). */
+/**
+ * Active repositories of a visible installation (for matrices and live
+ * reads). Ignored repositories are left out (nothing is loaded for them)
+ * unless `includeIgnored` is set (audit log filters).
+ */
 export async function listRepoTargets(
   scope: TenantScope,
   installationId: bigint,
+  opts: { includeIgnored?: boolean } = {},
 ): Promise<RepoTarget[]> {
   if (!inScope(scope, installationId)) throw new NotFoundError();
   const rows = await db.repository.findMany({
-    where: { installationId, removedAt: null },
+    where: {
+      installationId,
+      removedAt: null,
+      ...(opts.includeIgnored ? {} : { ignoredAt: null }),
+    },
     select: {
       id: true,
       fullName: true,

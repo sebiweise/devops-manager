@@ -1,7 +1,6 @@
 import type {
   Freshness,
   JobBreakdown,
-  RepoStat,
   WorkflowStat,
 } from "@/server/data/insights";
 
@@ -112,72 +111,6 @@ export function staleReasons(f: Freshness, now: Date): StaleReason[] {
     out.push("noReconcile");
   if (f.failedDeliveries + f.deadDeliveries > 0) out.push("failedDeliveries");
   return out;
-}
-
-// ---------- repositories ----------
-
-export const REPO_SORTS = [
-  "name",
-  "lastRun",
-  "runs",
-  "success",
-  "p50",
-  "minutes",
-] as const;
-export type RepoSort = (typeof REPO_SORTS)[number];
-
-export function parseRepoSort(value: string | undefined): RepoSort {
-  return (REPO_SORTS as readonly string[]).includes(value ?? "")
-    ? (value as RepoSort)
-    : "name";
-}
-
-/** Nulls always sort last, whatever the direction. */
-function compareNullable(
-  a: number | string | null,
-  b: number | string | null,
-  dir: 1 | -1,
-): number {
-  if (a === b) return 0;
-  if (a === null) return 1;
-  if (b === null) return -1;
-  if (typeof a === "string" && typeof b === "string")
-    return a.localeCompare(b) * dir;
-  return (a < b ? -1 : 1) * dir;
-}
-
-export function sortRepoStats(
-  rows: ReadonlyArray<RepoStat>,
-  sort: RepoSort,
-  dir: "asc" | "desc",
-  query?: string,
-): RepoStat[] {
-  const q = query?.trim().toLowerCase();
-  const d = dir === "asc" ? 1 : -1;
-  const key = (r: RepoStat): number | string | null => {
-    switch (sort) {
-      case "name":
-        return r.fullName.toLowerCase();
-      case "lastRun":
-        return r.lastRun?.createdAt ?? null;
-      case "runs":
-        return r.runs7d;
-      case "success":
-        return r.successRate7d;
-      case "p50":
-        return r.p50Duration7d;
-      case "minutes":
-        return r.billableMinEst30d;
-    }
-  };
-  return rows
-    .filter((r) => !q || r.fullName.toLowerCase().includes(q))
-    .slice()
-    .sort(
-      (a, b) =>
-        compareNullable(key(a), key(b), d) ||
-        a.fullName.localeCompare(b.fullName),
-    );
 }
 
 // ---------- workflow leaderboards ----------
