@@ -8,6 +8,12 @@ import { hasRole } from "@/server/authz/roles";
 import { getFreshness } from "@/server/data/insights";
 import { maybeLazyReconcile } from "@/server/ingest/triggers";
 
+// The lazy reconcile and "Sync now" run in `after()` of these requests and are
+// bounded by the function's deadline (minus a 30 s margin). Without this, the
+// platform default leaves no time and every pass stops at "deadline" before
+// its first GitHub request.
+export const maxDuration = 300;
+
 /**
  * Every `/o/[account]/*` page: resolves the installation (404 when it is not
  * visible), starts a lazy reconcile in `after()` when the installation was
