@@ -160,7 +160,7 @@ export async function RunsPerDayChart(props: Props) {
         <DataTable
           caption={title}
           columns={[
-            t("bucketName", { bucket }),
+            t(`bucketName.${bucket}`),
             t("runs"),
             ...series.map((s) => s.label),
             t("successRate"),
@@ -217,7 +217,7 @@ export async function DurationChart(props: Props) {
       table={
         <DataTable
           caption={title}
-          columns={[t("bucketName", { bucket }), t("p50"), t("p95")]}
+          columns={[t(`bucketName.${bucket}`), t("p50"), t("p95")]}
           rows={points.map((d) => [
             label(d.day),
             approx(formatDuration(d.p50), isApprox),
@@ -256,7 +256,7 @@ export async function QueueChart(props: Props) {
       table={
         <DataTable
           caption={title}
-          columns={[t("bucketName", { bucket }), t("queueP95")]}
+          columns={[t(`bucketName.${bucket}`), t("queueP95")]}
           rows={points.map((d) => [
             label(d.day),
             approx(formatDuration(d.queueP95), isApprox),
@@ -294,7 +294,7 @@ export async function SuccessRateChart(props: Props) {
       table={
         <DataTable
           caption={title}
-          columns={[t("bucketName", { bucket }), t("runs"), t("successRate")]}
+          columns={[t(`bucketName.${bucket}`), t("runs"), t("successRate")]}
           rows={points.map((d) => [
             label(d.day),
             formatNumber(d.runs, locale),
@@ -338,7 +338,7 @@ export async function MinutesChart(props: Props) {
       table={
         <DataTable
           caption={title}
-          columns={[t("bucketName", { bucket }), t("minutes")]}
+          columns={[t(`bucketName.${bucket}`), t("minutes")]}
           rows={points.map((d) => [
             label(d.day),
             formatMinutes(d.billableMinEst, locale),

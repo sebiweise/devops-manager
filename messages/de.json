@@ -228,7 +228,11 @@
     "trendTableEntity": "Name",
     "trendTableHint": "Läufe pro Tag; nach dem Schrägstrich die fehlgeschlagenen.",
     "sparkTitle": "Letzte 14 Tage: {runs} Läufe, {failures} fehlgeschlagen",
-    "bucketName": "{bucket, select, week {Woche ab} month {Monat} other {Tag}}",
+    "bucketName": {
+      "day": "Tag",
+      "week": "Woche ab",
+      "month": "Monat"
+    },
     "runsPer": {
       "title": "Läufe pro {bucket, select, week {Woche} month {Monat} other {Tag}}",
       "label": "Gestapeltes Balkendiagramm der Läufe pro {bucket, select, week {Woche} month {Monat} other {Tag}} nach Ergebnis über {n} {bucket, select, week {Wochen} month {Monate} other {Tage}}, insgesamt {runs} Läufe."

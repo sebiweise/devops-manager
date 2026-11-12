@@ -228,7 +228,11 @@
     "trendTableEntity": "Name",
     "trendTableHint": "Runs per day; after the slash the failed runs.",
     "sparkTitle": "Last 14 days: {runs} runs, {failures} failed",
-    "bucketName": "{bucket, select, week {Week of} month {Month} other {Day}}",
+    "bucketName": {
+      "day": "Day",
+      "week": "Week of",
+      "month": "Month"
+    },
     "runsPer": {
       "title": "Runs per {bucket, select, week {week} month {month} other {day}}",
       "label": "Stacked bar chart of runs per {bucket, select, week {week} month {month} other {day}} by conclusion over {n} {bucket, select, week {weeks} month {months} other {days}}, {runs} runs in total."
