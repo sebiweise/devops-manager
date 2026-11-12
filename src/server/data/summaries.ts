@@ -1,11 +1,16 @@
 import "server-only";
 import { Prisma } from "@/generated/prisma/client";
+import { MIN_SAMPLES } from "@/lib/insights-view";
 import type { TenantScope } from "@/server/authz/scope";
 import { db } from "@/server/db";
 import { notIgnoredRepo } from "@/server/ingest/active-repos";
 import { isActionsProduct, isMinutesUnit } from "@/server/metrics/billing";
 import { includedMinutes } from "@/server/metrics/billing";
 import { daysBetween, localDay } from "@/server/metrics/days";
+import {
+  histogramCount,
+  histogramPercentile,
+} from "@/server/metrics/histogram";
 import { successRate, trendDelta } from "@/server/metrics/stats";
 import { listInstallations } from "./installations";
 
@@ -50,6 +55,8 @@ export type AccountSummary = {
   }>;
   /** Runs per day, last 14 days (UTC days), oldest first. */
   sparkline: Array<{ day: string; runs: number; failures: number }>;
+  /** 0..1 of the history import over the active repositories; null without any. */
+  importProgress: number | null;
 };
 
 type ByInst<T> = Map<bigint, T>;
@@ -65,6 +72,7 @@ const byInst = <T extends { installationId: bigint }>(
 export async function getAccountSummaries(
   scope: TenantScope,
   now: Date = new Date(),
+  opts: { backfillDays?: number } = {},
 ): Promise<AccountSummary[]> {
   const installations = await listInstallations(scope);
   if (installations.length === 0) return [];
@@ -87,6 +95,7 @@ export async function getAccountSummaries(
     billed,
     estimated,
     meta,
+    states,
   ] = await Promise.all([
     db.$queryRaw<
       Array<{
@@ -182,6 +191,18 @@ export async function getAccountSummaries(
       where: { id: { in: ids } },
       select: { id: true, includedMinutes: true, planName: true },
     }),
+    db.$queryRaw<
+      Array<{
+        installationId: bigint;
+        runsCursor: Date | null;
+        backfillUntil: Date | null;
+        backfillDone: boolean;
+      }>
+    >`
+        SELECT st."installationId", st."runsCursor", st."backfillUntil", st."backfillDone"
+        FROM "SyncState" st JOIN "Repository" r ON r."id" = st."repositoryId"
+        WHERE st."installationId" IN (${inIds}) AND r."removedAt" IS NULL
+          AND r."ignoredAt" IS NULL`,
   ]);
 
   const w = byInst(windows);
@@ -203,6 +224,21 @@ export async function getAccountSummaries(
       );
   }
   const days = daysBetween(from14, today).slice(-14);
+  // Same coverage formula as the sync health of the settings page.
+  const span = Math.max(1, opts.backfillDays ?? 30) * DAY_MS;
+  const progressSum = new Map<bigint, number>();
+  for (const st of states) {
+    const covered = st.backfillDone
+      ? 1
+      : st.backfillUntil && st.runsCursor
+        ? (st.runsCursor.getTime() - st.backfillUntil.getTime()) / span
+        : 0;
+    progressSum.set(
+      st.installationId,
+      (progressSum.get(st.installationId) ?? 0) +
+        Math.min(1, Math.max(0, covered)),
+    );
+  }
 
   return installations.map((inst) => {
     const win = w.get(inst.id) ?? [];
@@ -220,6 +256,7 @@ export async function getAccountSummaries(
     const m = metaBy.get(inst.id);
     const att = at.get(inst.id) ?? [];
     const billedSource = hasBilling.has(inst.id);
+    const activeRepos = rp.get(inst.id)?.[0]?.active ?? 0;
     return {
       installationId: String(inst.id),
       accountLogin: inst.accountLogin,
@@ -258,6 +295,80 @@ export async function getAccountSummaries(
         runs: sparkBy.get(d)?.runs ?? 0,
         failures: sparkBy.get(d)?.failures ?? 0,
       })),
+      importProgress:
+        activeRepos > 0
+          ? Math.min(1, (progressSum.get(inst.id) ?? 0) / activeRepos)
+          : null,
     };
   });
+}
+
+export type HighlightWorkflow = {
+  accountLogin: string;
+  workflowId: string;
+  workflowName: string;
+  repoFullName: string;
+  runs: number;
+  failures: number;
+  /** Seconds; 95 % of runs finished within (rollup histogram). */
+  p95: number | null;
+};
+
+/**
+ * "Across all accounts" of the start page (UI overhaul §2.1): the five
+ * workflows with the most failures and the five slowest (p95) over the last
+ * 7 days, from the daily rollups of every visible installation. Ignored
+ * repositories are left out.
+ */
+export async function getCrossAccountHighlights(
+  scope: TenantScope,
+  now: Date = new Date(),
+): Promise<{ failing: HighlightWorkflow[]; slowest: HighlightWorkflow[] }> {
+  const installations = await listInstallations(scope);
+  if (installations.length === 0) return { failing: [], slowest: [] };
+  const login = new Map(installations.map((i) => [i.id, i.accountLogin]));
+  const from7 = localDay(new Date(now.getTime() - 6 * DAY_MS), "UTC");
+  const rows = await db.$queryRaw<
+    Array<{
+      installationId: bigint;
+      workflowId: bigint;
+      workflowName: string;
+      repoFullName: string;
+      runs: number;
+      failures: number;
+      dur_hist: number[];
+    }>
+  >`
+    SELECT s."installationId", s."workflowId", max(s."workflowName") AS "workflowName",
+      max(r."fullName") AS "repoFullName", sum(s."runs")::int AS runs,
+      sum(s."failure")::int AS failures, hist_sum(s."durHist") AS dur_hist
+    FROM "DailyWorkflowStat" s JOIN "Repository" r ON r."id" = s."repositoryId"
+    WHERE s."installationId" IN (${Prisma.join(installations.map((i) => i.id))})
+      AND s."day" >= ${from7}::date AND r."ignoredAt" IS NULL
+      AND r."removedAt" IS NULL AND s."workflowId" <> 0
+    GROUP BY 1, 2`;
+  const all = rows.map((r) => ({
+    accountLogin: login.get(r.installationId) ?? "",
+    workflowId: String(r.workflowId),
+    workflowName: r.workflowName,
+    repoFullName: r.repoFullName,
+    runs: r.runs,
+    failures: r.failures,
+    p95:
+      histogramCount(r.dur_hist) >= MIN_SAMPLES
+        ? histogramPercentile(r.dur_hist, 0.95)
+        : null,
+  }));
+  const byName = (a: HighlightWorkflow, b: HighlightWorkflow) =>
+    a.workflowName.localeCompare(b.workflowName);
+  return {
+    failing: all
+      .filter((w) => w.failures > 0)
+      .sort((a, b) => b.failures - a.failures || byName(a, b))
+      .slice(0, 5),
+    slowest: all
+      .filter((w) => w.p95 != null)
+      .sort((a, b) => b.p95! - a.p95! || byName(a, b))
+      .slice(0, 5),
+  };
 }
