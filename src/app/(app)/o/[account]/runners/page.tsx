@@ -605,6 +605,7 @@ async function PoolsView({
   const columns: Column<PoolDto>[] = [
     {
       id: "pool",
+      className: "whitespace-normal",
       label: t("runners.pools.pool"),
       header: t("runners.pools.pool"),
       cell: (p) => (
@@ -732,6 +733,7 @@ async function PoolsView({
             label: t("runners.split.minutes"),
             header: t("runners.split.minutes"),
             align: "right",
+            hideBelow: "sm",
             cell: (k) => formatMinutes(k.minutes, locale),
           },
           {

@@ -38,9 +38,10 @@ export async function RunsTable({
       id: "run",
       label: t("run"),
       header: t("run"),
+      className: "whitespace-normal",
       cell: (r) => (
         <div className="flex flex-col">
-          <span className="flex items-baseline gap-1.5">
+          <span className="flex flex-wrap items-baseline gap-x-1.5">
             <Link
               href={runHref(accountLogin, r.id)}
               className="font-medium underline-offset-2 hover:underline"
@@ -73,6 +74,7 @@ export async function RunsTable({
             id: "workflow",
             label: t("workflow"),
             header: t("workflow"),
+            hideBelow: "sm" as const,
             className: "max-w-48 truncate",
             cell: (r: RunListItem) =>
               r.workflowId ? (

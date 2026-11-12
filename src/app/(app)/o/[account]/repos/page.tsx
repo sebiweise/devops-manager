@@ -171,6 +171,7 @@ export default async function ReposPage({
       label: t("repos.lastRun"),
       header: t("repos.lastRun"),
       sortKey: "lastRun",
+      hideBelow: "sm",
       cell: (r) => {
         if (r.ignored) return dash;
         if (!r.lastRun)
@@ -204,7 +205,6 @@ export default async function ReposPage({
       header: twoLine(t("repos.colRuns"), rangeLabel),
       sortKey: "runs",
       align: "right",
-      hideBelow: "md",
       magnitude: (r) => (r.ignored ? null : r.runs / runsMax),
       cell: (r) => metric(r, formatNumber(r.runs, locale)),
     },
@@ -345,6 +345,7 @@ export default async function ReposPage({
                 canIgnore={canIgnore}
               />
             ),
+            hideBelow: "sm",
             className: "w-px",
           } satisfies Column<RepoStat>,
         ]
@@ -358,6 +359,7 @@ export default async function ReposPage({
       columns={columns}
       rows={page.rows}
       rowKey={(r) => r.repositoryId}
+      rowName={(r) => r.name}
       muted={(r) => r.ignored}
       sort={{ key: query.sort, dir: query.dir, base, params: sp }}
       selectHeader={canIgnore ? <SelectPageCheckbox /> : undefined}

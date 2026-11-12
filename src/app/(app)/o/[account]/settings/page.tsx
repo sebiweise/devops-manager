@@ -209,6 +209,7 @@ export default async function InstallationSettingsPage({
       id: "state",
       label: t("ignore.settings.state"),
       header: t("ignore.settings.state"),
+      hideBelow: "sm",
       cell: (r) => (
         <span className="text-sm text-muted-foreground">
           {r.purged ? t("ignore.settings.purged") : t("ignore.banner.purging")}

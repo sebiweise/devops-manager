@@ -193,6 +193,7 @@ export default async function QueuePage({
       id: "pool",
       label: t("queue.group"),
       header: t("queue.group"),
+      className: "whitespace-normal",
       cell: (g) => (
         <div className="flex flex-col gap-1">
           <LabelList labels={g.labels} max={3} />

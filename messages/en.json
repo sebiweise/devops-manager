@@ -1511,7 +1511,8 @@
     "cursorNewest": "Showing {count} newest",
     "cursorShown": "Showing {count} older",
     "older": "Older runs",
-    "newest": "Newest runs"
+    "newest": "Newest runs",
+    "moreAbout": "More about {name}"
   },
   "badge": {
     "SUCCESS": {

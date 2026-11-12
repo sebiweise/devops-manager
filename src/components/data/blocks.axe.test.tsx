@@ -91,6 +91,7 @@ function Table() {
       caption="Repositories"
       rows={rows}
       rowKey={(r) => r.id}
+      rowName={(r) => r.name}
       muted={(r) => r.ignored}
       sort={{
         key: "runs",
@@ -146,8 +147,24 @@ describe("DataTable", () => {
       'href="/o/example-org/repos?range=30d&amp;sort=name&amp;dir=asc"',
     );
     expect(html).toContain('data-muted="true"');
-    expect(html).toContain("<summary");
-    expect(html).toContain("self-hosted");
+    // The disclosure toggle leads the row; its detail row spans the table.
+    const doc = new DOMParser().parseFromString(
+      `<table>${html.slice(html.indexOf("<thead"), html.lastIndexOf("</table>"))}</table>`,
+      "text/html",
+    );
+    const first = doc.querySelector("tbody tr")!;
+    const toggle = first.querySelector("td:first-child button")!;
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.getAttribute("aria-label")).toBe(
+      "More about example-org/repo-a",
+    );
+    const detail = doc.getElementById(toggle.getAttribute("aria-controls")!)!;
+    expect(detail.hasAttribute("hidden")).toBe(true);
+    expect(detail.querySelector("td")!.getAttribute("colspan")).toBe(
+      String(doc.querySelectorAll("thead th").length),
+    );
+    expect(detail.textContent).toContain("self-hosted");
+    expect(detail.textContent).toContain("Typical");
     // The magnitude bar is drawn for the sorted column only.
     expect(html.match(/bg-series-1\/70/g)).toHaveLength(2);
   });

@@ -68,6 +68,7 @@ export function workflowColumns({
       label: t("workflows.workflow"),
       header: t("workflows.workflow"),
       sortKey: "name",
+      className: "whitespace-normal",
       cell: (w) => (
         <div className="flex min-w-0 flex-col gap-0.5">
           <span className="flex flex-wrap items-center gap-1.5">
