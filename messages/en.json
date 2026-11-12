@@ -561,7 +561,8 @@
     "noRateLimits": "No GitHub request recorded yet.",
     "resource": "Resource",
     "remaining": "Remaining",
-    "reset": "Resets"
+    "reset": "Resets",
+    "until": "History imported until"
   },
   "runnerData": {
     "stuck": "Stuck",
@@ -1519,7 +1520,8 @@
       "state": "Stored data",
       "actions": "Actions",
       "purged": "Deleted",
-      "addTitle": "Ignore repositories"
+      "addTitle": "Ignore repositories",
+      "removed": "no longer in the App's selection"
     },
     "list": {
       "label": "Repositories that can be ignored",
@@ -1751,5 +1753,18 @@
     "userSettings": "Settings",
     "onboarding": "GitHub App installations",
     "billingAccess": "Billing access"
+  },
+  "settingsPage": {
+    "sections": "Sections of this page",
+    "management": "Management",
+    "repositories": "Repositories",
+    "sync": "Data sync",
+    "diagnostics": "Diagnostics",
+    "ignoreForks": "Ignore forks on the repositories page",
+    "importInfo": "Share of the last {days} days of history imported, averaged over the repositories.",
+    "importDays": "history of {days} days",
+    "problems": "Repositories with problems",
+    "allOk": "All {count} repositories are in sync. Show the list",
+    "diagnosticsSummary": "Webhook deliveries, rate limits and delays · data shows up after about {lag} · {dirty} daily summaries waiting"
   }
 }

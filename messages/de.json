@@ -561,7 +561,8 @@
     "noRateLimits": "Noch keine GitHub-Anfrage erfasst.",
     "resource": "Ressource",
     "remaining": "Verbleibend",
-    "reset": "Zurückgesetzt"
+    "reset": "Zurückgesetzt",
+    "until": "Verlauf importiert bis"
   },
   "runnerData": {
     "stuck": "Hängt",
@@ -1519,7 +1520,8 @@
       "state": "Gespeicherte Daten",
       "actions": "Aktionen",
       "purged": "Gelöscht",
-      "addTitle": "Repositories ignorieren"
+      "addTitle": "Repositories ignorieren",
+      "removed": "nicht mehr in der Auswahl der App"
     },
     "list": {
       "label": "Repositories, die ignoriert werden können",
@@ -1751,5 +1753,18 @@
     "userSettings": "Einstellungen",
     "onboarding": "GitHub-App-Installationen",
     "billingAccess": "Abrechnungszugriff"
+  },
+  "settingsPage": {
+    "sections": "Abschnitte dieser Seite",
+    "management": "Verwaltung",
+    "repositories": "Repositories",
+    "sync": "Datenabgleich",
+    "diagnostics": "Diagnose",
+    "ignoreForks": "Forks auf der Repository-Seite ignorieren",
+    "importInfo": "Anteil der importierten letzten {days} Tage, gemittelt über die Repositories.",
+    "importDays": "Verlauf von {days} Tagen",
+    "problems": "Repositories mit Problemen",
+    "allOk": "Alle {count} Repositories sind abgeglichen. Liste anzeigen",
+    "diagnosticsSummary": "Webhook-Zustellungen, Rate-Limits und Verzögerungen · Daten erscheinen nach etwa {lag} · {dirty} Tagesauswertungen warten"
   }
 }

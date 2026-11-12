@@ -197,31 +197,3 @@ export async function countRepositories(
   ]);
   return { active, ignored, forks };
 }
-
-export type IgnorableRepository = {
-  id: string;
-  fullName: string;
-  fork: boolean;
-  private: boolean;
-  archived: boolean;
-};
-
-/** Active (not ignored) repositories of a visible installation, for the ignore list. */
-export async function listIgnorableRepositories(
-  scope: TenantScope,
-  installationId: bigint,
-): Promise<IgnorableRepository[]> {
-  if (!inScope(scope, installationId)) throw new NotFoundError();
-  const rows = await db.repository.findMany({
-    where: { installationId, removedAt: null, ignoredAt: null },
-    orderBy: { fullName: "asc" },
-    select: {
-      id: true,
-      fullName: true,
-      fork: true,
-      private: true,
-      archived: true,
-    },
-  });
-  return rows.map((r) => ({ ...r, id: String(r.id) }));
-}

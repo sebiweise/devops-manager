@@ -2,7 +2,7 @@
 
 import { Ellipsis, ExternalLink } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useId, useMemo, useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useSelection } from "@/components/data/selection";
 import { HeaderMenu } from "@/components/shell/menu";
@@ -185,128 +185,6 @@ export function RepoIgnoreButton({
         />
       )}
     </ActionDialog>
-  );
-}
-
-/**
- * The temporary repository list of the settings page (until the repositories
- * page gets its selection column): active repos with checkboxes, a "forks
- * only" filter and "Ignore selected"; ignored repos with un-ignore.
- */
-export function RepoIgnoreList({
-  installationId,
-  repos,
-}: {
-  installationId: string;
-  repos: Array<IgnoreRepo & { private: boolean; archived: boolean }>;
-}) {
-  const t = useTranslations("ignore");
-  const [forksOnly, setForksOnly] = useState(false);
-  const [q, setQ] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const visible = useMemo(
-    () =>
-      repos.filter(
-        (r) =>
-          (!forksOnly || r.fork) &&
-          r.fullName.toLowerCase().includes(q.trim().toLowerCase()),
-      ),
-    [repos, forksOnly, q],
-  );
-  const chosen = repos.filter((r) => selected.has(r.id));
-  const allVisible =
-    visible.length > 0 && visible.every((r) => selected.has(r.id));
-  const searchId = useId();
-  const toggle = (id: string, on: boolean) =>
-    setSelected((s) => {
-      const n = new Set(s);
-      if (on) n.add(id);
-      else n.delete(id);
-      return n;
-    });
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <label htmlFor={searchId} className="sr-only">
-          {t("list.search")}
-        </label>
-        <input
-          id={searchId}
-          type="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t("list.search")}
-          className="h-8 rounded-md border bg-background px-2 text-sm"
-        />
-        <Button
-          type="button"
-          size="sm"
-          variant={forksOnly ? "secondary" : "outline"}
-          aria-pressed={forksOnly}
-          onClick={() => setForksOnly((v) => !v)}
-        >
-          {t("list.forksOnly")}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() =>
-            setSelected((s) => {
-              const n = new Set(s);
-              for (const r of visible) {
-                if (allVisible) n.delete(r.id);
-                else n.add(r.id);
-              }
-              return n;
-            })
-          }
-          disabled={visible.length === 0}
-        >
-          {allVisible
-            ? t("list.clearShown")
-            : t("list.selectShown", { count: visible.length })}
-        </Button>
-        <RepoIgnoreButton
-          installationId={installationId}
-          repos={chosen}
-          mode="ignore"
-          variant="destructive"
-          label={t("action.ignoreSelected", { count: chosen.length })}
-        />
-      </div>
-      {visible.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("list.empty")}</p>
-      ) : (
-        <ul
-          aria-label={t("list.label")}
-          className="max-h-80 overflow-y-auto rounded-md border p-2 text-sm"
-        >
-          {visible.map((r) => (
-            <li key={r.id} className="flex items-center gap-2 py-0.5">
-              <input
-                type="checkbox"
-                id={`ignore-${r.id}`}
-                checked={selected.has(r.id)}
-                onChange={(e) => toggle(r.id, e.target.checked)}
-              />
-              <label htmlFor={`ignore-${r.id}`} className="truncate">
-                {r.fullName}
-              </label>
-              {r.fork ? (
-                <Badge variant="outline">{t("badge.fork")}</Badge>
-              ) : null}
-              {r.private ? (
-                <Badge variant="secondary">{t("badge.private")}</Badge>
-              ) : null}
-              {r.archived ? (
-                <Badge variant="outline">{t("badge.archived")}</Badge>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   );
 }
 

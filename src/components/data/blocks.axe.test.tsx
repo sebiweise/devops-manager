@@ -41,7 +41,7 @@ const { PageHeader } = await import("../shell/page-header");
 const { GettingStarted } = await import("../shell/getting-started");
 const { Breadcrumbs } = await import("../shell/breadcrumbs");
 const { FreshnessChip } = await import("../shell/freshness-chip");
-const { RepoIgnoreButton, RepoIgnoreList, IgnoreSelectedButton } =
+const { RepoIgnoreButton, RepoRowMenu, IgnoreSelectedButton } =
   await import("../management/repo-ignore");
 
 /**
@@ -489,22 +489,16 @@ describe("selection and ignore controls", () => {
           mode="unignore"
           repos={[{ id: "1", fullName: "example-org/repo-a" }]}
         />
-        <RepoIgnoreList
+        <RepoRowMenu
           installationId="2002"
-          repos={[
-            {
-              id: "1",
-              fullName: "example-org/repo-a",
-              fork: true,
-              private: false,
-              archived: false,
-            },
-          ]}
+          repo={{ id: "1", fullName: "example-org/repo-a", fork: true }}
+          ignored={false}
+          canIgnore
         />
       </SelectionProvider>,
     );
     expect(html).toContain('aria-label="Select example-org/repo-a"');
-    expect(html).toContain("Forks only");
+    expect(html).toContain('aria-label="Actions for example-org/repo-a"');
     expect(await violations(html)).toEqual([]);
   });
 });
