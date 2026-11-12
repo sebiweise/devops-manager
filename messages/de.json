@@ -329,6 +329,7 @@
     "title": "Synchronisierungsstatus",
     "lastWebhook": "Letzter Webhook",
     "lastReconcile": "Letzter Abgleich",
+    "lastReconcileStatus": "Ergebnis des letzten Abgleichs",
     "lagP50": "Verarbeitungsverzug p50",
     "lagP95": "Verarbeitungsverzug p95",
     "dirty": "Ausstehende Aggregate",

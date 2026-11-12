@@ -75,6 +75,11 @@ export default async function InstallationSettingsPage({
           }
         />
         <KpiTile
+          label={t("syncHealth.lastReconcileStatus")}
+          value={health.lastReconcileStatus ?? "—"}
+          hint={health.lastReconcileReason ?? undefined}
+        />
+        <KpiTile
           label={t("syncHealth.lagP50")}
           value={formatDuration(health.ingestionLag.p50)}
         />

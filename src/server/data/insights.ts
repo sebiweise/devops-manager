@@ -66,6 +66,8 @@ export type InstallationInfo = {
   retentionDays: number | null;
   lastWebhookAt: Date | null;
   lastReconciledAt: Date | null;
+  lastReconcileStatus: string | null;
+  lastReconcileReason: string | null;
 };
 
 /** The visible, active installation, or NotFoundError. */
@@ -83,6 +85,8 @@ export async function visibleInstallation(
       rawRetentionDays: true,
       lastWebhookAt: true,
       lastReconciledAt: true,
+      lastReconcileStatus: true,
+      lastReconcileReason: true,
     },
   });
   if (!inst) throw new NotFoundError();
@@ -1401,6 +1405,8 @@ export async function getRunDetail(
 export type SyncHealth = {
   lastWebhookAt: string | null;
   lastReconciledAt: string | null;
+  lastReconcileStatus: string | null;
+  lastReconcileReason: string | null;
   repos: Array<{
     repositoryId: string;
     fullName: string;
@@ -1460,6 +1466,8 @@ export async function getSyncHealth(
   return {
     lastWebhookAt: iso(inst.lastWebhookAt),
     lastReconciledAt: iso(inst.lastReconciledAt),
+    lastReconcileStatus: inst.lastReconcileStatus,
+    lastReconcileReason: inst.lastReconcileReason,
     repos: repos.map((repo) => {
       const s = stateBy.get(repo.id);
       const covered =

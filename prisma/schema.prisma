@@ -136,6 +136,10 @@ model Installation {
   lastReconciledAt     DateTime?     @db.Timestamptz(3)
   /// Column lock (PgBouncer-safe, no advisory locks).
   reconcileLockedUntil DateTime?     @db.Timestamptz(3)
+  /// Outcome of the last reconcile of this installation: ok | partial | skipped | error.
+  lastReconcileStatus  String?
+  /// Why the last reconcile was not ok (redacted), shown on the sync health page.
+  lastReconcileReason  String?
   hookDeliveryCursor   String?
   /// Last daily prune of this installation's raw history (reconcile step i).
   lastPrunedAt         DateTime?     @db.Timestamptz(3)
