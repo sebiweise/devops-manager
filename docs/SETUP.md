@@ -11,6 +11,13 @@ manifests:
 Replace every `devops.example.com` with the public host of your instance
 before you use a manifest.
 
+The manifests leave out the account permission **Plan**, which only the
+optional "Connect GitHub" billing flow (option B, M2) needs. GitHub rejects
+unknown permission names in a manifest, so add it after the App exists:
+App settings → **Permissions & events** → **Account permissions** →
+**Plan: Read-only** → Save. Users who already connected then accept the
+new permission once.
+
 ## Option A: manifest flow (recommended)
 
 GitHub creates the App from the manifest when it is posted from a form. Save
