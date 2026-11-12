@@ -91,6 +91,7 @@ const KNOWN_REFUSALS = new Set([
   "not_mergeable",
   "mergeability_unknown",
   "needs_acknowledgement",
+  "branch_protection",
 ]);
 
 /** The message key, its values and the tone of an action result. */
@@ -172,7 +173,12 @@ export function defaultMergeMethod(
 }
 
 export type MergeBlock =
-  "draft" | "conflicting" | "unknown" | "workflows_not_granted" | "no_method";
+  | "draft"
+  | "conflicting"
+  | "unknown"
+  | "branch_protection"
+  | "workflows_not_granted"
+  | "no_method";
 
 /**
  * Why a PR's merge button is disabled, or null when the merge dialog may
@@ -184,13 +190,18 @@ export function mergeBlock(
   pull: {
     isDraft: boolean;
     mergeable: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
+    mergeStateStatus?: string | null;
     changesWorkflows: boolean | null;
   },
   options: { workflowsGranted: boolean; methods: readonly MergeMethod[] },
 ): MergeBlock | null {
+  const state = (pull.mergeStateStatus ?? "").toUpperCase();
   if (pull.isDraft) return "draft";
-  if (pull.mergeable === "CONFLICTING") return "conflicting";
+  if (pull.mergeable === "CONFLICTING" || state === "DIRTY")
+    return "conflicting";
   if (pull.mergeable === "UNKNOWN") return "unknown";
+  // Branch protection is never overridden from here (the server refuses it).
+  if (state === "BLOCKED") return "branch_protection";
   if (pull.changesWorkflows === true && !options.workflowsGranted)
     return "workflows_not_granted";
   if (options.methods.length === 0) return "no_method";

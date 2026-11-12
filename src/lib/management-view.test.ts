@@ -143,11 +143,20 @@ describe("merge helpers", () => {
     ).toBe("workflows_not_granted");
     expect(mergeBlock({ ...clean, changesWorkflows: true }, opts)).toBeNull();
     expect(mergeBlock(clean, { ...opts, methods: [] })).toBe("no_method");
+    expect(mergeBlock({ ...clean, mergeStateStatus: "BLOCKED" }, opts)).toBe(
+      "branch_protection",
+    );
+    expect(mergeBlock({ ...clean, mergeStateStatus: "DIRTY" }, opts)).toBe(
+      "conflicting",
+    );
+    expect(
+      mergeBlock({ ...clean, mergeStateStatus: "UNSTABLE" }, opts),
+    ).toBeNull();
   });
 
   it("asks for the warning unless the merge state is CLEAN", () => {
     expect(needsAcknowledgement("CLEAN")).toBe(false);
-    expect(needsAcknowledgement("BLOCKED")).toBe(true);
+    expect(needsAcknowledgement("UNSTABLE")).toBe(true);
     expect(needsAcknowledgement(null)).toBe(true);
   });
 

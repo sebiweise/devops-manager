@@ -776,7 +776,8 @@
       "draft": "Draft pull requests cannot be merged.",
       "not_mergeable": "The pull request has conflicts and cannot be merged.",
       "mergeability_unknown": "GitHub is still checking whether the pull request can be merged. Try again shortly.",
-      "needs_acknowledgement": "The merge state is {state}. Confirm the warning to merge anyway."
+      "needs_acknowledgement": "The merge state is {state}. Confirm the warning to merge anyway.",
+      "branch_protection": "Branch protection is not satisfied (required reviews, checks or rules). The merge is possible once they are met."
     },
     "bulk": {
       "create": "create",
@@ -1042,6 +1043,7 @@
         "draft": "draft",
         "conflicting": "has conflicts",
         "unknown": "mergeability unknown",
+        "branch_protection": "branch protection not satisfied",
         "workflows_not_granted": "changes workflows; the App has no Workflows: write",
         "no_method": "no merge method allowed"
       },

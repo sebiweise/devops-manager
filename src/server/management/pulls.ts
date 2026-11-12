@@ -25,8 +25,10 @@ import {
  * - The merge is pinned to the head SHA the admin saw (`sha`); GitHub
  *   answers 409 when the head moved, and that message is shown verbatim.
  * - Before merging, the PR is re-read with a `read.pulls` token: a closed,
- *   draft or conflicting PR is refused without a merge call; a merge state
- *   other than "clean" needs the extra acknowledgement.
+ *   draft or conflicting PR is refused without a merge call, and so is the
+ *   merge state "blocked" (branch protection is never overridden, even when
+ *   the App is a bypass actor); the advisory states "unstable", "behind" and
+ *   "has_hooks" need the extra acknowledgement.
  * - The changed files (`GET /pulls/{n}/files`) decide the token:
  *   `act.merge.workflows` (with `workflows: write`) only when a file under
  *   `.github/workflows/` changes, `act.merge` otherwise. Both are narrowed to
@@ -37,6 +39,17 @@ import {
  */
 
 export const AUDIT_TRAILER = "DevOps-Manager-Audit";
+
+/**
+ * Advisory merge states: the merge may go ahead once the admin acknowledges
+ * them. "blocked" (branch protection) and "dirty" (conflicts) are refused,
+ * any other state than "clean" counts as unknown.
+ */
+export const ACKNOWLEDGEABLE_STATES: ReadonlySet<string> = new Set([
+  "unstable",
+  "behind",
+  "has_hooks",
+]);
 
 export type MergeInput = {
   installationId: bigint;
@@ -116,7 +129,24 @@ export async function mergePullRequest(
     };
   if (pull.mergeable === null)
     return { status: "refused", reason: "mergeability_unknown" };
-  const state = pull.mergeable_state ?? "unknown";
+  const state = (pull.mergeable_state ?? "unknown").toLowerCase();
+  // "blocked" means required reviews, checks or rules are not met. The App
+  // may be a bypass actor, so GitHub could accept the merge: never override
+  // branch protection from here.
+  if (state === "blocked")
+    return { status: "refused", reason: "branch_protection" };
+  if (state === "dirty")
+    return {
+      status: "refused",
+      reason: "not_mergeable",
+      detail: { mergeableState: state },
+    };
+  if (state !== "clean" && !ACKNOWLEDGEABLE_STATES.has(state))
+    return {
+      status: "refused",
+      reason: "mergeability_unknown",
+      detail: { mergeableState: state },
+    };
   if (state !== "clean" && input.acknowledgeNotClean !== true)
     return {
       status: "refused",

@@ -776,7 +776,8 @@
       "draft": "Entwürfe können nicht gemergt werden.",
       "not_mergeable": "Der Pull Request hat Konflikte und kann nicht gemergt werden.",
       "mergeability_unknown": "GitHub prüft noch, ob der Pull Request gemergt werden kann. Versuche es gleich erneut.",
-      "needs_acknowledgement": "Der Merge-Status ist {state}. Bestätige die Warnung, um trotzdem zu mergen."
+      "needs_acknowledgement": "Der Merge-Status ist {state}. Bestätige die Warnung, um trotzdem zu mergen.",
+      "branch_protection": "Der Branch-Schutz ist nicht erfüllt (erforderliche Reviews, Checks oder Regeln). Der Merge ist möglich, sobald sie erfüllt sind."
     },
     "bulk": {
       "create": "anlegen",
@@ -1042,6 +1043,7 @@
         "draft": "Entwurf",
         "conflicting": "hat Konflikte",
         "unknown": "Mergebarkeit unbekannt",
+        "branch_protection": "Branch-Schutz nicht erfüllt",
         "workflows_not_granted": "ändert Workflows; der App fehlt Workflows: write",
         "no_method": "keine Merge-Methode erlaubt"
       },

@@ -1419,7 +1419,7 @@ describe.skipIf(!DATABASE_URL)("management", () => {
       expect(gh.writes()).toHaveLength(0);
     });
 
-    it("refuses a PR that is not mergeable without a merge call", async () => {
+    it("refuses a PR that is not mergeable or blocked without a merge call", async () => {
       gh.addPull({
         repoId: 11,
         number: 3,
@@ -1441,6 +1441,20 @@ describe.skipIf(!DATABASE_URL)("management", () => {
         reason: "needs_acknowledgement",
         detail: { mergeableState: "unstable" },
       });
+      // Branch protection is never overridden, not even with the warning
+      // acknowledged (the App may be a bypass actor).
+      gh.addPull({ repoId: 11, number: 7, mergeableState: "blocked" });
+      expect(
+        await merge("ADMIN", { number: 7, acknowledgeNotClean: true }),
+      ).toEqual({ status: "refused", reason: "branch_protection" });
+      gh.addPull({ repoId: 11, number: 8, mergeableState: "dirty" });
+      expect(
+        await merge("ADMIN", { number: 8, acknowledgeNotClean: true }),
+      ).toMatchObject({ status: "refused", reason: "not_mergeable" });
+      gh.addPull({ repoId: 11, number: 9, mergeableState: "unknown" });
+      expect(
+        await merge("ADMIN", { number: 9, acknowledgeNotClean: true }),
+      ).toMatchObject({ status: "refused", reason: "mergeability_unknown" });
       expect(gh.writes()).toHaveLength(0);
       expect(await db.auditLog.count()).toBe(0);
       expect(

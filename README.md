@@ -337,8 +337,10 @@ app user triggered the action, their role and sign-in provider.
   PRs with checks, mergeable state, review decision, age and the
   Dependabot, draft, failing and "changes workflows" chips. Admins merge in a
   dialog with the repository's allowed methods; the merge is pinned to the
-  head SHA shown, needs an extra confirmation when GitHub's merge state is
-  not `CLEAN`, and uses the `Workflows` permission only for PRs that change
+  head SHA shown, refuses GitHub's merge state `BLOCKED` (branch protection
+  is never overridden, even when the App is a bypass actor) and `DIRTY`,
+  needs an extra confirmation for `UNSTABLE`, `BEHIND` and `HAS_HOOKS`, and
+  uses the `Workflows` permission only for PRs that change
   `.github/workflows`. Without `Workflows: write` such PRs show why they
   cannot be merged. `MERGE_AUDIT_TRAILER=true` adds a
   `DevOps-Manager-Audit: <auditId>` trailer to merge commits.

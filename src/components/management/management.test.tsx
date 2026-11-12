@@ -200,6 +200,7 @@ describe("PullsTable and MergePanel", () => {
           pull({ number: 8, changesWorkflows: true }),
           pull({ number: 9, isDraft: true }),
           pull({ number: 10, mergeable: "CONFLICTING" }),
+          pull({ number: 11, mergeStateStatus: "BLOCKED" }),
         ]}
         canMerge
       />,
@@ -212,7 +213,9 @@ describe("PullsTable and MergePanel", () => {
     );
     expect(html).toContain(">draft<");
     expect(html).toContain("has conflicts");
+    expect(html).toContain("branch protection not satisfied");
     expect(html).not.toContain("Merge pull request #8");
+    expect(html).not.toContain("Merge pull request #11");
   });
 
   it("shows an empty state", () => {
@@ -225,7 +228,7 @@ describe("PullsTable and MergePanel", () => {
     const html = render(
       <MergePanel
         installationId="42"
-        pull={pull({ mergeStateStatus: "BLOCKED", changesWorkflows: true })}
+        pull={pull({ mergeStateStatus: "UNSTABLE", changesWorkflows: true })}
         methods={["merge", "squash"]}
         mergeAuditTrailer
         controls={controls}
@@ -235,7 +238,7 @@ describe("PullsTable and MergePanel", () => {
       /<input id="[^"]+-m-squash" type="radio"[^>]*checked=""/,
     );
     expect(html).not.toMatch(/<input id="[^"]+-m-merge"[^>]*checked=""/);
-    expect(html).toContain("merge state BLOCKED, not CLEAN");
+    expect(html).toContain("merge state UNSTABLE, not CLEAN");
     expect(html).toContain(".github/workflows");
     expect(html).toContain("DevOps-Manager-Audit");
     expect(html).toMatch(/<button[^>]*type="submit"[^>]*disabled=""/);
