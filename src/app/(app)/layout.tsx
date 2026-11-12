@@ -25,7 +25,10 @@ export default async function AppLayout({
           </Link>
           <Link href="/dashboard">{t("nav.dashboard")}</Link>
           {hasRole(scope.role, "ADMIN") ? (
-            <Link href="/onboarding">{t("nav.onboarding")}</Link>
+            <>
+              <Link href="/onboarding">{t("nav.onboarding")}</Link>
+              <Link href="/admin/github">{t("nav.github")}</Link>
+            </>
           ) : null}
           <Link href="/settings">{t("nav.settings")}</Link>
           <div className="ml-auto flex items-center gap-3">
