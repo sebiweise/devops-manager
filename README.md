@@ -14,6 +14,11 @@ any number of organisations, through **one least-privilege GitHub App**.
 - One codebase, two hosting modes: **Vercel Hobby + Neon Free**, or
   **`docker compose up`** (app, Postgres, cron sidecar).
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dashboard-dark.png">
+  <img alt="Start page with one card per account and organisation" src="docs/screenshots/dashboard-light.png" width="100%">
+</picture>
+
 > Status: **M3** (management). Management actions are off until an admin
 > turns them on per installation. See [Management](#management) and
 > [Features by milestone](#features-by-milestone).
@@ -51,9 +56,41 @@ any number of organisations, through **one least-privilege GitHub App**.
 
 ## Screenshots
 
-No images are kept in the repository; the [local demo](CONTRIBUTING.md#local-demo-with-synthetic-data)
-renders every page with synthetic data (example-org, example-user,
-repo-a..) for your own screenshots. Every page works in English and German,
+The screenshots show the [local demo](CONTRIBUTING.md#local-demo-with-synthetic-data)
+with synthetic data (example-org, example-user, repo-a..); the dark variants
+appear when your GitHub theme is dark.
+
+**Overview** of an organisation
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.png">
+  <img alt="Overview with KPIs, runs and durations per day, needs attention and the most active repositories" src="docs/screenshots/overview-light.png" width="100%">
+</picture>
+
+**Repositories** with search, quick filters, paging and ignoring
+
+<img alt="Paged repository table with filters" src="docs/screenshots/repositories-light.png" width="100%">
+
+**Workflows** and a single **workflow**
+
+<img alt="Workflow table with quick views" src="docs/screenshots/workflows-light.png" width="100%">
+
+<img alt="Workflow page with KPIs, charts and the slowest jobs" src="docs/screenshots/workflow-light.png" width="100%">
+
+**Runners** and the live **queue**
+
+<img alt="Runners with KPIs and utilisation" src="docs/screenshots/runners-light.png" width="100%">
+
+<img alt="Live queue grouped by runner group" src="docs/screenshots/queue-light.png" width="100%">
+
+**Costs** with billing, projection and the breakdown
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/costs-dark.png">
+  <img alt="Costs page with included minutes, minutes per day and the breakdown" src="docs/screenshots/costs-light.png" width="100%">
+</picture>
+
+What the pages contain: Every page works in English and German,
 in light and dark mode (System, Light or Dark in the user menu) and down to
 phone width, where secondary columns move into a detail row that the
 chevron at the start of each row opens, so tables fit without scrolling
