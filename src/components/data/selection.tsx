@@ -26,12 +26,19 @@ type SelectionState = {
   matching: readonly SelectionItem[] | null;
   total: number;
   toggle: (item: SelectionItem, on: boolean) => void;
+  /** Drops `ids` from the selection (after an action changed them). */
+  deselect: (ids: readonly string[]) => void;
   setPage: (on: boolean) => void;
   selectMatching: () => void;
   clear: () => void;
 };
 
 const Ctx = createContext<SelectionState | null>(null);
+
+/** The selection, or null outside a SelectionProvider (row actions). */
+export function useOptionalSelection(): SelectionState | null {
+  return useContext(Ctx);
+}
 
 export function useSelection(): SelectionState {
   const s = useContext(Ctx);
@@ -52,9 +59,20 @@ export function SelectionProvider({
   total: number;
   children: ReactNode;
 }) {
-  const [selected, setSelected] = useState<Map<string, SelectionItem>>(
+  const [stored, setSelected] = useState<Map<string, SelectionItem>>(
     () => new Map(),
   );
+  // Only rows that are still selectable count: after a filter change, a
+  // navigation or an ignore, ids that are neither on the page nor in the
+  // matching set drop out of the bulk set.
+  const selected = useMemo(() => {
+    const valid = new Set([
+      ...page.map((i) => i.id),
+      ...(matching ?? []).map((i) => i.id),
+    ]);
+    const kept = [...stored].filter(([id]) => valid.has(id));
+    return kept.length === stored.size ? stored : new Map(kept);
+  }, [stored, page, matching]);
   const toggle = useCallback((item: SelectionItem, on: boolean) => {
     setSelected((s) => {
       const n = new Map(s);
@@ -78,6 +96,15 @@ export function SelectionProvider({
   const selectMatching = useCallback(() => {
     if (matching) setSelected(new Map(matching.map((i) => [i.id, i])));
   }, [matching]);
+  const deselect = useCallback(
+    (ids: readonly string[]) =>
+      setSelected((s) => {
+        const n = new Map(s);
+        for (const id of ids) n.delete(id);
+        return n;
+      }),
+    [],
+  );
   const clear = useCallback(() => setSelected(new Map()), []);
   const value = useMemo(
     () => ({
@@ -86,11 +113,22 @@ export function SelectionProvider({
       matching: matching ?? null,
       total,
       toggle,
+      deselect,
       setPage,
       selectMatching,
       clear,
     }),
-    [selected, page, matching, total, toggle, setPage, selectMatching, clear],
+    [
+      selected,
+      page,
+      matching,
+      total,
+      toggle,
+      deselect,
+      setPage,
+      selectMatching,
+      clear,
+    ],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

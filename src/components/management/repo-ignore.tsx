@@ -4,7 +4,10 @@ import { Ellipsis, ExternalLink } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useId, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
-import { useSelection } from "@/components/data/selection";
+import {
+  useOptionalSelection,
+  useSelection,
+} from "@/components/data/selection";
 import { HeaderMenu } from "@/components/shell/menu";
 import { Button } from "@/components/ui/button";
 import type { ResultLike } from "@/lib/management-view";
@@ -156,6 +159,9 @@ export function RepoIgnoreButton({
   variant?: "default" | "outline" | "destructive" | "secondary" | "ghost";
 }) {
   const t = useTranslations("ignore");
+  // After a change the acted-on repos leave the bulk selection, so the bar
+  // does not offer them again.
+  const selection = useOptionalSelection();
   const title =
     mode === "ignore"
       ? t("dialog.titleIgnore", { count: repos.length })
@@ -175,6 +181,7 @@ export function RepoIgnoreButton({
       title={title}
       triggerVariant={variant}
       disabled={repos.length === 0}
+      onChangedClose={() => selection?.deselect(repos.map((r) => r.id))}
     >
       {(controls) => (
         <IgnorePanel

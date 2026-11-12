@@ -29,6 +29,7 @@ export function ActionDialog({
   triggerVariant = "outline",
   triggerSize = "sm",
   disabled,
+  onChangedClose,
   children,
 }: {
   trigger: ReactNode;
@@ -39,6 +40,8 @@ export function ActionDialog({
     "default" | "outline" | "destructive" | "secondary" | "ghost";
   triggerSize?: "xs" | "sm" | "default";
   disabled?: boolean;
+  /** Runs when the dialog closes after the body reported a change. */
+  onChangedClose?: () => void;
   children: (controls: DialogControls) => ReactNode;
 }) {
   const t = useTranslations("management.dialog");
@@ -59,9 +62,10 @@ export function ActionDialog({
     setOpen(false);
     if (dirty) {
       setDirty(false);
+      onChangedClose?.();
       router.refresh();
     }
-  }, [dirty, router]);
+  }, [dirty, router, onChangedClose]);
 
   const changed = useCallback(() => setDirty(true), []);
 
