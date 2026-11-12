@@ -95,7 +95,9 @@ export default async function AccountLayout({
                 className="inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs hover:bg-accent"
               >
                 <Settings aria-hidden="true" className="size-3.5" />
-                {t("accountNav.settings")}
+                <span className="sr-only sm:not-sr-only">
+                  {t("accountNav.settings")}
+                </span>
               </Link>
             ) : null}
           </div>

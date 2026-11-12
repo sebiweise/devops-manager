@@ -1,8 +1,8 @@
-import { TriangleAlert } from "lucide-react";
+import { RefreshCw, TriangleAlert } from "lucide-react";
 import Link from "next/link";
-import { cookies } from "next/headers";
-import { getLocale, getTranslations } from "next-intl/server";
-import { Sparkline } from "@/components/charts/sparkline";
+import { redirect } from "next/navigation";
+import { getFormatter, getLocale, getTranslations } from "next-intl/server";
+import { Sparkline, TrendTable } from "@/components/charts/sparkline";
 import { DataTable, type Column } from "@/components/data/data-table";
 import { EmptyState } from "@/components/data/empty-state";
 import {
@@ -10,6 +10,7 @@ import {
   FilterBar,
   FilterChips,
   SearchBox,
+  SortSelect,
 } from "@/components/data/filter-bar";
 import { Pagination } from "@/components/data/pagination";
 import {
@@ -18,9 +19,16 @@ import {
   SelectPageCheckbox,
   SelectRowCheckbox,
 } from "@/components/data/selection";
-import { RunStatusBadge, StatusBadge } from "@/components/data/status-badge";
+import {
+  runBadgeKind,
+  StatusBadge,
+  StatusIcon,
+} from "@/components/data/status-badge";
 import { repoHref, runHref } from "@/components/insights/workflow-link";
-import { IgnoreSelectedButton } from "@/components/management/repo-ignore";
+import {
+  IgnoreSelectedButton,
+  RepoRowMenu,
+} from "@/components/management/repo-ignore";
 import { PageHeader } from "@/components/shell/page-header";
 import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
 import {
@@ -29,16 +37,25 @@ import {
   formatNumber,
   formatPercent,
 } from "@/lib/format";
-import { RANGE_COOKIE, resolveRange } from "@/lib/range";
-import { REPO_FILTERS, REPO_TABLE } from "@/lib/table-specs";
-import { first, parseTableQuery, type SearchParamsLike } from "@/lib/url-state";
+import { accountMeta } from "@/lib/page-meta";
+import { pageRange } from "@/lib/page-range";
+import { REPO_FILTERS, REPO_SORTS, REPO_TABLE } from "@/lib/table-specs";
+import {
+  first,
+  hrefWith,
+  parseTableQuery,
+  withParams,
+  type SearchParamsLike,
+} from "@/lib/url-state";
 import { hasRole } from "@/server/authz/roles";
 import { listRepoStats, type RepoStat } from "@/server/data/insights";
 import { liveRepositories } from "@/server/data/live-repositories";
 import { getManagementState } from "@/server/data/management";
-import { accountMeta } from "@/lib/page-meta";
 
 export const generateMetadata = accountMeta("repos");
+
+/** Below this success rate the cell gets a warning icon (with enough runs). */
+const LOW_SUCCESS = 0.8;
 
 /** Where the installation's repository selection is changed on GitHub. */
 function selectionUrl(login: string, type: "USER" | "ORGANIZATION") {
@@ -47,6 +64,13 @@ function selectionUrl(login: string, type: "USER" | "ORGANIZATION") {
     : "https://github.com/settings/installations";
 }
 
+/**
+ * Repositories (UI overhaul §2.3): search, filter chips (failing, forks,
+ * private, archived, show ignored), sortable server-paged table whose
+ * metrics follow the shared range, and for admins explicit selection with
+ * "Ignore selected" plus a row menu. The inventory is kept by reconcile and
+ * webhooks; operators can refresh it from GitHub on demand.
+ */
 export default async function ReposPage({
   params,
   searchParams,
@@ -55,33 +79,54 @@ export default async function ReposPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { account } = await params;
-  const sp = (await searchParams) as SearchParamsLike;
+  const raw = (await searchParams) as Record<string, string | undefined>;
   const { scope, installation } = await loadAccount(account);
-  // Refreshes the stored inventory from GitHub (falls back to stored rows).
-  await orNotFound(liveRepositories(scope, installation));
+  const canRefresh = hasRole(scope.role, "OPERATOR");
+  const login = installation.accountLogin;
+  const base = accountPath(login, "/repos");
+  // Explicit "Refresh list from GitHub" (operator+): reads the list live,
+  // updates the stored inventory (stored rows when GitHub is unreachable),
+  // then drops the trigger from the URL so links do not repeat it.
+  if (first(raw, "refresh") === "1") {
+    const result = canRefresh
+      ? await orNotFound(liveRepositories(scope, installation))
+      : null;
+    redirect(
+      hrefWith(base, raw, {
+        refresh: undefined,
+        refreshed: result ? result.source : undefined,
+      }),
+    );
+  }
+  const refreshed = canRefresh ? first(raw, "refreshed") : undefined;
+  // Links (sort, pages) do not carry the one-off refresh note.
+  const sp: SearchParamsLike = { ...raw, refreshed: undefined };
   const query = parseTableQuery(sp, REPO_TABLE);
-  const range = resolveRange(
-    first(sp, "range"),
-    (await cookies()).get(RANGE_COOKIE)?.value,
-  );
-  const [t, locale, page, state] = await Promise.all([
+  const range = await pageRange(sp);
+  const now = new Date();
+  const [t, locale, format, page, state] = await Promise.all([
     getTranslations(),
     getLocale(),
+    getFormatter(),
     orNotFound(
-      listRepoStats(scope, installation.id, {
-        ...query,
-        range,
-        withMatching: hasRole(scope.role, "ADMIN"),
-      }),
+      listRepoStats(
+        scope,
+        installation.id,
+        { ...query, range, withMatching: hasRole(scope.role, "ADMIN") },
+        now,
+      ),
     ),
     orNotFound(getManagementState(scope, installation.id)),
   ]);
-  const login = installation.accountLogin;
   const installationId = String(installation.id);
-  const base = accountPath(login, "/repos");
-  const rangeLabel = t(`filters.ranges.${range}`);
-  const canIgnore = hasRole(scope.role, "ADMIN") && state.globalEnabled;
-  const dash = <span aria-hidden="true">—</span>;
+  const rangeLabel = t(`filters.short.${range}`);
+  const isAdmin = hasRole(scope.role, "ADMIN");
+  const canIgnore = isAdmin && state.globalEnabled;
+  const dash = (
+    <span aria-label={t("repos.noValue")} className="text-muted-foreground">
+      —
+    </span>
+  );
   // Column name with its window below, so headers stay narrow (also in German).
   const twoLine = (name: string, window: string) => (
     <span className="inline-flex flex-col leading-tight">
@@ -92,6 +137,8 @@ export default async function ReposPage({
     </span>
   );
   const metric = (r: RepoStat, v: React.ReactNode) => (r.ignored ? dash : v);
+  const runsMax = Math.max(1, ...page.rows.map((r) => r.runs));
+  const minutesMax = Math.max(1, ...page.rows.map((r) => r.billableMinEst));
 
   const columns: Column<RepoStat>[] = [
     {
@@ -100,12 +147,13 @@ export default async function ReposPage({
       header: t("repos.repo"),
       sortKey: "name",
       cell: (r) => (
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <Link
             href={repoHref(login, r.fullName)}
+            title={r.fullName}
             className="font-medium underline-offset-2 hover:underline"
           >
-            {r.fullName}
+            {r.name}
           </Link>
           {r.private || r.archived || r.fork || r.ignored ? (
             <span className="flex flex-wrap gap-1">
@@ -123,26 +171,32 @@ export default async function ReposPage({
       label: t("repos.lastRun"),
       header: t("repos.lastRun"),
       sortKey: "lastRun",
-      cell: (r) =>
-        r.ignored ? (
-          dash
-        ) : r.lastRun ? (
+      cell: (r) => {
+        if (r.ignored) return dash;
+        if (!r.lastRun)
+          return (
+            <span className="text-xs text-muted-foreground">
+              {t("repos.noRuns")}
+            </span>
+          );
+        const kind = runBadgeKind(r.lastRun.status, r.lastRun.conclusion);
+        const status = kind ? t(`badge.${kind}.label`) : r.lastRun.status;
+        return (
           <Link
             href={runHref(login, r.lastRun.id)}
-            title={r.lastRun.workflowName}
-            className="flex items-center gap-2"
+            title={`${status} · ${r.lastRun.workflowName}`}
+            className="inline-flex items-center gap-1.5 whitespace-nowrap underline-offset-2 hover:underline"
           >
-            <RunStatusBadge
-              status={r.lastRun.status}
-              conclusion={r.lastRun.conclusion}
+            <StatusIcon
+              kind={kind}
+              label={`${status} · ${r.lastRun.workflowName}`}
             />
-            <span className="hidden max-w-40 truncate text-xs text-muted-foreground sm:inline">
-              {r.lastRun.workflowName}
+            <span className="text-sm">
+              {format.relativeTime(new Date(r.lastRun.createdAt), now)}
             </span>
           </Link>
-        ) : (
-          <span className="text-muted-foreground">{t("repos.noRuns")}</span>
-        ),
+        );
+      },
     },
     {
       id: "runs",
@@ -151,6 +205,7 @@ export default async function ReposPage({
       sortKey: "runs",
       align: "right",
       hideBelow: "md",
+      magnitude: (r) => (r.ignored ? null : r.runs / runsMax),
       cell: (r) => metric(r, formatNumber(r.runs, locale)),
     },
     {
@@ -160,7 +215,22 @@ export default async function ReposPage({
       sortKey: "success",
       align: "right",
       hideBelow: "md",
-      cell: (r) => metric(r, formatPercent(r.successRate, locale)),
+      cell: (r) =>
+        metric(
+          r,
+          r.successRate != null && r.successRate < LOW_SUCCESS ? (
+            <span className="inline-flex items-center gap-1 font-medium">
+              <TriangleAlert
+                aria-hidden="true"
+                className="size-3.5 text-status-warning"
+              />
+              {formatPercent(r.successRate, locale)}
+              <span className="sr-only">{t("repos.lowSuccess")}</span>
+            </span>
+          ) : (
+            formatPercent(r.successRate, locale)
+          ),
+        ),
     },
     {
       id: "p50",
@@ -182,6 +252,7 @@ export default async function ReposPage({
       sortKey: "minutes",
       align: "right",
       hideBelow: "lg",
+      magnitude: (r) => (r.ignored ? null : r.billableMinEst / minutesMax),
       cell: (r) => metric(r, formatMinutes(r.billableMinEst, locale)),
     },
     {
@@ -192,7 +263,7 @@ export default async function ReposPage({
       align: "right",
       hideBelow: "lg",
       cell: (r) =>
-        r.openPrCount == null ? (
+        r.openPrCount == null || r.ignored ? (
           dash
         ) : (
           <Link
@@ -211,7 +282,7 @@ export default async function ReposPage({
       align: "right",
       hideBelow: "lg",
       cell: (r) =>
-        r.openAlertCount == null ? (
+        r.openAlertCount == null || r.ignored ? (
           dash
         ) : (
           <Link
@@ -221,19 +292,18 @@ export default async function ReposPage({
                 ? t("repos.alertsHigh", { count: r.openAlertHighCount })
                 : undefined
             }
-            className="underline-offset-2 hover:underline"
+            className="inline-flex items-center justify-end gap-1 underline-offset-2 hover:underline"
           >
+            {r.openAlertHighCount ? (
+              <TriangleAlert
+                aria-hidden="true"
+                className="size-3.5 text-status-warning"
+              />
+            ) : null}
             {formatNumber(r.openAlertCount, locale)}
             {r.openAlertHighCount ? (
-              <span className="ml-1 inline-flex items-center gap-0.5 text-xs text-muted-foreground">
-                <TriangleAlert
-                  aria-hidden="true"
-                  className="size-3 text-status-warning"
-                />
-                {formatNumber(r.openAlertHighCount, locale)}
-                <span className="sr-only">
-                  {t("repos.alertsHigh", { count: r.openAlertHighCount })}
-                </span>
+              <span className="sr-only">
+                {t("repos.alertsHigh", { count: r.openAlertHighCount })}
               </span>
             ) : null}
           </Link>
@@ -251,12 +321,34 @@ export default async function ReposPage({
         return (
           <Sparkline
             id={`spark-${r.repositoryId}`}
-            label={t("repos.sparkline", { runs, failures })}
+            label={t("charts.sparkTitle", { runs, failures })}
             points={r.sparkline}
           />
         );
       },
     },
+    ...(isAdmin
+      ? [
+          {
+            id: "actions",
+            label: t("repos.actions"),
+            header: <span className="sr-only">{t("repos.actions")}</span>,
+            cell: (r: RepoStat) => (
+              <RepoRowMenu
+                installationId={installationId}
+                repo={{
+                  id: r.repositoryId,
+                  fullName: r.fullName,
+                  fork: r.fork,
+                }}
+                ignored={r.ignored}
+                canIgnore={canIgnore}
+              />
+            ),
+            className: "w-px",
+          } satisfies Column<RepoStat>,
+        ]
+      : []),
   ];
 
   const filtersActive = !!query.q || query.filters.length > 0;
@@ -303,6 +395,14 @@ export default async function ReposPage({
     />
   );
 
+  const sortOptions = REPO_SORTS.flatMap((s) =>
+    (["desc", "asc"] as const).map((dir) => ({
+      value: s,
+      dir,
+      label: t(`repos.sortBy.${s}`, { dir }),
+    })),
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
@@ -311,7 +411,25 @@ export default async function ReposPage({
           count: page.counts.active,
           ignored: page.counts.ignored,
         })}
+        actions={
+          canRefresh ? (
+            <Link
+              href={withParams(base, { refresh: 1 })}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-sm hover:bg-accent"
+            >
+              <RefreshCw aria-hidden="true" className="size-3.5" />
+              {t("repos.refresh")}
+            </Link>
+          ) : null
+        }
       />
+      {refreshed === "live" || refreshed === "stored" ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          {refreshed === "live"
+            ? t("repos.refreshedLive")
+            : t("repos.refreshedStored")}
+        </p>
+      ) : null}
       <FilterBar>
         <SearchBox label={t("repos.filter")} />
         <FilterChips
@@ -326,6 +444,13 @@ export default async function ReposPage({
                 : {}),
           }))}
         />
+        <span className="lg:hidden">
+          <SortSelect
+            label={t("table.sort")}
+            options={sortOptions}
+            value={`${query.sort}:${query.dir}`}
+          />
+        </span>
         <ClearFilters />
       </FilterBar>
       {page.approx ? (
@@ -364,6 +489,16 @@ export default async function ReposPage({
           total={page.total}
         />
       ) : null}
+      <TrendTable
+        caption={t("repos.trend")}
+        rows={page.rows
+          .filter((r) => !r.ignored)
+          .map((r) => ({
+            key: r.repositoryId,
+            label: r.name,
+            points: r.sparkline,
+          }))}
+      />
     </div>
   );
 }

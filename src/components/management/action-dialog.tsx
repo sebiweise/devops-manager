@@ -88,7 +88,7 @@ export function ActionDialog({
           ref={setDialog}
           aria-labelledby={titleId}
           onClose={onClosed}
-          className="m-auto w-[min(40rem,calc(100vw-2rem))] rounded-xl border bg-background p-0 text-foreground shadow-lg backdrop:bg-black/50"
+          className="m-auto w-[min(40rem,calc(100vw-2rem))] rounded-xl border bg-background p-0 text-left font-normal whitespace-normal text-foreground shadow-lg backdrop:bg-black/50"
         >
           <div className="flex max-h-[85vh] flex-col gap-4 overflow-y-auto p-5">
             <div className="flex items-start justify-between gap-3">

@@ -336,7 +336,23 @@
     "colP50": "Typical duration",
     "colMinutes": "Est. minutes",
     "colTrend": "Trend",
-    "colTrendWindow": "last 14 days"
+    "colTrendWindow": "last 14 days",
+    "noValue": "no value",
+    "lowSuccess": "(below 80 %)",
+    "actions": "Actions",
+    "refresh": "Refresh list from GitHub",
+    "refreshedLive": "The repository list was refreshed from GitHub.",
+    "refreshedStored": "GitHub could not be reached; the stored list is shown.",
+    "sortBy": {
+      "name": "Name {dir, select, asc {A–Z} other {Z–A}}",
+      "lastRun": "Last run {dir, select, asc {oldest first} other {newest first}}",
+      "runs": "Runs {dir, select, asc {fewest first} other {most first}}",
+      "success": "Success {dir, select, asc {lowest first} other {highest first}}",
+      "p50": "Typical duration {dir, select, asc {shortest first} other {longest first}}",
+      "minutes": "Minutes {dir, select, asc {fewest first} other {most first}}",
+      "prs": "Open PRs {dir, select, asc {fewest first} other {most first}}",
+      "alerts": "Alerts {dir, select, asc {fewest first} other {most first}}"
+    }
   },
   "repo": {
     "defaultBranch": "default branch {branch}",
@@ -1356,7 +1372,9 @@
       "selectShown": "Select all shown ({count})",
       "clearShown": "Clear selection",
       "empty": "No repository matches."
-    }
+    },
+    "rowMenu": "Actions for {name}",
+    "openOnGitHub": "Open on GitHub"
   },
   "table": {
     "range": "{from}-{to} of {total}",

@@ -142,3 +142,40 @@ export function RunStatusBadge({
     </span>
   );
 }
+
+/**
+ * The icon of a status with its text for screen readers and as a tooltip,
+ * for dense cells (the repositories' "Last run"). Unknown statuses render
+ * as muted text.
+ */
+export function StatusIcon({
+  kind,
+  label,
+  className,
+}: {
+  kind: BadgeKind | null;
+  /** Overrides the default text (e.g. "Success · CI"). */
+  label?: string;
+  className?: string;
+}) {
+  const t = useTranslations("badge");
+  if (!kind) return null;
+  const def: BadgeDef = DEFS[kind];
+  const Icon = def.icon;
+  const text = label ?? t(`${kind}.label`);
+  return (
+    <span title={text} className={cn("inline-flex shrink-0", className)}>
+      <Icon aria-hidden="true" className={cn("size-4", ICON_TONE[def.tone])} />
+      <span className="sr-only">{text}</span>
+    </span>
+  );
+}
+
+const ICON_TONE: Record<Tone, string> = {
+  good: "text-status-good",
+  critical: "text-status-critical",
+  warning: "text-status-warning",
+  neutral: "text-status-neutral",
+  info: "text-series-1",
+  muted: "text-muted-foreground",
+};

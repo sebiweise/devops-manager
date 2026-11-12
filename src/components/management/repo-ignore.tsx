@@ -1,9 +1,11 @@
 "use client";
 
+import { Ellipsis, ExternalLink } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useId, useMemo, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useSelection } from "@/components/data/selection";
+import { HeaderMenu } from "@/components/shell/menu";
 import { Button } from "@/components/ui/button";
 import type { ResultLike } from "@/lib/management-view";
 import {
@@ -329,5 +331,54 @@ export function IgnoreSelectedButton({
       variant="destructive"
       label={t("action.ignoreSelected", { count: repos.length })}
     />
+  );
+}
+
+/**
+ * The "…" menu of a repository row (admin): Ignore or Un-ignore, and Open
+ * on GitHub. The dialog opens from inside the menu and keeps it open until
+ * it is closed.
+ */
+export function RepoRowMenu({
+  installationId,
+  repo,
+  ignored,
+  canIgnore,
+}: {
+  installationId: string;
+  repo: IgnoreRepo;
+  ignored: boolean;
+  canIgnore: boolean;
+}) {
+  const t = useTranslations("ignore");
+  return (
+    <HeaderMenu
+      label={t("rowMenu", { name: repo.fullName })}
+      trigger={<Ellipsis aria-hidden="true" className="size-4" />}
+      panelClassName="w-56"
+    >
+      <div className="flex flex-col items-stretch gap-0.5 [&_button]:w-full [&_button]:justify-start">
+        {canIgnore ? (
+          <RepoIgnoreButton
+            installationId={installationId}
+            repos={[repo]}
+            mode={ignored ? "unignore" : "ignore"}
+            variant="ghost"
+          />
+        ) : null}
+        <a
+          href={`https://github.com/${repo.fullName
+            .split("/")
+            .map(encodeURIComponent)
+            .join("/")}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm hover:bg-accent"
+        >
+          <ExternalLink aria-hidden="true" className="size-4" />
+          {t("openOnGitHub")}
+        </a>
+      </div>
+    </HeaderMenu>
   );
 }
