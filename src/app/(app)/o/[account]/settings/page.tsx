@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 import { SyncNowButton } from "@/components/sync-now-button";
 import { KpiGrid, KpiTile } from "@/components/insights/kpi-tile";
+import { ManagementBanner } from "@/components/management/management-banner";
+import { ManagementSettings } from "@/components/management/management-settings";
 import {
   Table,
   TableBody,
@@ -15,6 +17,7 @@ import { loadAccount, orNotFound } from "@/lib/account-page";
 import { formatDuration, formatNumber, formatPercent } from "@/lib/format";
 import { hasRole } from "@/server/authz/roles";
 import { getSyncHealth } from "@/server/data/insights";
+import { getManagementState } from "@/server/data/management";
 
 export const metadata = { title: "Installation settings" };
 
@@ -28,7 +31,10 @@ const DELIVERY_STATUSES = [
   "REJECTED",
 ] as const;
 
-/** Admin only (other roles get 404): sync health of one installation. */
+/**
+ * Admin only (other roles get 404): the management toggle and variable
+ * redaction setting, and the sync health of one installation.
+ */
 export default async function InstallationSettingsPage({
   params,
 }: {
@@ -37,11 +43,12 @@ export default async function InstallationSettingsPage({
   const { account } = await params;
   const { scope, installation } = await loadAccount(account);
   if (!hasRole(scope.role, "ADMIN")) notFound();
-  const [t, format, locale, health] = await Promise.all([
+  const [t, format, locale, health, state] = await Promise.all([
     getTranslations(),
     getFormatter(),
     getLocale(),
     orNotFound(getSyncHealth(scope, installation.id, env.BACKFILL_DAYS)),
+    orNotFound(getManagementState(scope, installation.id)),
   ]);
   const when = (iso: string | null) =>
     iso ? (
@@ -52,8 +59,21 @@ export default async function InstallationSettingsPage({
 
   return (
     <div className="flex flex-col gap-6">
+      <section className="flex flex-col gap-3" aria-labelledby="mgmt-settings">
+        <h1 id="mgmt-settings" className="text-2xl font-semibold">
+          {t("management.settings.title")}
+        </h1>
+        {!state.globalEnabled ? <ManagementBanner state={state} /> : null}
+        <ManagementSettings
+          installationId={String(installation.id)}
+          globalEnabled={state.globalEnabled}
+          managementEnabled={state.installationEnabled}
+          redactVariableValues={state.redactVariableValues}
+        />
+      </section>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{t("syncHealth.title")}</h1>
+        <h2 className="text-xl font-semibold">{t("syncHealth.title")}</h2>
         <SyncNowButton installationId={String(installation.id)} />
       </div>
 
