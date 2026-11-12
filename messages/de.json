@@ -103,7 +103,11 @@
     "settings": "Einstellungen",
     "runners": "Runner",
     "queue": "Warteschlange",
-    "costs": "Kosten"
+    "costs": "Kosten",
+    "pulls": "Pull Requests",
+    "dependabot": "Dependabot",
+    "variables": "Variablen",
+    "audit": "Audit-Log"
   },
   "freshness": {
     "label": "Aktualität der Daten",
@@ -214,9 +218,11 @@
     "tabs": "Bereiche des Repositorys",
     "tab": {
       "workflows": "Workflows",
-      "runs": "Läufe"
-    },
-    "laterTabs": "Pull Requests, Variablen und Dependabot folgen mit M3."
+      "runs": "Läufe",
+      "pulls": "Pull Requests",
+      "variables": "Variablen",
+      "dependabot": "Dependabot"
+    }
   },
   "runs": {
     "filters": "Lauffilter",
@@ -233,7 +239,8 @@
     "created": "Erstellt",
     "attempt": "Versuch {n}",
     "first": "Neueste Läufe",
-    "older": "Ältere Läufe"
+    "older": "Ältere Läufe",
+    "actions": "Aktionen"
   },
   "status": {
     "SUCCESS": "erfolgreich",
@@ -739,7 +746,9 @@
       "rate_limited": "Zu viele Aktionen. Versuche es in {seconds} s erneut.",
       "confirmation_mismatch": "Die Bestätigung stimmt nicht überein.",
       "conflict": "Dieser Dialog wurde schon verwendet. Schließe ihn und versuche es erneut.",
-      "replayed": "Diese Aktion wurde schon abgeschickt; hier ist ihr Ergebnis."
+      "replayed": "Diese Aktion wurde schon abgeschickt; hier ist ihr Ergebnis.",
+      "refusedOther": "Die Aktion wurde abgelehnt ({reason}).",
+      "error": "Die Aktion konnte nicht ausgeführt werden. Bitte erneut versuchen."
     },
     "refused": {
       "attempt_limit": "Dieser Lauf hat GitHubs Grenze von 50 Versuchen erreicht.",
@@ -776,12 +785,315 @@
       "delete": "löschen",
       "unchanged": "unverändert",
       "skipped": "übersprungen",
-      "summary": "{succeeded} erfolgreich, {failed} fehlgeschlagen."
+      "summary": "{succeeded} erfolgreich, {failed} fehlgeschlagen.",
+      "title": "Variable gesammelt setzen",
+      "description": "Eine Variable in vielen Repositories auf einmal setzen, zum Beispiel um runs-on zwischen einem Self-hosted-Label und einem gehosteten Image umzuschalten. Vor dem Anwenden die Vorschau prüfen.",
+      "variable": "Variable",
+      "customName": "Andere Variable",
+      "repositories": "{count, plural, one {# Repository ausgewählt} other {# Repositories ausgewählt}}",
+      "selectAll": "Alle auswählen",
+      "selectNone": "Keine auswählen",
+      "preview": "Änderungen anzeigen",
+      "previewing": "Vorschau wird geladen…",
+      "previewTitle": "Vorschau: {name} = {value}",
+      "applySummary": "{count, plural, one {# Repository wird geändert.} other {# Repositories werden geändert.}}",
+      "apply": "Anwenden",
+      "applying": "Wird angewendet…",
+      "change": "Änderung",
+      "results": "Ergebnisse",
+      "status": "Ergebnis",
+      "rowStatus": {
+        "succeeded": "erfolgreich",
+        "failed": "fehlgeschlagen",
+        "skipped": "übersprungen",
+        "unchanged": "unverändert"
+      }
     },
     "audit": {
       "verifyOk": "Die Audit-Kette ist intakt ({count} Einträge geprüft).",
       "verifyBroken": "Die Audit-Kette ist bei Eintrag {seq} unterbrochen: Er wurde außerhalb der App geändert, entfernt oder eingefügt.",
-      "unsealed": "{count} ältere Einträge haben keinen Ergebnis-Hash."
+      "unsealed": "{count} ältere Einträge haben keinen Ergebnis-Hash.",
+      "title": "Audit-Log",
+      "instanceTitle": "Audit-Log der Instanz",
+      "description": "Jede Verwaltungsaktion mit dem App-Benutzer, der sie ausgelöst hat, und der GitHub-Identität, die sie ausgeführt hat. Die Einträge sind per Hash verkettet.",
+      "verify": "Kette prüfen",
+      "verifying": "Wird geprüft…",
+      "verifyDenied": "Die Kette kann mit deinem Zugriff nicht geprüft werden.",
+      "verifyError": "Die Kette konnte nicht geprüft werden. Bitte erneut versuchen.",
+      "breakReason": {
+        "prev_hash": "Ein Eintrag wurde entfernt, eingefügt oder umsortiert.",
+        "hash": "Der Inhalt des Eintrags wurde geändert.",
+        "result_hash": "Das gespeicherte Ergebnis des Eintrags wurde geändert."
+      },
+      "exportCsv": "CSV exportieren",
+      "chains": "Audit-Ketten",
+      "installationChain": "Diese Installation",
+      "instanceChain": "Instanz",
+      "filters": "Audit-Filter",
+      "any": "alle",
+      "action": "Aktion",
+      "status": "Status",
+      "repo": "Repository",
+      "from": "Von",
+      "to": "Bis",
+      "apply": "Filtern",
+      "reset": "Zurücksetzen",
+      "filteredBatch": "Einträge der Sammeländerung {batch}.",
+      "filteredActor": "Einträge eines App-Benutzers.",
+      "clearFilter": "Alle anzeigen",
+      "empty": "Keine passenden Audit-Einträge.",
+      "when": "Wann",
+      "who": "Ausgelöst von",
+      "target": "Ziel",
+      "details": "Details",
+      "roleVia": "{role} über {provider}",
+      "actingAs": "ausgeführt als {identity}",
+      "batchEntries": "Einträge der Sammeländerung",
+      "partOfBatch": "Teil einer Sammeländerung",
+      "statusOf": {
+        "SUCCEEDED": "erfolgreich",
+        "FAILED": "fehlgeschlagen",
+        "DENIED": "verweigert",
+        "PENDING": "ausstehend"
+      },
+      "requestId": "GitHub-Anfrage {id}",
+      "params": "Parameter",
+      "revertBatch": "Sammeländerung zurücknehmen",
+      "newest": "Neueste",
+      "older": "Ältere Einträge"
+    },
+    "typeToConfirm": "Zur Bestätigung {text} eingeben",
+    "missingPermission": "Der GitHub App fehlt die nötige Berechtigung: {permissions}. Ein Admin kann sie in den Installationseinstellungen der App auf GitHub erteilen.",
+    "liveUnavailable": "Das konnte gerade nicht von GitHub geladen werden. Bitte gleich noch einmal versuchen.",
+    "dialog": {
+      "close": "Schließen"
+    },
+    "banner": {
+      "label": "Status der Verwaltung",
+      "globalHint": "Aktionen sind für alle ausgeblendet; Ansichten bleiben verfügbar. Mit MANAGEMENT_ENABLED=true werden sie eingeschaltet.",
+      "readOnly": "Aktionen sind ausgeblendet; Ansichten bleiben verfügbar.",
+      "openSettings": "Installationseinstellungen öffnen"
+    },
+    "runs": {
+      "actions": "Run-Aktionen",
+      "op": {
+        "rerun": "Alle Jobs neu starten",
+        "rerun_failed": "Fehlgeschlagene Jobs neu starten",
+        "cancel": "Run abbrechen",
+        "force_cancel": "Abbruch erzwingen"
+      },
+      "opFor": "{op}: Run {run}",
+      "title": {
+        "rerun": "Alle Jobs neu starten",
+        "rerun_failed": "Fehlgeschlagene Jobs neu starten",
+        "cancel": "Run abbrechen",
+        "force_cancel": "Abbruch des Runs erzwingen"
+      },
+      "confirm": {
+        "rerun": "Einen neuen Versuch dieses Runs mit allen Jobs starten?",
+        "rerun_failed": "Einen neuen Versuch dieses Runs mit den fehlgeschlagenen Jobs und ihren Abhängigen starten?",
+        "cancel": "Diesen Run abbrechen?",
+        "force_cancel": "Abbruch dieses Runs erzwingen? GitHub stoppt ihn auch dann, wenn Jobs den Abbruch ignorieren."
+      },
+      "repo": "Repository",
+      "workflow": "Workflow",
+      "run": "Run",
+      "attempt": "Versuch",
+      "debugLogging": "Debug-Logging aktivieren",
+      "forceCancelWarning": "Ein erzwungener Abbruch überspringt das Aufräumen, das ein normaler Abbruch erlaubt (zum Beispiel always()-Schritte).",
+      "pending": "Läuft…"
+    },
+    "variables": {
+      "title": "Variablen",
+      "description": "Actions-Variablen von Repositories und Organisation. Secrets werden nie gelesen oder geändert.",
+      "repoTitle": "Repository-Variablen",
+      "orgTitle": "Organisationsvariablen",
+      "masked": "verborgen",
+      "maskedNote": "Werte sind für deine Rolle verborgen, weil die Schwärzung von Werten aktiv ist.",
+      "before": "Aktuell",
+      "after": "Neu",
+      "notSet": "nicht gesetzt",
+      "deleted": "gelöscht",
+      "repository": "Repository",
+      "name": "Name",
+      "value": "Wert",
+      "visibility": "Sichtbarkeit",
+      "visibilityOf": {
+        "all": "Alle Repositories",
+        "private": "Private Repositories",
+        "selected": "Ausgewählte Repositories"
+      },
+      "selectedRepositories": "Repositories mit Zugriff",
+      "save": "Speichern",
+      "saving": "Speichert…",
+      "delete": "Löschen",
+      "deleting": "Löscht…",
+      "edit": "Bearbeiten",
+      "set": "Setzen",
+      "new": "Neue Variable",
+      "newTitle": "Neue Repository-Variable",
+      "newOrg": "Neue Organisationsvariable",
+      "newOrgTitle": "Neue Organisationsvariable",
+      "editFor": "{name} in {repo} bearbeiten",
+      "setFor": "{name} in {repo} setzen",
+      "deleteFor": "{name} in {repo} löschen",
+      "editTitle": "{name} in {repo} bearbeiten",
+      "setTitle": "{name} in {repo} setzen",
+      "deleteTitle": "{name} aus {repo} löschen",
+      "deleteConfirm": "Die Variable {name} aus {repo} löschen?",
+      "editOrgFor": "Organisationsvariable {name} bearbeiten",
+      "deleteOrgFor": "Organisationsvariable {name} löschen",
+      "editOrgTitle": "Organisationsvariable {name} bearbeiten",
+      "deleteOrgTitle": "Organisationsvariable {name} löschen",
+      "deleteOrgConfirm": "Die Organisationsvariable {name} löschen? Workflows, die sie lesen, nutzen dann ihren Standardwert.",
+      "archived": "archiviert",
+      "unavailable": "Konnte nicht von GitHub gelesen werden.",
+      "empty": "Dieses Repository hat keine Variablen.",
+      "orgEmpty": "Die Organisation hat keine Variablen.",
+      "actions": "Aktionen",
+      "bulkLink": "Mit Vorlagen gesammelt setzen",
+      "noneYet": "Noch keine Variablen. Die runs-on-Vorlagen ({presets}) schalten Repositories zwischen einem Self-hosted-Label und einem gehosteten Runner-Image um.",
+      "truncated": "Nur die ersten 200 Repositories werden angezeigt.",
+      "runsOnHint": "Eine Variable im Workflow mit Rückfallwert nutzen:",
+      "org_no_permission": "Der App wurde Organization Variables nicht erteilt, daher werden keine Organisationsvariablen angezeigt.",
+      "org_unavailable": "Organisationsvariablen konnten gerade nicht von GitHub gelesen werden."
+    },
+    "revert": {
+      "title": "Sammeländerung zurücknehmen: {name}",
+      "description": "Sammeländerung vom {when}.",
+      "preview": "Rücknahme anzeigen",
+      "loading": "Vorschau wird geladen…",
+      "previewTitle": "Vorschau der Rücknahme für {name}",
+      "alreadyReverted": "Diese Sammeländerung wurde bereits zurückgenommen.",
+      "summary": "{count, plural, one {# Repository wird wiederhergestellt.} other {# Repositories werden wiederhergestellt.}}",
+      "apply": "Sammeländerung zurücknehmen",
+      "applying": "Wird zurückgenommen…"
+    },
+    "batches": {
+      "title": "Verlauf der Sammeländerungen",
+      "empty": "Noch keine Sammeländerungen.",
+      "when": "Wann",
+      "who": "Von",
+      "kind": "Art",
+      "outcome": "Ergebnis",
+      "links": "Links",
+      "kindOf": {
+        "VAR_BULK": "gesammelt gesetzt",
+        "VAR_BULK_REVERT": "Rücknahme"
+      },
+      "reverted": "zurückgenommen",
+      "entries": "Audit-Einträge",
+      "revert": "Zurücknehmen"
+    },
+    "pulls": {
+      "title": "Pull Requests",
+      "description": "Offene Pull Requests in den Repositories der Installation, live von GitHub gelesen.",
+      "empty": "Keine offenen Pull Requests.",
+      "repo": "Repository",
+      "pull": "Pull Request",
+      "branches": "Branches",
+      "headSha": "Head-Commit",
+      "checks": "Checks",
+      "checksState": {
+        "success": "bestanden",
+        "failure": "fehlgeschlagen",
+        "pending": "ausstehend",
+        "none": "keine Checks"
+      },
+      "mergeable": "Mergebar",
+      "mergeableState": {
+        "MERGEABLE": "mergebar",
+        "CONFLICTING": "Konflikte",
+        "UNKNOWN": "wird geprüft"
+      },
+      "mergeState": "Merge-Status",
+      "review": "Review",
+      "reviewState": {
+        "APPROVED": "genehmigt",
+        "CHANGES_REQUESTED": "Änderungen angefordert",
+        "REVIEW_REQUIRED": "Review erforderlich"
+      },
+      "age": "Geöffnet",
+      "actions": "Aktionen",
+      "chip": {
+        "dependabot": "Dependabot",
+        "draft": "Entwurf",
+        "failing": "fehlgeschlagen",
+        "workflows": "ändert Workflows",
+        "manyFiles": "viele Dateien"
+      },
+      "method": "Merge-Methode",
+      "methods": {
+        "merge": "Merge-Commit erstellen",
+        "squash": "Squash and merge",
+        "rebase": "Rebase and merge"
+      },
+      "workflowsNote": "Dieser Pull Request ändert Dateien unter .github/workflows, daher nutzt der Merge die Workflows-Berechtigung der App.",
+      "manyFilesNote": "Dieser Pull Request ändert mehr als 100 Dateien. Der Server prüft vor dem Merge auf Workflow-Änderungen.",
+      "acknowledge": "GitHub meldet den Merge-Status {state}, nicht CLEAN. Trotzdem mergen.",
+      "trailerNote": "Der Merge-Commit erhält einen DevOps-Manager-Audit-Trailer mit der Id des Audit-Eintrags.",
+      "merge": "Mergen",
+      "merging": "Wird gemergt…",
+      "mergeFor": "Pull Request #{number} in {repo} mergen",
+      "mergeTitle": "#{number} in {repo} mergen",
+      "blocked": {
+        "draft": "Entwurf",
+        "conflicting": "hat Konflikte",
+        "unknown": "Mergebarkeit unbekannt",
+        "workflows_not_granted": "ändert Workflows; der App fehlt Workflows: write",
+        "no_method": "keine Merge-Methode erlaubt"
+      },
+      "workflowsNotGranted": "Einige Pull Requests ändern Workflow-Dateien. Zum Mergen braucht die App die Berechtigung Workflows: write, die nicht erteilt ist.",
+      "reposUnavailable": "Konnten nicht gelesen werden: {repos}.",
+      "truncated": "Nicht alle offenen Pull Requests werden angezeigt (höchstens 50 pro Repository und 200 Repositories)."
+    },
+    "dependabot": {
+      "title": "Dependabot-Warnungen",
+      "description": "Offene Dependabot-Warnungen nach Schweregrad, live von GitHub gelesen. Nur lesend: Warnungen werden auf GitHub verwaltet.",
+      "byRepo": "Warnungen nach Repository und Schweregrad",
+      "repo": "Repository",
+      "total": "Gesamt",
+      "severityColumn": "Schweregrad",
+      "severity": {
+        "critical": "kritisch",
+        "high": "hoch",
+        "medium": "mittel",
+        "low": "niedrig"
+      },
+      "repoStatus": {
+        "ok": "ok",
+        "disabled": "Dependabot-Warnungen sind für dieses Repository ausgeschaltet.",
+        "unavailable": "Konnte nicht von GitHub gelesen werden."
+      },
+      "package": "Paket",
+      "advisory": "Advisory",
+      "fixedIn": "Behoben in",
+      "noFix": "noch keine Korrektur",
+      "pull": "Dependabot-PR",
+      "empty": "Keine offenen Dependabot-Warnungen.",
+      "truncated": "Nur die ersten 200 Repositories werden angezeigt."
+    },
+    "settings": {
+      "title": "Installationseinstellungen",
+      "stateOn": "An.",
+      "stateOff": "Aus.",
+      "globalOff": "Die Verwaltung ist für die ganze Instanz ausgeschaltet (MANAGEMENT_ENABLED=false), daher lässt sich das hier nicht ändern.",
+      "management": {
+        "label": "Verwaltungsaktionen",
+        "description": "Erlaubt Operatoren, Runs neu zu starten und abzubrechen, und Admins, Variablen zu ändern und Pull Requests zu mergen. Jede Aktion führt die GitHub App aus, und sie wird protokolliert.",
+        "confirmOn": "Verwaltungsaktionen für diese Installation einschalten?",
+        "confirmOff": "Verwaltungsaktionen für diese Installation ausschalten? Ansichten bleiben verfügbar.",
+        "turnOn": "Einschalten",
+        "turnOff": "Ausschalten"
+      },
+      "redaction": {
+        "label": "Schwärzung von Variablenwerten",
+        "description": "Verbirgt Variablenwerte vor Viewern und Operatoren und speichert im Audit-Log nur Hash und Länge neuer Werte.",
+        "confirmOn": "Schwärzung von Werten für diese Installation einschalten?",
+        "confirmOff": "Schwärzung ausschalten? Alle Rollen sehen Variablenwerte wieder, und neue Audit-Einträge speichern sie.",
+        "turnOn": "Einschalten",
+        "turnOff": "Ausschalten"
+      }
     }
   }
 }
