@@ -19,10 +19,12 @@ import { rollupRunnerDays } from "./runner-rollup";
  * Org runner and hosted pool stats (`sh:*`, `pool:*`) span repositories, so
  * the local days on which the repo's jobs ran are collected before the jobs
  * go (persisted in AppState, so a purge cut off by the deadline does not
- * lose them) and recomputed afterwards without the repo. Days older than the
- * runner sample retention or the raw retention are left as they are: their
- * inputs are already pruned, and a recompute would lose the other repos'
- * figures.
+ * lose them) and recomputed afterwards without the repo: fully inside the
+ * runner sample retention (30 days), and beyond it, up to the raw
+ * retention, only the job-derived fields (jobs, failures, busy time, peak,
+ * histograms) with the stored online time kept, because the samples are
+ * gone. Days older than the raw retention are left as they are: their jobs
+ * are already pruned, and a recompute would lose the other repos' figures.
  *
  * The step is resumable: it checks the deadline between batches and
  * re-checks `ignoredAt` before every batch, so an un-ignore while a purge is
@@ -61,7 +63,7 @@ async function stillIgnored(repositoryId: bigint): Promise<boolean> {
   return repo?.ignoredAt != null;
 }
 
-/** Local days of the repo's jobs, merged into the persisted set. */
+/** Local days of the repo's jobs (from `oldest` on), merged into the persisted set. */
 async function collectDays(
   installationId: bigint,
   repositoryId: bigint,
@@ -106,7 +108,7 @@ async function purgeRepository(
   installationId: bigint,
   repositoryId: bigint,
   timezone: string,
-  oldestDay: string,
+  window: { rawOldestDay: string; sampleOldestDay: string },
   deadline: Deadline,
 ): Promise<{ state: "done" | "stopped"; rows: number; runnerDays: number }> {
   let rows = 0;
@@ -114,7 +116,7 @@ async function purgeRepository(
     installationId,
     repositoryId,
     timezone,
-    oldestDay,
+    window.rawOldestDay,
   );
 
   const loop = async (sql: () => Prisma.Sql): Promise<boolean> => {
@@ -172,13 +174,24 @@ async function purgeRepository(
     })
   ).count;
 
-  // Org runner and hosted pool stats of the affected days, without the repo.
-  const runnerDays = await rollupRunnerDays(
+  // Org runner and hosted pool stats of the affected days, without the repo:
+  // days with samples fully, older ones with their stored online time.
+  const recent = days.filter((d) => d >= window.sampleOldestDay);
+  const older = days.filter((d) => d < window.sampleOldestDay);
+  let runnerDays = await rollupRunnerDays(
     installationId,
-    days,
+    recent,
     timezone,
     deadline,
   );
+  if (runnerDays === recent.length)
+    runnerDays += await rollupRunnerDays(
+      installationId,
+      older,
+      timezone,
+      deadline,
+      { keepOnline: true },
+    );
   if (runnerDays < days.length) return { state: "stopped", rows, runnerDays };
 
   const { count } = await db.repository.updateMany({
@@ -209,8 +222,15 @@ export async function purgeIgnoredRepositories(
   });
   if (pending.length === 0) return result;
   const now = deadline.now();
-  const keepDays = Math.min(SAMPLE_RETENTION_DAYS, retentionDays ?? Infinity);
-  const oldestDay = localDay(new Date(now - (keepDays - 1) * DAY_MS), timezone);
+  const oldest = (keepDays: number) =>
+    localDay(new Date(now - (keepDays - 1) * DAY_MS), timezone);
+  const window = {
+    // Without a raw retention every stored day still has its jobs.
+    rawOldestDay: retentionDays == null ? "0000-01-01" : oldest(retentionDays),
+    sampleOldestDay: oldest(
+      Math.min(SAMPLE_RETENTION_DAYS, retentionDays ?? Infinity),
+    ),
+  };
 
   for (const [i, repo] of pending.entries()) {
     if (deadline.expired(5_000)) {
@@ -221,7 +241,7 @@ export async function purgeIgnoredRepositories(
       installationId,
       repo.id,
       timezone,
-      oldestDay,
+      window,
       deadline,
     );
     result.rows += r.rows;

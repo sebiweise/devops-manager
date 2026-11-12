@@ -489,6 +489,76 @@ describe.skipIf(!DATABASE_URL)("repository ignore", () => {
     );
   });
 
+  it("recomputes the pool stats beyond the sample retention and keeps their online time", async () => {
+    const now = gh.now;
+    const REPO_A = { id: 11n, owner: "example-user", name: "repo-a" };
+    const old = new Date(now - 50 * DAY);
+    const oldDay = old.toISOString().slice(0, 10);
+    // Day 50: one hosted job each of repo-a and repo-z on the same pool.
+    for (const repo of [REPO_A, REPO_Z]) {
+      const made = makeRun(repo, {
+        createdAt: old,
+        durationS: 300,
+        labels: ["ubuntu-latest"],
+        workflowId: 900 + Number(repo.id),
+        workflowName: "Build",
+      });
+      const at = new Date(gh.now);
+      await events.applyGhRun(A, repo.id, made.run, "main", at, "WEBHOOK");
+      await events.applyGhJobs(A, repo.id, made.jobs, at, "WEBHOOK");
+    }
+    await rollAll();
+    const pool = () =>
+      db.dailyRunnerStat.findUnique({
+        where: {
+          installationId_runnerKey_day: {
+            installationId: A,
+            runnerKey: "pool:ubuntu-latest",
+            day: new Date(`${oldDay}T00:00:00.000Z`),
+          },
+        },
+      });
+    expect((await pool())?.jobs).toBe(2);
+    // An org runner that was online that day (its samples are pruned by now).
+    await db.dailyRunnerStat.create({
+      data: {
+        installationId: A,
+        runnerKey: "sh:runner-9",
+        runnerKind: "SELF_HOSTED",
+        day: new Date(`${oldDay}T00:00:00.000Z`),
+        jobs: 0,
+        failures: 0,
+        busyS: 0n,
+        onlineS: 7_200n,
+        peakConcurrency: 0,
+        durHist: [],
+        queueHist: [],
+      },
+    });
+
+    expect((await ignore([11n])).status).toBe("succeeded");
+    const result = await purge.purgeIgnoredRepositories(
+      A,
+      "UTC",
+      90,
+      new budget.Deadline(gh.now + 600_000, gh.clock),
+    );
+    expect(result).toMatchObject({ purged: 1, remaining: 0 });
+    // Day 50 is outside the 30 sample days but inside the 90 raw days: the
+    // pool counts only repo-z's job, the online time of runner-9 stays.
+    expect((await pool())?.jobs).toBe(1);
+    const sh = await db.dailyRunnerStat.findUnique({
+      where: {
+        installationId_runnerKey_day: {
+          installationId: A,
+          runnerKey: "sh:runner-9",
+          day: new Date(`${oldDay}T00:00:00.000Z`),
+        },
+      },
+    });
+    expect(sh?.onlineS).toBe(7_200n);
+  });
+
   it("skips webhooks of an ignored repository but keeps inventory events", async () => {
     await ignore([11n]);
     const send = (event: string, payload: unknown, id: string) => {
