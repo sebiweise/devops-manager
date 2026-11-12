@@ -326,6 +326,22 @@ describe.skipIf(!DATABASE_URL)("reconcile", () => {
     expect(tasks).toHaveLength(0);
   });
 
+  it("continues an unfinished (partial) reconcile after a minute", async () => {
+    await seedInstallations(db, {
+      lastReconciledAt: new Date(Date.now() - 2 * 60_000),
+    });
+    const tasks: unknown[] = [];
+    const schedule = (t: () => Promise<unknown>) => void tasks.push(t);
+    const opts = { clients: new FakeGitHub().clients() };
+    expect(await triggers.maybeLazyReconcile(A, schedule, opts)).toBe(false);
+    await db.installation.update({
+      where: { id: A },
+      data: { lastReconcileStatus: "partial" },
+    });
+    expect(await triggers.maybeLazyReconcile(A, schedule, opts)).toBe(true);
+    expect(tasks).toHaveLength(1);
+  });
+
   it("rate-limits Sync now to once per five minutes per installation", async () => {
     await seedInstallations(db);
     const now = new Date();

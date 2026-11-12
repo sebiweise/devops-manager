@@ -30,6 +30,8 @@ import {
 
 const SYNC_NOW_INTERVAL_MS = 5 * 60 * 1000;
 const LAZY_LOCK_MS = 5 * 60 * 1000;
+/** After a pass that stopped early (deadline or rate pause), the next page view may continue sooner. */
+const LAZY_CONTINUE_MS = 60 * 1000;
 
 /** Production GitHub clients: the App JWT and the token broker. */
 export const githubClients: GitHubClients = {
@@ -93,6 +95,13 @@ export async function claimLazyReconcile(
           OR: [
             { lastReconciledAt: null },
             { lastReconciledAt: { lt: staleBefore } },
+            // An unfinished pass (backfill, deadline) continues after a minute.
+            {
+              lastReconcileStatus: "partial",
+              lastReconciledAt: {
+                lt: new Date(now.getTime() - LAZY_CONTINUE_MS),
+              },
+            },
           ],
         },
         {
