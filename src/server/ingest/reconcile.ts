@@ -21,11 +21,16 @@ import { redactError } from "./webhook";
 import {
   effectiveRetentionDays,
   PRUNE_INTERVAL_MS,
+  SAMPLE_RETENTION_DAYS,
   pruneGlobal,
   pruneInstallation,
 } from "./prune";
+import { syncBilling, type BillingResult } from "./billing";
 import { persistRateBudget } from "./rate-store";
 import { drainRollups, markRecentDaysDirty } from "./rollup";
+import { rollupRunnerDays } from "./runner-rollup";
+import { sampleRunners, type RunnerSampleResult } from "./runners";
+import { localDay } from "@/server/metrics/days";
 import {
   backfill,
   incrementalSync,
@@ -45,8 +50,8 @@ import {
  * Steps, each bounded and cursor-persisted:
  *   a) replay local delivery failures      b) GitHub delivery log (cron only)
  *   c) stale jobs and runs                  d) incremental sync per repo
- *   e) backfill BACKFILL_DAYS               g) rollups      i) prune (daily)
- * Steps f) runners and h) billing arrive with M2.
+ *   e) backfill BACKFILL_DAYS               f) runner sampling (+ daily discovery)
+ *   g) rollups (incl. DailyRunnerStat)      h) billing (daily)   i) prune (daily)
  *
  * Installations are processed round-robin by lastReconciledAt and claimed
  * with a column lock (`reconcileLockedUntil`), which is PgBouncer-safe.
@@ -62,6 +67,8 @@ export type InstallationResult = {
   rollups: number;
   backfillDone: number;
   repos: number;
+  runners?: RunnerSampleResult;
+  billing?: BillingResult;
 };
 
 export type ReconcileResult = {
@@ -86,6 +93,8 @@ export type ReconcileConfig = {
   backfillDays: number;
   maxRetentionDays: number;
   lean: boolean;
+  /** Target runner sample interval (the Docker cron interval). */
+  sampleIntervalS: number;
 };
 
 function configFromEnv(): ReconcileConfig {
@@ -93,6 +102,7 @@ function configFromEnv(): ReconcileConfig {
     backfillDays: env.BACKFILL_DAYS,
     maxRetentionDays: env.MAX_RETENTION_DAYS,
     lean: env.LEAN_WEBHOOKS,
+    sampleIntervalS: env.CRON_INTERVAL_SECONDS,
   };
 }
 
@@ -124,6 +134,8 @@ async function releaseInstallation(installationId: bigint, now: Date) {
 type InstallationRow = {
   id: bigint;
   accountLogin: string;
+  accountType: "USER" | "ORGANIZATION";
+  billingSyncedAt: Date | null;
   permissions: unknown;
   timezone: string;
   rawRetentionDays: number;
@@ -250,6 +262,64 @@ async function reconcileInstallation(
     }
   }
 
+  const permissions = (inst.permissions ?? {}) as Record<string, unknown>;
+  // f) Runner sampling. Skipped after a deadline or rate stop above; a
+  // missing permission only means there is nothing to sample.
+  if (result.status === "ok" || result.status === "skipped") {
+    try {
+      const api = await opts.clients.installation(
+        inst.id,
+        "sync.runners",
+        permissions,
+      );
+      result.runners = await sampleRunners({
+        installationId: inst.id,
+        accountLogin: inst.accountLogin,
+        accountType: inst.accountType,
+        permissions,
+        api: withBudget(api, budget, deadline),
+        budget,
+        deadline,
+        targetIntervalS: config.sampleIntervalS,
+      });
+    } catch (error) {
+      if (error instanceof DeadlineReached || error instanceof RateLimited) {
+        result.status = "partial";
+        result.reason =
+          error instanceof RateLimited ? "rate budget paused" : "deadline";
+      } else if (!(error instanceof PermissionNotGrantedError)) {
+        console.warn(
+          "runner sampling failed",
+          redactError(error instanceof Error ? error.message : String(error)),
+        );
+      }
+    }
+  }
+
+  // h) Billing, once a day (its own token or credential, not the sync budget).
+  if (!deadline.expired(10_000)) {
+    try {
+      result.billing = await syncBilling(
+        {
+          id: inst.id,
+          accountLogin: inst.accountLogin,
+          accountType: inst.accountType,
+          permissions,
+          billingSyncedAt: inst.billingSyncedAt,
+        },
+        opts.clients,
+        deadline,
+      );
+    } catch (error) {
+      if (!(error instanceof DeadlineReached || error instanceof RateLimited)) {
+        console.warn(
+          "billing sync failed",
+          redactError(error instanceof Error ? error.message : String(error)),
+        );
+      }
+    }
+  }
+
   // g) Rollups, also after a partial pass: what was ingested is counted.
   try {
     await markRecentDaysDirty(inst.id, inst.timezone);
@@ -261,6 +331,24 @@ async function reconcileInstallation(
     );
     result.rollups = drained.partitions;
     if (drained.remaining && result.status === "ok") result.status = "partial";
+    // DailyRunnerStat per installation-day: recomputed days plus today and
+    // yesterday, which new runner samples change without any job event.
+    // Days past the sample retention keep their stats (onlineS needs samples).
+    const today = new Date(deadline.now());
+    const oldest = localDay(
+      new Date(today.getTime() - (SAMPLE_RETENTION_DAYS - 1) * 86_400_000),
+      inst.timezone,
+    );
+    await rollupRunnerDays(
+      inst.id,
+      [
+        ...drained.days,
+        localDay(today, inst.timezone),
+        localDay(new Date(today.getTime() - 86_400_000), inst.timezone),
+      ].filter((d) => d >= oldest),
+      inst.timezone,
+      deadline,
+    );
   } catch (error) {
     result.status = "error";
     result.reason = redactError(
@@ -336,6 +424,8 @@ export async function runReconcile(
       select: {
         id: true,
         accountLogin: true,
+        accountType: true,
+        billingSyncedAt: true,
         permissions: true,
         timezone: true,
         rawRetentionDays: true,
