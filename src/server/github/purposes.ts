@@ -19,6 +19,7 @@ export type TokenPurpose =
   | "sync.billing"
   | "read.pulls"
   | "read.variables"
+  | "read.org_variables"
   | "read.dependabot"
   | "act.runs"
   | "act.variables"
@@ -52,6 +53,9 @@ export const PURPOSES: Record<TokenPurpose, PurposeSpec> = {
   "read.variables": {
     required: { actions_variables: "read" },
     optional: { organization_actions_variables: "read" },
+  },
+  "read.org_variables": {
+    required: { organization_actions_variables: "read" },
   },
   "read.dependabot": { required: { vulnerability_alerts: "read" } },
   "act.runs": { required: { actions: "write" }, mutation: true },
@@ -133,4 +137,18 @@ export function mergePurposeFor(changedFiles: readonly string[]): TokenPurpose {
   return changedFiles.some((f) => f.startsWith(".github/workflows/"))
     ? "act.merge.workflows"
     : "act.merge";
+}
+
+/** The permissions `purpose` lacks on an installation, or null when granted. */
+export function missingOf(
+  purpose: TokenPurpose,
+  granted: Record<string, unknown>,
+): string[] | null {
+  try {
+    permissionsFor(purpose, granted);
+    return null;
+  } catch (error) {
+    if (error instanceof PermissionNotGrantedError) return error.missing;
+    throw error;
+  }
 }

@@ -71,6 +71,10 @@ export default async function AccountLayout({
             { href: `${base}/runners`, label: t("accountNav.runners") },
             { href: `${base}/queue`, label: t("accountNav.queue") },
             { href: `${base}/costs`, label: t("accountNav.costs") },
+            { href: `${base}/pulls`, label: t("accountNav.pulls") },
+            { href: `${base}/dependabot`, label: t("accountNav.dependabot") },
+            { href: `${base}/variables`, label: t("accountNav.variables") },
+            { href: `${base}/audit`, label: t("accountNav.audit") },
             ...(isAdmin
               ? [{ href: `${base}/settings`, label: t("accountNav.settings") }]
               : []),

@@ -124,6 +124,9 @@ model Installation {
   permissionsCheckedAt DateTime?     @db.Timestamptz(3)
   /// Per-installation management toggle (admin only), off by default.
   managementEnabled    Boolean       @default(false)
+  /// Variable values are masked for viewers and operators and stored in the
+  /// audit log only as sha256 and length (plus a sealed copy for revert).
+  redactVariableValues Boolean       @default(false)
   timezone             String        @default("UTC")
   /// 14..400, capped by MAX_RETENTION_DAYS.
   rawRetentionDays     Int           @default(90)
@@ -683,10 +686,28 @@ model AuditLog {
   userAgent       String?
   prevHash        String
   hash            String
+  /// sha256(canonical(final status fields) || hash), written with the final
+  /// status, so a changed outcome is detected by Verify as well.
+  resultHash      String?
   createdAt       DateTime    @default(now()) @db.Timestamptz(3)
   completedAt     DateTime?   @db.Timestamptz(3)
 
   @@index([installationId, createdAt(sort: Desc)])
   @@index([actorUserId, createdAt])
   @@index([batchId])
+}
+
+/// The newest row of each audit chain (design §9 "Audit"), kept outside
+/// AuditLog so Verify detects removed rows at the end of a chain. Written in
+/// the same transaction as the row; a trigger (see the migration) lets it
+/// only move forward and forbids deleting it.
+model AuditChainHead {
+  /// 0 = the instance-level chain.
+  installationId BigInt   @id
+  seq            BigInt
+  hash           String
+  /// Final rows with a higher seq must carry a result hash; rows up to it
+  /// were written before results were sealed (M3).
+  sealedAfterSeq BigInt
+  updatedAt      DateTime @db.Timestamptz(3)
 }

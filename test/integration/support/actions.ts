@@ -48,7 +48,8 @@ export async function resetTables(db: Db) {
     TRUNCATE "WorkflowJob", "WorkflowRun", "RollupDirty", "DailyWorkflowStat",
       "DailyJobStat", "DailyRunnerStat", "RunnerSample", "Runner",
       "BillingUsageItem", "GitHubCredential", "SyncState", "WebhookDelivery",
-      "InstallationRateLimit", "AppState", "AuditLog", "Repository",
+      "InstallationRateLimit", "AppState", "AuditLog", "AuditChainHead",
+      "Repository",
       "Installation" CASCADE`);
 }
 

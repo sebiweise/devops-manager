@@ -103,7 +103,11 @@
     "settings": "Settings",
     "runners": "Runners",
     "queue": "Queue",
-    "costs": "Costs"
+    "costs": "Costs",
+    "pulls": "Pull requests",
+    "dependabot": "Dependabot",
+    "variables": "Variables",
+    "audit": "Audit log"
   },
   "freshness": {
     "label": "Data freshness",
@@ -214,9 +218,11 @@
     "tabs": "Repository sections",
     "tab": {
       "workflows": "Workflows",
-      "runs": "Runs"
-    },
-    "laterTabs": "Pull requests, variables and Dependabot follow in M3."
+      "runs": "Runs",
+      "pulls": "Pull requests",
+      "variables": "Variables",
+      "dependabot": "Dependabot"
+    }
   },
   "runs": {
     "filters": "Run filters",
@@ -233,7 +239,8 @@
     "created": "Created",
     "attempt": "attempt {n}",
     "first": "Newest runs",
-    "older": "Older runs"
+    "older": "Older runs",
+    "actions": "Actions"
   },
   "status": {
     "SUCCESS": "success",
@@ -720,6 +727,422 @@
       "login_mismatch": "The GitHub account that authorised the App is not the account of this installation. Nothing was stored.",
       "not_configured": "Connect GitHub is not configured on this instance.",
       "forbidden": "Only admins can manage billing credentials."
+    }
+  },
+  "management": {
+    "actingAsNote": "Actions are performed by the GitHub App, so GitHub shows the App's bot as the actor. The audit log records who triggered them.",
+    "variablesNotSecrets": "Variables are not secrets: their values are visible to every role (unless redaction is on) and recorded in the audit log.",
+    "disabledGlobal": "Management is turned off for this instance.",
+    "disabledInstallation": "Management is turned off for this installation. An admin can turn it on in the installation settings.",
+    "result": {
+      "succeeded": "Done.",
+      "failed": "GitHub refused the action: {message}",
+      "pending": "This action is still running.",
+      "unauthorized": "Your access has ended. Sign in again.",
+      "forbidden": "Your role cannot do this.",
+      "management_disabled_global": "Management is turned off for this instance.",
+      "management_disabled_installation": "Management is turned off for this installation.",
+      "permission_not_granted": "The GitHub App has not been granted the permission this needs: {permissions}.",
+      "rate_limited": "Too many actions. Try again in {seconds} s.",
+      "confirmation_mismatch": "The confirmation does not match.",
+      "conflict": "This dialog was already used. Close it and try again.",
+      "replayed": "This action was already submitted; showing its result.",
+      "refusedOther": "The action was refused ({reason}).",
+      "error": "The action could not be completed. Try again."
+    },
+    "refused": {
+      "attempt_limit": "This run reached GitHub's limit of 50 attempts.",
+      "cancel_first": "Cancel the run first. Force cancel is offered afterwards.",
+      "force_cancel_too_early": "Force cancel is possible 60 s after a cancel. Try again in {seconds} s.",
+      "invalid_name": "Use letters, digits and underscores, not starting with a digit or GITHUB_, at most 255 characters.",
+      "invalid_value": "Values must not be empty and are limited to 48 KB.",
+      "archived": "The repository is archived.",
+      "not_selected": "The repository is not in the installation's selection.",
+      "unreadable": "The current value could not be read from GitHub.",
+      "drifted": "The value changed after the batch; it is left as it is.",
+      "stale_preview": "The value changed since the dialog opened. Review the new value and try again.",
+      "unchanged": "Nothing to change.",
+      "variable_not_found": "The variable does not exist.",
+      "too_many_repositories": "Select at most 500 repositories.",
+      "no_writable_repositories": "None of the selected repositories can be written.",
+      "not_revertible": "Only bulk changes can be reverted.",
+      "values_unavailable": "The recorded values can no longer be decrypted, so the batch cannot be reverted.",
+      "already_reverted": "This batch has already been reverted.",
+      "nothing_to_revert": "Nothing to revert.",
+      "not_organization": "Organisation variables exist only for organisations.",
+      "pr_not_found": "The pull request was not found.",
+      "already_merged": "The pull request is already merged.",
+      "not_open": "The pull request is closed.",
+      "draft": "Draft pull requests cannot be merged.",
+      "not_mergeable": "The pull request has conflicts and cannot be merged.",
+      "mergeability_unknown": "GitHub is still checking whether the pull request can be merged. Try again shortly.",
+      "needs_acknowledgement": "The merge state is {state}. Confirm the warning to merge anyway.",
+      "branch_protection": "Branch protection is not satisfied (required reviews, checks or rules). The merge is possible once they are met.",
+      "too_many_pulls": "Select at most 50 pull requests."
+    },
+    "bulk": {
+      "create": "create",
+      "update": "update",
+      "restore": "restore",
+      "delete": "delete",
+      "unchanged": "unchanged",
+      "skipped": "skipped",
+      "summary": "{succeeded} succeeded, {failed} failed.",
+      "title": "Bulk set a variable",
+      "description": "Set one variable on many repositories at once, for example to switch runs-on between a self-hosted label and a hosted image. Review the preview before applying.",
+      "variable": "Variable",
+      "customName": "Another variable",
+      "repositories": "{count, plural, one {# repository selected} other {# repositories selected}}",
+      "selectAll": "Select all",
+      "selectNone": "Select none",
+      "preview": "Preview changes",
+      "previewing": "Loading preview…",
+      "previewTitle": "Preview: {name} = {value}",
+      "applySummary": "{count, plural, one {# repository will be changed.} other {# repositories will be changed.}}",
+      "apply": "Apply",
+      "applying": "Applying…",
+      "change": "Change",
+      "results": "Results",
+      "status": "Result",
+      "rowStatus": {
+        "succeeded": "succeeded",
+        "failed": "failed",
+        "skipped": "skipped",
+        "unchanged": "unchanged"
+      }
+    },
+    "audit": {
+      "verifyOk": "The audit chain is intact ({count} entries checked).",
+      "verifyBroken": "The audit chain is broken at entry {seq}: it was changed, removed or inserted outside the app.",
+      "unsealed": "{count} older entries have no recorded result hash.",
+      "title": "Audit log",
+      "instanceTitle": "Instance audit log",
+      "description": "Every management action with the app user who triggered it and the GitHub identity that performed it. Entries are hash-chained.",
+      "verify": "Verify chain",
+      "verifying": "Verifying…",
+      "verifyDenied": "The chain could not be verified with your access.",
+      "verifyError": "The chain could not be verified. Try again.",
+      "breakReason": {
+        "prev_hash": "An entry was removed, inserted or reordered.",
+        "hash": "The entry's content was changed.",
+        "result_hash": "The entry's recorded outcome was changed.",
+        "pending": "The entry has had no outcome for over an hour: the action was interrupted or its outcome was removed.",
+        "truncated": "The chain does not reach its recorded head: the newest entries were removed or rewritten."
+      },
+      "exportCsv": "Export CSV",
+      "chains": "Audit chains",
+      "installationChain": "This installation",
+      "instanceChain": "Instance",
+      "filters": "Audit filters",
+      "any": "any",
+      "action": "Action",
+      "status": "Status",
+      "repo": "Repository",
+      "from": "From",
+      "to": "To",
+      "apply": "Filter",
+      "reset": "Reset",
+      "filteredBatch": "Showing the entries of batch {batch}.",
+      "filteredActor": "Showing the entries of one app user.",
+      "clearFilter": "Show all",
+      "empty": "No audit entries match.",
+      "when": "When",
+      "who": "Triggered by",
+      "target": "Target",
+      "details": "Details",
+      "roleVia": "{role} via {provider}",
+      "actingAs": "performed as {identity}",
+      "batchEntries": "batch entries",
+      "partOfBatch": "part of a batch",
+      "statusOf": {
+        "SUCCEEDED": "succeeded",
+        "FAILED": "failed",
+        "DENIED": "denied",
+        "PENDING": "pending"
+      },
+      "requestId": "GitHub request {id}",
+      "params": "Parameters",
+      "revertBatch": "Revert batch",
+      "newest": "Newest",
+      "older": "Older entries"
+    },
+    "typeToConfirm": "Type {text} to confirm",
+    "missingPermission": "The GitHub App has not been granted the permission this needs: {permissions}. An admin can grant it in the App's installation settings on GitHub.",
+    "liveUnavailable": "This could not be loaded from GitHub right now. Try again in a moment.",
+    "dialog": {
+      "close": "Close"
+    },
+    "banner": {
+      "label": "Management status",
+      "globalHint": "Actions are hidden for everyone; read-only views stay available. Set MANAGEMENT_ENABLED=true to enable them.",
+      "readOnly": "Actions are hidden; read-only views stay available.",
+      "openSettings": "Open installation settings"
+    },
+    "runs": {
+      "actions": "Run actions",
+      "op": {
+        "rerun": "Re-run all jobs",
+        "rerun_failed": "Re-run failed jobs",
+        "cancel": "Cancel run",
+        "force_cancel": "Force cancel"
+      },
+      "opFor": "{op}: run {run}",
+      "title": {
+        "rerun": "Re-run all jobs",
+        "rerun_failed": "Re-run failed jobs",
+        "cancel": "Cancel run",
+        "force_cancel": "Force cancel run"
+      },
+      "confirm": {
+        "rerun": "Start a new attempt of this run with all its jobs?",
+        "rerun_failed": "Start a new attempt of this run with its failed jobs and their dependents?",
+        "cancel": "Cancel this run?",
+        "force_cancel": "Force cancel this run? GitHub stops it even if jobs ignore the cancel request."
+      },
+      "repo": "Repository",
+      "workflow": "Workflow",
+      "run": "Run",
+      "attempt": "Attempt",
+      "debugLogging": "Enable debug logging",
+      "forceCancelWarning": "Force cancel skips the cleanup that a normal cancel allows (for example always() steps).",
+      "pending": "Working…"
+    },
+    "variables": {
+      "title": "Variables",
+      "description": "Repository and organisation Actions variables. Secrets are never read or changed.",
+      "repoTitle": "Repository variables",
+      "orgTitle": "Organisation variables",
+      "masked": "hidden",
+      "maskedNote": "Values are hidden for your role because value redaction is on.",
+      "before": "Current",
+      "after": "New",
+      "notSet": "not set",
+      "deleted": "deleted",
+      "repository": "Repository",
+      "name": "Name",
+      "value": "Value",
+      "visibility": "Visibility",
+      "visibilityOf": {
+        "all": "All repositories",
+        "private": "Private repositories",
+        "selected": "Selected repositories"
+      },
+      "selectedRepositories": "Repositories with access",
+      "save": "Save",
+      "saving": "Saving…",
+      "delete": "Delete",
+      "deleting": "Deleting…",
+      "edit": "Edit",
+      "set": "Set",
+      "new": "New variable",
+      "newTitle": "New repository variable",
+      "newOrg": "New organisation variable",
+      "newOrgTitle": "New organisation variable",
+      "editFor": "Edit {name} in {repo}",
+      "setFor": "Set {name} in {repo}",
+      "deleteFor": "Delete {name} in {repo}",
+      "editTitle": "Edit {name} in {repo}",
+      "setTitle": "Set {name} in {repo}",
+      "deleteTitle": "Delete {name} from {repo}",
+      "deleteConfirm": "Delete the variable {name} from {repo}?",
+      "editOrgFor": "Edit organisation variable {name}",
+      "deleteOrgFor": "Delete organisation variable {name}",
+      "editOrgTitle": "Edit organisation variable {name}",
+      "deleteOrgTitle": "Delete organisation variable {name}",
+      "deleteOrgConfirm": "Delete the organisation variable {name}? Workflows that read it fall back to their default.",
+      "archived": "archived",
+      "unavailable": "Could not be read from GitHub.",
+      "empty": "This repository has no variables.",
+      "orgEmpty": "The organisation has no variables.",
+      "actions": "Actions",
+      "bulkLink": "Bulk set with presets",
+      "noneYet": "No variables yet. The runs-on presets ({presets}) switch repositories between a self-hosted label and a hosted runner image.",
+      "truncated": "Only the first 200 repositories are shown.",
+      "runsOnHint": "Use a variable in a workflow with a fallback:",
+      "org_no_permission": "The App has not been granted Organization Variables, so organisation variables are not shown.",
+      "org_unavailable": "Organisation variables could not be read from GitHub right now."
+    },
+    "revert": {
+      "title": "Revert batch: {name}",
+      "description": "Bulk change from {when}.",
+      "preview": "Preview revert",
+      "loading": "Loading preview…",
+      "previewTitle": "Revert preview for {name}",
+      "alreadyReverted": "This batch has already been reverted.",
+      "summary": "{count, plural, one {# repository will be restored.} other {# repositories will be restored.}}",
+      "apply": "Revert batch",
+      "applying": "Reverting…"
+    },
+    "batches": {
+      "title": "Batch history",
+      "empty": "No bulk changes yet.",
+      "when": "When",
+      "who": "By",
+      "kind": "Kind",
+      "outcome": "Outcome",
+      "links": "Links",
+      "kindOf": {
+        "VAR_BULK": "bulk set",
+        "VAR_BULK_REVERT": "revert"
+      },
+      "reverted": "reverted",
+      "entries": "Audit entries",
+      "revert": "Revert batch"
+    },
+    "pulls": {
+      "title": "Pull requests",
+      "description": "Open pull requests across the installation's repositories, read live from GitHub.",
+      "empty": "No open pull requests.",
+      "repo": "Repository",
+      "pull": "Pull request",
+      "branches": "Branches",
+      "headSha": "Head commit",
+      "checks": "Checks",
+      "checksState": {
+        "success": "passing",
+        "failure": "failing",
+        "pending": "pending",
+        "none": "no checks"
+      },
+      "mergeable": "Mergeable",
+      "mergeableState": {
+        "MERGEABLE": "mergeable",
+        "CONFLICTING": "conflicts",
+        "UNKNOWN": "checking"
+      },
+      "mergeState": "Merge state",
+      "review": "Review",
+      "reviewState": {
+        "APPROVED": "approved",
+        "CHANGES_REQUESTED": "changes requested",
+        "REVIEW_REQUIRED": "review required"
+      },
+      "age": "Opened",
+      "actions": "Actions",
+      "chip": {
+        "dependabot": "Dependabot",
+        "draft": "draft",
+        "failing": "failing",
+        "workflows": "changes workflows",
+        "manyFiles": "many files"
+      },
+      "method": "Merge method",
+      "methods": {
+        "merge": "Create a merge commit",
+        "squash": "Squash and merge",
+        "rebase": "Rebase and merge"
+      },
+      "workflowsNote": "This pull request changes files under .github/workflows, so the merge uses the App's Workflows permission.",
+      "manyFilesNote": "This pull request changes more than 100 files. The server checks for workflow changes before merging.",
+      "acknowledge": "GitHub reports the merge state {state}, not CLEAN. Merge anyway.",
+      "trailerNote": "The merge commit gets a DevOps-Manager-Audit trailer with the audit entry id.",
+      "trailerRebaseNote": "A rebase merge writes no merge commit, so it gets no DevOps-Manager-Audit trailer; the audit entry notes that.",
+      "merge": "Merge",
+      "merging": "Merging…",
+      "mergeFor": "Merge pull request #{number} in {repo}",
+      "mergeTitle": "Merge #{number} in {repo}",
+      "blocked": {
+        "draft": "draft",
+        "conflicting": "has conflicts",
+        "unknown": "mergeability unknown",
+        "branch_protection": "branch protection not satisfied",
+        "workflows_not_granted": "changes workflows; the App has no Workflows: write",
+        "no_method": "no merge method allowed"
+      },
+      "workflowsNotGranted": "Some pull requests change workflow files. Merging them needs the App's Workflows: write permission, which is not granted.",
+      "reposUnavailable": "Could not be read: {repos}.",
+      "truncated": "Not every open pull request is shown (at most 50 per repository and 200 repositories).",
+      "bulkMerge": {
+        "open": "Merge Dependabot updates ({count})",
+        "title": "Merge Dependabot updates",
+        "intro": "These Dependabot pull requests are patch or minor updates, mergeable, CLEAN and with passing checks. They are merged one after another as the App, with each repository's preferred merge method.",
+        "listCaption": "Pull requests to merge",
+        "pull": "Pull request",
+        "update": "Update",
+        "headSha": "Head commit",
+        "updateType": {
+          "patch": "patch",
+          "minor": "minor"
+        },
+        "guards": "Each pull request is checked again right before its merge and skipped when it no longer qualifies (for example new commits, failing checks, branch protection or a major update in Dependabot's metadata). The first unexpected error stops the batch.",
+        "merge": "Merge {count, plural, one {# pull request} other {# pull requests}}",
+        "merging": "Merging…",
+        "results": "Bulk merge results",
+        "summary": "{merged} merged, {skipped} skipped, {failed} failed, {notAttempted} not attempted.",
+        "status": "Result",
+        "rowStatus": {
+          "merged": "merged",
+          "skipped": "skipped",
+          "failed": "failed",
+          "not_attempted": "not attempted (batch stopped)"
+        },
+        "reason": {
+          "not_dependabot": "not opened by Dependabot",
+          "already_merged": "already merged",
+          "not_open": "closed",
+          "draft": "draft",
+          "head_moved": "new commits since the dialog opened",
+          "not_mergeable": "not mergeable",
+          "branch_protection": "branch protection not satisfied",
+          "not_clean": "merge state is no longer CLEAN",
+          "checks_not_green": "checks are not passing",
+          "not_patch_or_minor": "not a patch or minor update",
+          "workflows_not_granted": "changes workflows; the App has no Workflows: write",
+          "no_method": "no merge method allowed",
+          "archived": "repository archived",
+          "not_selected": "repository not in the installation's selection",
+          "pr_not_found": "pull request not found",
+          "unreadable": "could not be read from GitHub"
+        }
+      }
+    },
+    "dependabot": {
+      "title": "Dependabot alerts",
+      "description": "Open Dependabot alerts by severity, read live from GitHub. Read-only: alerts are managed on GitHub.",
+      "byRepo": "Alerts by repository and severity",
+      "repo": "Repository",
+      "total": "Total",
+      "severityColumn": "Severity",
+      "severity": {
+        "critical": "critical",
+        "high": "high",
+        "medium": "medium",
+        "low": "low"
+      },
+      "repoStatus": {
+        "ok": "ok",
+        "disabled": "Dependabot alerts are turned off for this repository.",
+        "unavailable": "Could not be read from GitHub."
+      },
+      "package": "Package",
+      "advisory": "Advisory",
+      "fixedIn": "Fixed in",
+      "noFix": "no fix yet",
+      "pull": "Dependabot PR",
+      "empty": "No open Dependabot alerts.",
+      "truncated": "Only the first 200 repositories are shown."
+    },
+    "settings": {
+      "title": "Installation settings",
+      "stateOn": "On.",
+      "stateOff": "Off.",
+      "globalOff": "Management is turned off for the whole instance (MANAGEMENT_ENABLED=false), so this cannot be changed here.",
+      "management": {
+        "label": "Management actions",
+        "description": "Lets operators re-run and cancel runs and admins change variables and merge pull requests in this installation. Every action is performed by the GitHub App and audited.",
+        "confirmOn": "Turn on management actions for this installation?",
+        "confirmOff": "Turn off management actions for this installation? Read-only views stay available.",
+        "turnOn": "Turn on",
+        "turnOff": "Turn off"
+      },
+      "redaction": {
+        "label": "Variable value redaction",
+        "description": "Hides variable values from viewers and operators and stores only a hash and the length of new values in the audit log.",
+        "confirmOn": "Turn on value redaction for this installation?",
+        "confirmOff": "Turn off value redaction? Every role sees variable values again and new audit entries record them.",
+        "turnOn": "Turn on",
+        "turnOff": "Turn off"
+      }
     }
   }
 }

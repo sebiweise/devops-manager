@@ -17,13 +17,18 @@ import {
   runHref,
   workflowHref,
 } from "@/components/insights/workflow-link";
+import { ManagementBanner } from "@/components/management/management-banner";
+import { RunActions } from "@/components/management/run-actions";
 import { Badge } from "@/components/ui/badge";
-import { loadAccount, orNotFound } from "@/lib/account-page";
+import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
 import { criticalPath, timelineSegments } from "@/lib/chart-scale";
 import { formatDuration, formatMinutes, shortSha } from "@/lib/format";
 import { param, type SearchParams } from "@/lib/insights-view";
 import { cn } from "@/lib/utils";
+import { hasRole } from "@/server/authz/roles";
+import { lastRunCancelAt } from "@/server/data/audit";
 import { getRunDetail } from "@/server/data/insights";
+import { getManagementState } from "@/server/data/management";
 import { getRunSteps } from "@/server/data/steps";
 
 export const metadata = { title: "Run" };
@@ -57,11 +62,12 @@ export default async function RunPage({
         getRunSteps(scope, installation.id, BigInt(run.id), attempt),
       );
 
-  const [t, format, locale, nowDate] = await Promise.all([
+  const [t, format, locale, nowDate, state] = await Promise.all([
     getTranslations(),
     getFormatter(),
     getLocale(),
     getNow(),
+    orNotFound(getManagementState(scope, installation.id)),
   ]);
   const login = installation.accountLogin;
   const now = nowDate.getTime();
@@ -73,6 +79,15 @@ export default async function RunPage({
     ? Math.max(0, Math.round((now - origin) / 1000))
     : 0;
   const live = run.status !== "COMPLETED" && attempt === run.runAttempt;
+  // Actions act on the run as GitHub holds it: only on its latest attempt.
+  const showActions =
+    state.canOperate && !run.isPlaceholder && attempt === run.runAttempt;
+  const cancelledAt =
+    showActions && run.status !== "COMPLETED"
+      ? await lastRunCancelAt(installation.id, BigInt(run.id))
+      : null;
+  const forceCancelAvailable =
+    cancelledAt !== null && now - cancelledAt.getTime() >= 60_000;
   const path = criticalPath(
     jobs.map((j) => ({
       id: j.id,
@@ -194,6 +209,41 @@ export default async function RunPage({
           </p>
         ) : null}
       </div>
+
+      {hasRole(scope.role, "OPERATOR") ? (
+        <ManagementBanner
+          state={state}
+          settingsHref={
+            hasRole(scope.role, "ADMIN")
+              ? accountPath(login, "/settings")
+              : undefined
+          }
+        />
+      ) : null}
+      {showActions ? (
+        <section
+          aria-label={t("management.runs.actions")}
+          className="flex flex-col gap-2"
+        >
+          <RunActions
+            installationId={String(installation.id)}
+            run={{
+              id: run.id,
+              repoFullName: run.repoFullName,
+              workflowName: run.workflowName,
+              runNumber: run.runNumber,
+              runAttempt: run.runAttempt,
+              status: run.status,
+              conclusion: run.conclusion,
+              isPlaceholder: run.isPlaceholder,
+            }}
+            forceCancelAvailable={forceCancelAvailable}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("management.actingAsNote")}
+          </p>
+        </section>
+      ) : null}
 
       <KpiGrid>
         <KpiTile label={t("run.wall")} value={formatDuration(timings.wallS)} />

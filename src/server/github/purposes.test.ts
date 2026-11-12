@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isMutationPurpose,
   mergePurposeFor,
+  missingOf,
   PermissionNotGrantedError,
   permissionsFor,
   PURPOSES,
@@ -105,5 +106,17 @@ describe("token purposes", () => {
     expect(mergePurposeFor([".github/workflows/ci.yml"])).toBe(
       "act.merge.workflows",
     );
+  });
+
+  it("reads org variables with their own narrowed purpose", () => {
+    expect(
+      permissionsFor("read.org_variables", {
+        organization_actions_variables: "write",
+      }),
+    ).toEqual({ organization_actions_variables: "read" });
+    expect(missingOf("read.org_variables", manage)).toEqual([
+      "organization_actions_variables:read",
+    ]);
+    expect(missingOf("act.variables", manage)).toBeNull();
   });
 });
