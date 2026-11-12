@@ -499,7 +499,7 @@
     "wall": "Total duration",
     "compute": "Compute time",
     "parallelism": "Parallelism",
-    "firstQueue": "First queue",
+    "firstQueue": "Queue time",
     "jobs": "Jobs",
     "noJobs": "No jobs recorded for this attempt yet.",
     "runner": "Runner",
@@ -507,7 +507,13 @@
     "stepsExpired": "Steps are no longer available on GitHub.",
     "stepsUnavailable": "Steps could not be loaded from GitHub right now.",
     "labels": "Labels",
-    "noSteps": "No steps reported."
+    "noSteps": "No steps reported.",
+    "wallInfo": "From the start of the run to its end, including queue and approval waits.",
+    "firstQueueInfo": "How long the first job waited for a runner.",
+    "jobsFailed": "{count, plural, one {# failed} other {# failed}}",
+    "computeInfo": "Sum of all job durations; with parallel jobs it is larger than the total duration.",
+    "parallelismInfo": "Compute time divided by the total duration: how many jobs ran at once on average.",
+    "stepsLoading": "Loading steps from GitHub…"
   },
   "leaderboards": {
     "title": "Workflows",
