@@ -22,6 +22,8 @@ export type InstallationRow = {
   deletedAt: Date | null;
   lastWebhookAt: Date | null;
   lastReconciledAt: Date | null;
+  /** IANA zone of the local days of the rollups. */
+  timezone: string;
 };
 
 export type RepositoryRow = {

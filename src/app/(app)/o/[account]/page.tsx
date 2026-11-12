@@ -1,13 +1,25 @@
+import {
+  CircleX,
+  Repeat,
+  TrendingDown,
+  TrendingUp,
+  TriangleAlert,
+  Unplug,
+} from "lucide-react";
+import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
+import type { ReactNode } from "react";
+import { EmptyState } from "@/components/data/empty-state";
+import { KpiStrip, KpiTile } from "@/components/data/kpi-strip";
 import {
   DurationChart,
   QueueChart,
   RunsPerDayChart,
 } from "@/components/insights/day-charts";
-import { KpiGrid, KpiTile } from "@/components/insights/kpi-tile";
-import { RangeFilter } from "@/components/insights/range-filter";
-import { WorkflowLink } from "@/components/insights/workflow-link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { repoHref, workflowHref } from "@/components/insights/workflow-link";
+import { GettingStarted } from "@/components/shell/getting-started";
+import { PageHeader } from "@/components/shell/page-header";
+import { env } from "@/env";
 import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
 import {
   approx,
@@ -17,16 +29,69 @@ import {
   formatPercent,
   formatPointsDelta,
 } from "@/lib/format";
-import { enoughData, param, type SearchParams } from "@/lib/insights-view";
+import { enoughData, type SearchParams } from "@/lib/insights-view";
+import { accountMeta } from "@/lib/page-meta";
+import { pageRange } from "@/lib/page-range";
+import { hasRole } from "@/server/authz/roles";
 import {
   getInstallationOverview,
-  listAlerts,
   listFlakyJobs,
-  parseRange,
+  listRepoStats,
+  listWorkflowStats,
 } from "@/server/data/insights";
+import { getAccountSummaries } from "@/server/data/summaries";
 
-export const metadata = { title: "Overview" };
+export const generateMetadata = accountMeta("overview");
 
+/** A compact list card with a "Show all" link (UI overhaul §2.2). */
+function ListCard({
+  title,
+  showAll,
+  showAllLabel,
+  children,
+}: {
+  title: string;
+  showAll?: string;
+  showAllLabel: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-3 rounded-xl border bg-card p-4 text-card-foreground">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-medium">{title}</h2>
+        {showAll ? (
+          <Link
+            href={showAll}
+            className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            {showAllLabel}
+          </Link>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** Items per "needs attention" group; the count names the rest. */
+const PER_GROUP = 3;
+
+type Item = {
+  key: string;
+  icon: ReactNode;
+  href: string;
+  name: string;
+  repo: string;
+  detail: string;
+};
+
+/**
+ * Account overview (UI overhaul §2.2): KPIs that link to their section,
+ * the run, duration and queue charts in the range's buckets, and two
+ * compact lists — what needs attention (failing, slower, success drops,
+ * flaky jobs) and the most active repositories. A new account shows the
+ * getting-started steps instead of empty charts.
+ */
 export default async function AccountPage({
   params,
   searchParams,
@@ -37,192 +102,362 @@ export default async function AccountPage({
   const { account } = await params;
   const sp = await searchParams;
   const { scope, installation } = await loadAccount(account);
-  const range = parseRange(param(sp, "range"));
-  const [t, locale, overview, alerts, flaky] = await Promise.all([
-    getTranslations(),
-    getLocale(),
-    orNotFound(getInstallationOverview(scope, installation.id, range)),
-    orNotFound(listAlerts(scope, installation.id)),
-    orNotFound(listFlakyJobs(scope, installation.id, range)),
-  ]);
+  const range = await pageRange(sp);
+  const now = new Date();
+  const [t, locale, overview, week, flaky, active, summaries] =
+    await Promise.all([
+      getTranslations(),
+      getLocale(),
+      orNotFound(getInstallationOverview(scope, installation.id, range, now)),
+      orNotFound(
+        listWorkflowStats(scope, installation.id, { range: "7d" }, now),
+      ),
+      orNotFound(listFlakyJobs(scope, installation.id, range, now)),
+      orNotFound(
+        listRepoStats(
+          scope,
+          installation.id,
+          { range, sort: "runs", dir: "desc", size: 5 },
+          now,
+        ),
+      ),
+      getAccountSummaries(scope, now, { backfillDays: env.BACKFILL_DAYS }),
+    ]);
+  const card = summaries.find(
+    (c) => c.installationId === String(installation.id),
+  );
   const s = overview.summary;
   const login = installation.accountLogin;
+  const base = accountPath(login);
   const enough = enoughData(s.n);
+  const rangeLabel = t(`filters.ranges.${range}`);
+  const isAdmin = hasRole(scope.role, "ADMIN");
+
+  const failing = week
+    .filter((w) => w.summary.failure > 0)
+    .sort(
+      (a, b) =>
+        b.summary.failure - a.summary.failure ||
+        a.workflowName.localeCompare(b.workflowName),
+    );
+  const regressions = week
+    .filter((w) => w.regression)
+    .sort((a, b) => b.regression!.ratio - a.regression!.ratio);
+  const drops = week
+    .filter((w) => w.successDrop)
+    .sort((a, b) => b.successDrop!.drop - a.successDrop!.drop);
+
+  const groups: Array<{ label: string; count: number; items: Item[] }> = [
+    {
+      label: t("overview.failing"),
+      count: failing.length,
+      items: failing.slice(0, PER_GROUP).map((w) => ({
+        key: `f:${w.workflowId}`,
+        icon: (
+          <CircleX aria-hidden="true" className="size-4 text-status-critical" />
+        ),
+        href: workflowHref(login, w.repoFullName, w.workflowId),
+        name: w.workflowName,
+        repo: w.repoFullName,
+        detail: t("overview.failingItem", {
+          count: w.summary.failure,
+          rate: formatPercent(w.summary.successRate, locale),
+        }),
+      })),
+    },
+    {
+      label: t("overview.regressions"),
+      count: regressions.length,
+      items: regressions.slice(0, PER_GROUP).map((w) => ({
+        key: `r:${w.workflowId}`,
+        icon: (
+          <TrendingUp
+            aria-hidden="true"
+            className="size-4 text-status-warning"
+          />
+        ),
+        href: workflowHref(login, w.repoFullName, w.workflowId),
+        name: w.workflowName,
+        repo: w.repoFullName,
+        detail: t("overview.regression", {
+          metric: w.regression!.metric,
+          recent: formatDuration(w.regression!.recent),
+          baseline: formatDuration(w.regression!.baseline),
+          ratio: w.regression!.ratio.toFixed(2),
+        }),
+      })),
+    },
+    {
+      label: t("overview.successDrops"),
+      count: drops.length,
+      items: drops.slice(0, PER_GROUP).map((w) => ({
+        key: `d:${w.workflowId}`,
+        icon: (
+          <TrendingDown
+            aria-hidden="true"
+            className="size-4 text-status-warning"
+          />
+        ),
+        href: workflowHref(login, w.repoFullName, w.workflowId),
+        name: w.workflowName,
+        repo: w.repoFullName,
+        detail: t("overview.successDrop", {
+          recent: formatPercent(w.successDrop!.recent, locale),
+          baseline: formatPercent(w.successDrop!.baseline, locale),
+        }),
+      })),
+    },
+    {
+      label: t("overview.flakyJobs"),
+      count: flaky.length,
+      items: flaky.slice(0, PER_GROUP).map((f) => ({
+        key: `k:${f.workflowId}:${f.baseName}`,
+        icon: <Repeat aria-hidden="true" className="size-4 text-series-4" />,
+        href: workflowHref(login, f.repoFullName, f.workflowId),
+        name: `${f.baseName} · ${f.workflowName}`,
+        repo: f.repoFullName,
+        detail: t("overview.flakyRuns", { count: f.runs }),
+      })),
+    },
+  ].filter((g) => g.items.length > 0);
+
+  const noRuns = s.runs === 0;
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{t("overview.title")}</h1>
-        <RangeFilter
-          base={accountPath(login)}
-          current={range}
-          searchParams={sp}
-        />
-      </div>
+      <PageHeader
+        title={t("overview.title")}
+        subtitle={t("overview.subtitle", { range: rangeLabel })}
+      />
 
-      {s.runs === 0 ? (
-        <p className="text-muted-foreground">{t("overview.noRuns")}</p>
+      {noRuns && card ? (
+        <GettingStarted
+          importProgress={card.importProgress}
+          webhookReceived={!!card.lastWebhookAt}
+          settingsHref={isAdmin ? `${base}/settings` : undefined}
+        />
       ) : null}
 
-      <KpiGrid>
+      <KpiStrip label={t("overview.kpiLabel")}>
         <KpiTile
-          label={t("kpi.runs", { range: t(`filters.ranges.${range}`) })}
+          label={t("overview.kpi.runs")}
+          info={t("overview.kpi.runsInfo")}
           value={formatNumber(s.runs, locale)}
+          hint={rangeLabel}
+          href={`${base}/repos?sort=runs`}
         />
         <KpiTile
-          label={t("kpi.successRate")}
+          variant="delta"
+          label={t("overview.kpi.success")}
+          info={t("overview.kpi.successInfo")}
           value={formatPercent(s.successRate, locale)}
-          hint={t("kpi.delta7d", {
+          delta={overview.successRateDelta}
+          deltaText={t("overview.kpi.delta7d", {
             delta: formatPointsDelta(overview.successRateDelta, locale),
           })}
+          href={`${base}/workflows?sort=success&dir=asc`}
         />
         <KpiTile
-          label={t("kpi.p50")}
-          value={
-            enough
-              ? approx(formatDuration(s.p50), s.approx)
-              : t("common.notEnoughData")
-          }
-          hint={t("kpi.samples", { n: s.n })}
-        />
-        <KpiTile
-          label={t("kpi.p95")}
+          label={t("overview.kpi.p95")}
+          info={t("overview.kpi.p95Info")}
           value={
             enough
               ? approx(formatDuration(s.p95), s.approx)
               : t("common.notEnoughData")
           }
+          hint={
+            enough
+              ? t("overview.kpi.p50Hint", {
+                  p50: approx(formatDuration(s.p50), s.approx),
+                })
+              : t("kpi.samples", { n: s.n })
+          }
+          href={`${base}/workflows?sort=p95`}
         />
         <KpiTile
-          label={t("kpi.queueP95")}
-          value={approx(formatDuration(s.queueP95), s.approx)}
-        />
-        <KpiTile
-          label={t("kpi.minutes")}
+          label={t("overview.kpi.minutes")}
+          info={t("overview.kpi.minutesInfo")}
           value={formatMinutes(overview.billableMinEst, locale)}
-          hint={t("kpi.minutesHint")}
+          hint={t("overview.kpi.queueHint", {
+            queue: approx(formatDuration(s.queueP95), s.approx),
+          })}
+          href={`${base}/costs`}
         />
-      </KpiGrid>
+        {card && card.queuedStuck > 0 ? (
+          <KpiTile
+            variant="status"
+            icon={TriangleAlert}
+            tone="warning"
+            label={t("overview.kpi.queued")}
+            info={t("overview.kpi.queuedInfo")}
+            value={formatNumber(card.queuedNow, locale)}
+            hint={t("dashboard.kpi.stuck", { count: card.queuedStuck })}
+            href={`${base}/queue?f=stuck`}
+          />
+        ) : (
+          <KpiTile
+            label={t("overview.kpi.queued")}
+            info={t("overview.kpi.queuedInfo")}
+            value={formatNumber(card?.queuedNow ?? 0, locale)}
+            hint={t("overview.kpi.live")}
+            href={`${base}/queue`}
+          />
+        )}
+        {card && card.runnersOffline > 0 ? (
+          <KpiTile
+            variant="status"
+            icon={Unplug}
+            tone="warning"
+            label={t("overview.kpi.offline")}
+            info={t("overview.kpi.offlineInfo")}
+            value={formatNumber(card.runnersOffline, locale)}
+            hint={t("overview.kpi.offlineHint")}
+            href={`${base}/runners?f=offline`}
+          />
+        ) : (
+          <KpiTile
+            label={t("overview.kpi.offline")}
+            info={t("overview.kpi.offlineInfo")}
+            value={formatNumber(card?.runnersOffline ?? 0, locale)}
+            href={`${base}/runners`}
+          />
+        )}
+      </KpiStrip>
+
+      {overview.bucket === "hour" ? (
+        <EmptyState quiet message={t("charts.hourlyNone")} />
+      ) : noRuns ? null : (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <RunsPerDayChart
+            id="overview-runs"
+            days={overview.perDay}
+            bucket={overview.bucket}
+          />
+          <DurationChart
+            id="overview-duration"
+            days={overview.perDay}
+            approx={s.approx}
+            bucket={overview.bucket}
+          />
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <RunsPerDayChart id="overview-runs" days={overview.perDay} />
-        <DurationChart
-          id="overview-duration"
-          days={overview.perDay}
-          approx={s.approx}
-        />
-        <QueueChart
-          id="overview-queue"
-          days={overview.perDay}
-          approx={s.approx}
-        />
-      </div>
+        <ListCard
+          title={t("overview.attention")}
+          showAll={`${base}/workflows?sort=success&dir=asc`}
+          showAllLabel={t("overview.showAllWorkflows")}
+        >
+          {groups.length === 0 ? (
+            <EmptyState quiet message={t("overview.noAttention")} />
+          ) : (
+            <div className="flex flex-col gap-3">
+              {groups.map((g) => (
+                <div key={g.label} className="flex flex-col gap-1">
+                  <h3 className="text-xs font-medium text-muted-foreground">
+                    {g.label} <span className="tabular-nums">({g.count})</span>
+                  </h3>
+                  <ul className="flex flex-col">
+                    {g.items.map((i) => (
+                      <li
+                        key={i.key}
+                        className="flex items-start gap-2 border-t py-1.5 text-sm first:border-t-0"
+                      >
+                        <span className="mt-0.5 shrink-0">{i.icon}</span>
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="flex flex-wrap items-baseline gap-x-1.5">
+                            <Link
+                              href={i.href}
+                              className="font-medium underline-offset-2 hover:underline"
+                            >
+                              {i.name}
+                            </Link>
+                            <span className="text-xs text-muted-foreground">
+                              {i.repo.split("/").pop()}
+                            </span>
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {i.detail}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </ListCard>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h2>{t("overview.regressions")}</h2>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {alerts.regressions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {t("overview.noRegressions")}
-              </p>
+        <div className="flex flex-col gap-4">
+          <ListCard
+            title={t("overview.mostActive")}
+            showAll={`${base}/repos?sort=runs`}
+            showAllLabel={t("overview.showAllRepos", {
+              count: active.counts.active,
+            })}
+          >
+            {active.rows.length === 0 ? (
+              <EmptyState quiet message={t("overview.noActive")} />
             ) : (
-              <ul className="flex flex-col gap-2 text-sm">
-                {alerts.regressions.slice(0, 10).map((w) => (
-                  <li key={w.workflowId}>
-                    <WorkflowLink
-                      accountLogin={login}
-                      repoFullName={w.repoFullName}
-                      workflowId={w.workflowId}
-                      workflowName={w.workflowName}
-                    />
-                    <div className="text-xs text-muted-foreground">
-                      {t("overview.regression", {
-                        metric: w.regression!.metric,
-                        recent: formatDuration(w.regression!.recent),
-                        baseline: formatDuration(w.regression!.baseline),
-                        ratio: w.regression!.ratio.toFixed(2),
-                      })}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <table className="w-full text-sm">
+                <caption className="sr-only">
+                  {t("overview.mostActive")}
+                </caption>
+                <thead className="text-xs text-muted-foreground">
+                  <tr>
+                    <th scope="col" className="py-1 text-left font-normal">
+                      {t("repos.repo")}
+                    </th>
+                    <th scope="col" className="py-1 text-right font-normal">
+                      {t("repos.colRuns")}
+                    </th>
+                    <th scope="col" className="py-1 text-right font-normal">
+                      {t("repos.colSuccess")}
+                    </th>
+                    <th
+                      scope="col"
+                      className="hidden py-1 text-right font-normal sm:table-cell"
+                    >
+                      {t("repos.colMinutes")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {active.rows.map((r) => (
+                    <tr key={r.repositoryId} className="border-t">
+                      <td className="py-1.5 pr-2">
+                        <Link
+                          href={repoHref(login, r.fullName)}
+                          className="font-medium underline-offset-2 hover:underline"
+                        >
+                          {r.name}
+                        </Link>
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums">
+                        {formatNumber(r.runs, locale)}
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums">
+                        {formatPercent(r.successRate, locale)}
+                      </td>
+                      <td className="hidden py-1.5 text-right tabular-nums sm:table-cell">
+                        {formatMinutes(r.billableMinEst, locale)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h2>{t("overview.flakyJobs")}</h2>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {flaky.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {t("overview.noFlaky")}
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-2 text-sm">
-                {flaky.slice(0, 10).map((f) => (
-                  <li key={`${f.workflowId}:${f.baseName}`}>
-                    <span className="font-medium">{f.baseName}</span>
-                    <div className="text-xs">
-                      <WorkflowLink
-                        accountLogin={login}
-                        repoFullName={f.repoFullName}
-                        workflowId={f.workflowId}
-                        workflowName={f.workflowName}
-                      />
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {t("overview.flakyRuns", { count: f.runs })}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h2>{t("overview.successDrops")}</h2>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {alerts.successDrops.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {t("overview.noSuccessDrops")}
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-2 text-sm">
-                {alerts.successDrops.slice(0, 10).map((w) => (
-                  <li key={w.workflowId}>
-                    <WorkflowLink
-                      accountLogin={login}
-                      repoFullName={w.repoFullName}
-                      workflowId={w.workflowId}
-                      workflowName={w.workflowName}
-                    />
-                    <div className="text-xs text-muted-foreground">
-                      {t("overview.successDrop", {
-                        recent: formatPercent(w.successDrop!.recent, locale),
-                        baseline: formatPercent(
-                          w.successDrop!.baseline,
-                          locale,
-                        ),
-                      })}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+          </ListCard>
+          {overview.bucket !== "hour" && !noRuns ? (
+            <QueueChart
+              id="overview-queue"
+              days={overview.perDay}
+              approx={s.approx}
+              bucket={overview.bucket}
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );

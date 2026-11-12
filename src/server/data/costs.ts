@@ -2,6 +2,20 @@ import "server-only";
 import type { TenantScope } from "@/server/authz/scope";
 import { hasRole } from "@/server/authz/roles";
 import { db } from "@/server/db";
+import type { Page } from "@/lib/paging";
+import {
+  costRepoRows,
+  pageCostRepos,
+  pageCostWorkflows,
+  type CostRepoRow,
+  type ListQuery,
+} from "@/lib/table-pages";
+import type {
+  CostRepoFilter,
+  CostRepoSortKey,
+  CostWorkflowSortKey,
+} from "@/lib/table-specs";
+import { notIgnoredRepo } from "@/server/ingest/active-repos";
 import { syncedBillingMonths } from "@/server/ingest/billing";
 import { loadSkuRates } from "@/server/ingest/sku-rates";
 import {
@@ -9,6 +23,7 @@ import {
   daysInMonth,
   elapsedDays,
   includedMinutes,
+  includedMinutesUsed,
   isActionsProduct,
   isMinutesUnit,
   projectMonth,
@@ -95,6 +110,18 @@ export type Costs = {
     estMin: number;
     estUsd: number;
   }>;
+  /**
+   * Billed Actions usage of ignored repositories: still on GitHub's bill and
+   * in the totals, but not listed per repository (shown as one "Ignored
+   * repositories" row). Null when no billed item belongs to one. Ignored
+   * repos have no estimates (their jobs are purged).
+   */
+  ignored: {
+    repositories: number;
+    billedQuantity: number;
+    grossUsd: number;
+    netUsd: number;
+  } | null;
   byDay: Array<{
     day: string;
     billedQuantity: number;
@@ -161,6 +188,7 @@ async function estimates(
       sum(ceil(j."durationS" / 60.0))::int AS "rawMin"
     FROM "WorkflowJob" j JOIN "Repository" r ON r."id" = j."repositoryId"
     WHERE j."installationId" = ${installationId} AND r."installationId" = ${installationId}
+      AND r."ignoredAt" IS NULL
       AND j."statusRank" = 4 AND j."durationS" IS NOT NULL AND j."sku" IS NOT NULL
       AND j."runnerKind" IN ('GITHUB_HOSTED', 'LARGER_HOSTED')
       AND COALESCE(j."startedAt", j."createdAt") >= ${from}
@@ -185,6 +213,7 @@ async function estimates(
     SELECT count(*)::int AS n FROM "WorkflowJob" j
     WHERE j."installationId" = ${installationId} AND j."statusRank" = 4
       AND j."runnerKind" IN ('LARGER_HOSTED', 'UNKNOWN') AND j."sku" IS NULL
+      AND ${notIgnoredRepo("j")}
       AND COALESCE(j."startedAt", j."createdAt") >= ${from}
       AND COALESCE(j."startedAt", j."createdAt") < ${to}`;
   return { rows: out, unmatched: unmatched?.n ?? 0 };
@@ -202,32 +231,47 @@ export async function getCosts(
   const to = new Date(Date.UTC(m.year, m.month, 1));
   const label = `${m.year}-${String(m.month).padStart(2, "0")}`;
 
-  const [inst, credential, items, rates, synced] = await Promise.all([
-    db.installation.findUniqueOrThrow({
-      where: { id: installationId },
-      select: {
-        accountType: true,
-        planName: true,
-        includedMinutes: true,
-        billingStatus: true,
-        billingError: true,
-        billingSyncedAt: true,
-      },
-    }),
-    db.gitHubCredential.findUnique({
-      where: { installationId },
-      select: { revokedAt: true, lastError: true, accessToken: true },
-    }),
-    db.billingUsageItem.findMany({
-      where: { installationId, date: { gte: from, lt: to } },
-    }),
-    loadSkuRates(),
-    syncedBillingMonths(installationId),
-  ]);
+  const [inst, credential, items, rates, synced, ignoredRepos] =
+    await Promise.all([
+      db.installation.findUniqueOrThrow({
+        where: { id: installationId },
+        select: {
+          accountType: true,
+          planName: true,
+          includedMinutes: true,
+          billingStatus: true,
+          billingError: true,
+          billingSyncedAt: true,
+        },
+      }),
+      db.gitHubCredential.findUnique({
+        where: { installationId },
+        select: { revokedAt: true, lastError: true, accessToken: true },
+      }),
+      db.billingUsageItem.findMany({
+        where: { installationId, date: { gte: from, lt: to } },
+      }),
+      loadSkuRates(),
+      syncedBillingMonths(installationId),
+      db.repository.findMany({
+        where: { installationId, ignoredAt: { not: null } },
+        select: { fullName: true },
+      }),
+    ]);
+  const ignoredNames = new Set(
+    ignoredRepos.map((r) => r.fullName.toLowerCase()),
+  );
+  const isIgnored = (fullName: string) =>
+    fullName !== "" && ignoredNames.has(fullName.toLowerCase());
   const est = await estimates(installationId, from, to, rates);
 
   const actions = items.filter((i) => isActionsProduct(i.product));
   const minuteItems = actions.filter((i) => isMinutesUnit(i.unitType));
+  // Attribution and reconciliation compare against estimates, which ignored
+  // repositories no longer have.
+  const attributable = minuteItems.filter(
+    (i) => !isIgnored(i.repositoryFullName),
+  );
   // A month the billing API answered for is billed, even with no items
   // (only self-hosted or public-repo usage, or nothing used yet): $0.
   const source: CostSource =
@@ -306,8 +350,16 @@ export async function getCosts(
     const day = `${label}-${String(d).padStart(2, "0")}`;
     byDay.set(day, { day, billedQuantity: 0, netUsd: 0, estMin: 0, estUsd: 0 });
   }
+  const ignoredBucket = {
+    names: new Set<string>(),
+    billedQuantity: 0,
+    grossUsd: 0,
+    netUsd: 0,
+  };
   for (const i of actions) {
-    const r = repoRow(i.repositoryFullName);
+    const ignored = isIgnored(i.repositoryFullName);
+    if (ignored) ignoredBucket.names.add(i.repositoryFullName.toLowerCase());
+    const r = ignored ? ignoredBucket : repoRow(i.repositoryFullName);
     r.grossUsd += n(i.grossAmount);
     r.netUsd += n(i.netAmount);
     const d = byDay.get(i.date.toISOString().slice(0, 10));
@@ -329,7 +381,7 @@ export async function getCosts(
   }
 
   // ---- attribution and reconciliation (per repo and SKU key)
-  const billed: BilledCell[] = minuteItems.map((i) => ({
+  const billed: BilledCell[] = attributable.map((i) => ({
     repositoryFullName: i.repositoryFullName,
     sku: skuKeyOf(i.sku),
     quantity: n(i.quantity),
@@ -359,10 +411,7 @@ export async function getCosts(
 
   // ---- included vs used, projection
   const included = includedMinutes(inst.includedMinutes, inst.planName);
-  const usedBilled = minuteItems.reduce(
-    (s, i) => s + n(i.quantity) * (multiplierOf(skuKeyOf(i.sku), i.date) ?? 1),
-    0,
-  );
+  const usedBilled = includedMinutesUsed(minuteItems, rates);
   const usedEst = est.rows.reduce((s, e) => s + e.billableMin, 0);
   const used = source === "billed" ? usedBilled : usedEst;
   const elapsed = elapsedDays(m.year, m.month, now);
@@ -423,6 +472,15 @@ export async function getCosts(
         estUsd: r4(r.estUsd),
       }))
       .sort((a, b) => b.netUsd - a.netUsd || b.estUsd - a.estUsd),
+    ignored:
+      ignoredBucket.names.size > 0
+        ? {
+            repositories: ignoredBucket.names.size,
+            billedQuantity: ignoredBucket.billedQuantity,
+            grossUsd: r4(ignoredBucket.grossUsd),
+            netUsd: r4(ignoredBucket.netUsd),
+          }
+        : null,
     byDay: [...byDay.values()].map((d) => ({
       ...d,
       netUsd: r4(d.netUsd),
@@ -455,4 +513,40 @@ export async function getCosts(
         : [],
     unmatchedJobs: est.unmatched,
   };
+}
+
+// ---------- paged breakdowns (UI overhaul §2.12, §4.1) ----------
+
+export type CostRepoQuery = ListQuery<CostRepoSortKey, CostRepoFilter>;
+
+/**
+ * By repository with the estimate check merged in, paged. The ignored
+ * bucket and the unattributed row are not part of the sort: callers render
+ * them last, so the column sums still equal the totals.
+ */
+export function listCostRepos(
+  costs: Costs,
+  query: CostRepoQuery,
+): Page<CostRepoRow> & {
+  flagged: number;
+  unattributed: CostRepoRow | null;
+  ignored: Costs["ignored"];
+} {
+  const rows = costRepoRows(costs);
+  const unattributed = rows.find((r) => r.repositoryFullName === "") ?? null;
+  const listed = rows.filter((r) => r.repositoryFullName !== "");
+  return {
+    ...pageCostRepos(listed, query),
+    flagged: listed.filter((r) => r.flagged).length,
+    unattributed,
+    ignored: costs.ignored,
+  };
+}
+
+/** By workflow, searched, sorted and paged. */
+export function listCostWorkflows(
+  costs: Costs,
+  query: ListQuery<CostWorkflowSortKey, never>,
+): Page<Costs["byWorkflow"][number]> {
+  return pageCostWorkflows(costs.byWorkflow, query);
 }

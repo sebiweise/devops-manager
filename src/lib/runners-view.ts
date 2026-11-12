@@ -32,39 +32,6 @@ export function parseRunnerKey(segment: string): string | null {
   return /^\d{1,20}:(ORG|REPO):\d{1,20}$/.test(key) ? key : null;
 }
 
-export type RunnerGroup = {
-  /** null: organisation runners. */
-  repoFullName: string | null;
-  runners: RunnerDto[];
-};
-
-/**
- * Organisation runners first, then repo-level runners grouped by repository
- * (one runner per repository is the expected setup), each sorted by name.
- */
-export function groupRunners(runners: ReadonlyArray<RunnerDto>): RunnerGroup[] {
-  const org = runners.filter((r) => r.scope === "ORG");
-  const byRepo = new Map<string, RunnerDto[]>();
-  for (const r of runners) {
-    if (r.scope !== "REPO") continue;
-    const name = r.repository?.fullName ?? "";
-    byRepo.set(name, [...(byRepo.get(name) ?? []), r]);
-  }
-  const byName = (a: RunnerDto, b: RunnerDto) => a.name.localeCompare(b.name);
-  const out: RunnerGroup[] = [];
-  if (org.length > 0)
-    out.push({ repoFullName: null, runners: [...org].sort(byName) });
-  for (const name of [...byRepo.keys()].sort((a, b) => a.localeCompare(b)))
-    out.push({ repoFullName: name, runners: byRepo.get(name)!.sort(byName) });
-  return out;
-}
-
-export function runnerCounts(runners: ReadonlyArray<RunnerDto>) {
-  const c = { total: runners.length, busy: 0, idle: 0, offline: 0 };
-  for (const r of runners) c[runnerState(r)]++;
-  return c;
-}
-
 // ---------- heatmap ----------
 
 export type HeatmapGrid = {

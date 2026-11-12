@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "@/server/db";
+import { notIgnoredRepo } from "./active-repos";
 import type { Deadline } from "./budget";
 
 /**
@@ -145,6 +146,7 @@ export async function markRecentDaysDirty(
     ) d
     WHERE r."installationId" = ${installationId}
       AND r."createdAt" >= now() - interval '3 days'
+      AND ${notIgnoredRepo("r")}
     ON CONFLICT ("installationId", "repositoryId", "day") DO UPDATE SET "markedAt" = now()`;
 }
 
@@ -156,12 +158,12 @@ export async function markAllDaysDirty(
   await db.$executeRaw`
     INSERT INTO "RollupDirty" ("installationId", "repositoryId", "day", "markedAt")
     SELECT DISTINCT r."installationId", r."repositoryId", (r."createdAt" AT TIME ZONE ${timezone}::text)::date, now()
-    FROM "WorkflowRun" r WHERE r."installationId" = ${installationId}
+    FROM "WorkflowRun" r WHERE r."installationId" = ${installationId} AND ${notIgnoredRepo("r")}
     ON CONFLICT ("installationId", "repositoryId", "day") DO UPDATE SET "markedAt" = now()`;
   await db.$executeRaw`
     INSERT INTO "RollupDirty" ("installationId", "repositoryId", "day", "markedAt")
     SELECT DISTINCT j."installationId", j."repositoryId", (j."createdAt" AT TIME ZONE ${timezone}::text)::date, now()
-    FROM "WorkflowJob" j WHERE j."installationId" = ${installationId}
+    FROM "WorkflowJob" j WHERE j."installationId" = ${installationId} AND ${notIgnoredRepo("j")}
     ON CONFLICT ("installationId", "repositoryId", "day") DO UPDATE SET "markedAt" = now()`;
 }
 
@@ -204,12 +206,13 @@ export async function drainRollups(
       beforeCutoff: boolean;
     }>
   >`
-    SELECT "repositoryId", "day", "markedAt",
+    SELECT d."repositoryId", d."day", d."markedAt",
       (${cutoff}::timestamptz IS NOT NULL
-        AND ("day"::timestamp AT TIME ZONE ${timezone}::text) < ${cutoff}::timestamptz) AS "beforeCutoff"
-    FROM "RollupDirty"
-    WHERE "installationId" = ${installationId}
-    ORDER BY "markedAt" ASC
+        AND (d."day"::timestamp AT TIME ZONE ${timezone}::text) < ${cutoff}::timestamptz) AS "beforeCutoff"
+    FROM "RollupDirty" d
+    WHERE d."installationId" = ${installationId}
+      AND ${notIgnoredRepo("d")}
+    ORDER BY d."markedAt" ASC
     LIMIT ${limit + 1}`;
   let partitions = 0;
   const days = new Set<string>();

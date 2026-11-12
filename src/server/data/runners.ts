@@ -2,12 +2,27 @@ import "server-only";
 import { Prisma, type RunnerKind } from "@/generated/prisma/client";
 import type { TenantScope } from "@/server/authz/scope";
 import { db } from "@/server/db";
+import type { Page } from "@/lib/paging";
+import {
+  pageQueueGroups,
+  pageQueueJobs,
+  pageRunners,
+  runnerState,
+  type ListQuery,
+} from "@/lib/table-pages";
+import type {
+  QueueFilter,
+  QueueSortKey,
+  RunnerFilter,
+  RunnerSortKey,
+} from "@/lib/table-specs";
+import { notIgnoredRepo } from "@/server/ingest/active-repos";
 import {
   jobRunnerKeyResolver,
   runnerStatKey,
   type RunnerScopeRow,
 } from "@/server/metrics/classify";
-import { localDay } from "@/server/metrics/days";
+import { localDay, rangeWindow } from "@/server/metrics/days";
 import {
   histogramOf,
   histogramPercentile,
@@ -33,7 +48,11 @@ import {
   type Utilisation,
 } from "@/server/metrics/runners";
 import { percentileExact, type Conclusion } from "@/server/metrics/stats";
-import { rangeStart, visibleInstallation, type InsightRange } from "./insights";
+import {
+  ignoredRepoIds,
+  visibleInstallation,
+  type InsightRange,
+} from "./insights";
 import { NotFoundError } from "./installations";
 
 /**
@@ -73,6 +92,16 @@ type JobRow = {
 };
 
 /** Jobs that ran (or queued) inside [from, to), skipped jobs excluded. */
+/** Repo-level runners of ignored repositories are hidden. */
+async function notIgnoredRunner(
+  installationId: bigint,
+): Promise<Prisma.RunnerWhereInput> {
+  const ignored = await ignoredRepoIds(installationId);
+  return ignored.length > 0
+    ? { NOT: { scope: "REPO", repositoryId: { in: ignored } } }
+    : {};
+}
+
 async function jobsIn(
   installationId: bigint,
   from: Date,
@@ -91,6 +120,7 @@ async function jobsIn(
       AND j."createdAt" > ${new Date(from.getTime() - 5 * DAY_MS)}
       AND j."conclusion" IS DISTINCT FROM 'SKIPPED'
       AND NOT (j."runnerName" IS NULL AND j."startedAt" IS NOT NULL AND j."startedAt" = j."completedAt")
+      AND ${notIgnoredRepo("j")}
       ${extra}
     ORDER BY j."createdAt" ASC
     LIMIT ${MAX_JOB_ROWS}`;
@@ -250,7 +280,11 @@ export async function listRunners(
   const w = { from: from.getTime(), to: now.getTime() };
   const [runners, repos, jobs, keyOf] = await Promise.all([
     db.runner.findMany({
-      where: { installationId, removedAt: null },
+      where: {
+        installationId,
+        removedAt: null,
+        ...(await notIgnoredRunner(installationId)),
+      },
       orderBy: [{ scope: "asc" }, { name: "asc" }],
     }),
     db.repository.findMany({
@@ -342,6 +376,8 @@ export type RunnerDetail = {
   range: InsightRange;
   utilisation: UtilisationDto;
   perDay: RunnerDayPoint[];
+  /** Start of the status timeline: the range, at most the 30 sample days. */
+  statusFrom: string;
   /** Samples in the range (status timeline). */
   statusTimeline: Array<{
     t: string;
@@ -396,7 +432,7 @@ export async function getRunnerDetail(
   const dto = list[0];
   if (!dto) throw new NotFoundError();
 
-  const from = rangeStart(range, now);
+  const { from } = rangeWindow(range, now, inst.timezone);
   const sampleFrom = new Date(
     Math.max(from.getTime(), now.getTime() - 30 * DAY_MS),
   );
@@ -474,6 +510,7 @@ export async function getRunnerDetail(
   return {
     runner: dto,
     range,
+    statusFrom: sampleFrom.toISOString(),
     utilisation: {
       ...u,
       medianSampleIntervalS: medianSampleInterval(ownSamples),
@@ -616,12 +653,18 @@ export async function listRunnerPools(
   now: Date = new Date(),
 ): Promise<PoolOverview> {
   const inst = await visibleInstallation(scope, installationId);
-  const from = rangeStart(range, now);
+  const { from } = rangeWindow(range, now, inst.timezone);
   const w = { from: from.getTime(), to: now.getTime() };
   const windowS = (w.to - w.from) / 1000;
   const [jobs, runners, heat, keyOf] = await Promise.all([
     jobsIn(installationId, from, now),
-    db.runner.findMany({ where: { installationId, removedAt: null } }),
+    db.runner.findMany({
+      where: {
+        installationId,
+        removedAt: null,
+        ...(await notIgnoredRunner(installationId)),
+      },
+    }),
     db.$queryRaw<
       Array<{
         labelKey: string;
@@ -640,6 +683,7 @@ export async function listRunnerPools(
       FROM "WorkflowJob" j
       WHERE j."installationId" = ${installationId} AND j."queueS" IS NOT NULL
         AND j."createdAt" >= ${from} AND j."createdAt" < ${now}
+        AND ${notIgnoredRepo("j")}
       GROUP BY 1, 2, 3, 4`,
     jobKeyResolver(installationId),
   ]);
@@ -767,9 +811,9 @@ export async function getConcurrencyTimeline(
   opts: { range?: "24h" | "7d"; labelKey?: string } = {},
   now: Date = new Date(),
 ): Promise<ConcurrencyDto> {
-  await visibleInstallation(scope, installationId);
+  const inst = await visibleInstallation(scope, installationId);
   const range = opts.range ?? "24h";
-  const from = rangeStart(range, now);
+  const { from } = rangeWindow(range, now, inst.timezone);
   const jobs = await jobsIn(
     installationId,
     from,
@@ -830,9 +874,9 @@ export async function getHostedVsSelfHosted(
   opts: { range?: InsightRange; workflowId?: bigint } = {},
   now: Date = new Date(),
 ): Promise<HostedComparisonDto> {
-  await visibleInstallation(scope, installationId);
+  const inst = await visibleInstallation(scope, installationId);
   const range = opts.range ?? "30d";
-  const from = rangeStart(range, now);
+  const { from } = rangeWindow(range, now, inst.timezone);
   const jobs = (
     await jobsIn(
       installationId,
@@ -915,9 +959,14 @@ export async function getLiveQueue(
   now: Date = new Date(),
 ): Promise<LiveQueue> {
   await visibleInstallation(scope, installationId);
+  const ignored = await ignoredRepoIds(installationId);
   const [jobs, runners, repos] = await Promise.all([
     db.workflowJob.findMany({
-      where: { installationId, status: { in: ["QUEUED", "WAITING"] } },
+      where: {
+        installationId,
+        status: { in: ["QUEUED", "WAITING"] },
+        ...(ignored.length > 0 ? { repositoryId: { notIn: ignored } } : {}),
+      },
       orderBy: { createdAt: "asc" },
       take: 5_000,
       select: {
@@ -1034,10 +1083,19 @@ export async function listRunnerDailyStats(
   now: Date = new Date(),
 ): Promise<RunnerStatPoint[]> {
   const inst = await visibleInstallation(scope, installationId);
-  const fromDay = localDay(rangeStart(opts.range ?? "30d", now), inst.timezone);
+  const { fromDay } = rangeWindow(opts.range ?? "30d", now, inst.timezone);
+  const ignored = await ignoredRepoIds(installationId);
   const rows = await db.dailyRunnerStat.findMany({
     where: {
       installationId,
+      // Repo runner stats of ignored repositories (until the purge drops them).
+      ...(ignored.length > 0
+        ? {
+            AND: ignored.map((id) => ({
+              NOT: { runnerKey: { startsWith: `shr:${id}:` } },
+            })),
+          }
+        : {}),
       day: { gte: new Date(`${fromDay}T00:00:00.000Z`) },
       ...(opts.runnerKey ? { runnerKey: opts.runnerKey } : {}),
     },
@@ -1058,4 +1116,86 @@ export async function listRunnerDailyStats(
     queueP95: histogramPercentile(mergeHistograms(r.queueHist), 0.95),
     speedIndex: r.speedIndex,
   }));
+}
+
+// ---------- paged reads (UI overhaul §4.1) ----------
+
+export type RunnerQuery = ListQuery<RunnerSortKey, RunnerFilter> & {
+  repositoryId?: string;
+};
+
+/** One page of the runners table: state chips, search by name or label, sort. */
+export async function listRunnersPage(
+  scope: TenantScope,
+  installationId: bigint,
+  query: RunnerQuery,
+  now: Date = new Date(),
+): Promise<
+  Page<RunnerDto> &
+    Omit<RunnerList, "runners"> & {
+      counts: { all: number; busy: number; idle: number; offline: number };
+      /** Mean 7-day utilisation of the runners with enough samples. */
+      utilisation: number | null;
+      /** Repositories with repo-level runners, for the repository filter. */
+      repositoryOptions: Array<{ id: string; fullName: string }>;
+    }
+> {
+  const { runners, ...meta } = await listRunners(scope, installationId, now);
+  const counts = { all: runners.length, busy: 0, idle: 0, offline: 0 };
+  for (const r of runners) counts[runnerState(r)]++;
+  const sampled = runners.filter(
+    (r) =>
+      !r.utilisation7d.insufficientSamples && r.utilisation7d.value != null,
+  );
+  const repos = new Map(
+    runners.flatMap((r) =>
+      r.repository ? [[r.repository.id, r.repository.fullName] as const] : [],
+    ),
+  );
+  return {
+    ...meta,
+    ...pageRunners(runners, query),
+    counts,
+    utilisation:
+      sampled.length > 0
+        ? sampled.reduce((s, r) => s + r.utilisation7d.value!, 0) /
+          sampled.length
+        : null,
+    repositoryOptions: [...repos.entries()]
+      .map(([id, fullName]) => ({ id, fullName }))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName)),
+  };
+}
+
+const queueMeta = (q: LiveQueue): Omit<LiveQueue, "groups" | "jobs"> => ({
+  at: q.at,
+  approvals: q.approvals,
+  stuck: q.stuck,
+  oldestAgeS: q.oldestAgeS,
+});
+
+export type QueueQuery = ListQuery<QueueSortKey, QueueFilter> & {
+  repositoryId?: string;
+};
+
+/** The live queue grouped by labels and repository, paged (default: oldest first). */
+export async function listQueueGroups(
+  scope: TenantScope,
+  installationId: bigint,
+  query: QueueQuery,
+  now: Date = new Date(),
+): Promise<Page<QueueGroupDto> & Omit<LiveQueue, "groups" | "jobs">> {
+  const live = await getLiveQueue(scope, installationId, now);
+  return { ...queueMeta(live), ...pageQueueGroups(live.groups, query) };
+}
+
+/** The live queue as one flat list of queued jobs, paged. */
+export async function listQueuedJobs(
+  scope: TenantScope,
+  installationId: bigint,
+  query: QueueQuery,
+  now: Date = new Date(),
+): Promise<Page<QueueJobDto> & Omit<LiveQueue, "groups" | "jobs">> {
+  const live = await getLiveQueue(scope, installationId, now);
+  return { ...queueMeta(live), ...pageQueueJobs(live.jobs, query) };
 }

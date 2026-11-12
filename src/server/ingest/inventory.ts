@@ -45,6 +45,11 @@ export function installationFields(gh: GhInstallation) {
   };
 }
 
+/**
+ * Inventory columns of a repository. Never includes the ignore state
+ * (`ignoredAt`, `ignoredByUserId`, `ignorePurgedAt`): an ignored repo stays
+ * ignored across renames, removals and re-adds.
+ */
 export function repositoryFields(installationId: bigint, repo: GhRepository) {
   const [ownerFromFullName = "", nameFromFullName = repo.name] =
     repo.full_name.split("/");
@@ -55,6 +60,7 @@ export function repositoryFields(installationId: bigint, repo: GhRepository) {
     fullName: repo.full_name,
     private: repo.private,
     ...(repo.archived !== undefined ? { archived: repo.archived } : {}),
+    ...(repo.fork !== undefined ? { fork: repo.fork } : {}),
     ...(repo.default_branch ? { defaultBranch: repo.default_branch } : {}),
     removedAt: null,
   };
@@ -122,8 +128,23 @@ export async function upsertRepositories(
         update: fields,
       });
     }
+    // Ignored repos get no sync state: nothing is loaded for them, and the
+    // purge waits for their SyncState to be gone.
+    const ignored = new Set(
+      (
+        await tx.repository.findMany({
+          where: {
+            id: { in: repos.map((r) => BigInt(r.id)) },
+            ignoredAt: { not: null },
+          },
+          select: { id: true },
+        })
+      ).map((r) => r.id),
+    );
     await tx.syncState.createMany({
-      data: repos.map((r) => ({ repositoryId: BigInt(r.id), installationId })),
+      data: repos
+        .filter((r) => !ignored.has(BigInt(r.id)))
+        .map((r) => ({ repositoryId: BigInt(r.id), installationId })),
       skipDuplicates: true,
     });
   });

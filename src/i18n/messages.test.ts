@@ -48,10 +48,132 @@ describe("messages", () => {
           .reduce<unknown>((o, p) => (o as Record<string, unknown>)[p], de),
       ]),
     );
-    const vars = (s: string) =>
-      [...s.matchAll(/\{(\w+)[,}]/g)].map((m) => m[1]).sort();
+    const vars = (s: string) => [...new Set(icuArgs(s))].sort();
     for (const k of Object.keys(en_))
       expect(vars(de_[k] as string), k).toEqual(vars(en_[k] as string));
+  });
+});
+
+/**
+ * The argument names of an ICU message, skipping the selector arms of
+ * plural and select (whose text is translated): "{n, plural, one {# day}}"
+ * gives ["n"], "{bucket, select, week {Woche}}" gives ["bucket"].
+ */
+function icuArgs(msg: string): string[] {
+  const out: string[] = [];
+  let i = 0;
+  const parse = (depthEnd: boolean): void => {
+    while (i < msg.length) {
+      const c = msg[i]!;
+      if (c === "'") {
+        // Quoted literal text.
+        const end = msg.indexOf("'", i + 1);
+        i = end < 0 ? msg.length : end + 1;
+      } else if (c === "}") {
+        if (depthEnd) {
+          i++;
+          return;
+        }
+        i++;
+      } else if (c === "{") {
+        i++;
+        const m = /^\s*(\w+)\s*([,}])/.exec(msg.slice(i));
+        if (!m) continue;
+        out.push(m[1]!);
+        i += m[0].length;
+        if (m[2] === "}") continue;
+        const type = /^\s*(\w+)\s*([,}])/.exec(msg.slice(i));
+        if (!type) continue;
+        i += type[0].length;
+        if (type[2] === "}") continue;
+        if (type[1] === "plural" || type[1] === "select") {
+          // Arms: selector {message} ... until the closing brace.
+          while (i < msg.length) {
+            const arm = /^\s*(?:offset:\d+\s*)?(=?[\w-]+)\s*\{/.exec(
+              msg.slice(i),
+            );
+            if (!arm) {
+              const close = msg.indexOf("}", i);
+              i = close < 0 ? msg.length : close + 1;
+              break;
+            }
+            i += arm[0].length;
+            parse(true);
+          }
+        } else {
+          const close = msg.indexOf("}", i);
+          i = close < 0 ? msg.length : close + 1;
+        }
+      } else i++;
+    }
+  };
+  parse(false);
+  return out;
+}
+
+describe("glossary (UI overhaul §5)", () => {
+  const value = (messages: unknown, key: string) =>
+    key
+      .split(".")
+      .reduce<unknown>(
+        (o, p) => (o as Record<string, unknown>)[p],
+        messages,
+      ) as string;
+
+  // Internal terms the UI no longer shows, in either language.
+  const internal =
+    /\b(reconcile[ds]?|backfill|rollups?|dirty|SKUs?|pools?|wall clock|critical path|speed index|ingestion lag)\b/i;
+  const glossaryKeys = [
+    "account.lastReconciled",
+    "freshness.reasons.noReconcile",
+    "run.wall",
+    "run.critical",
+    "run.placeholder",
+    "syncHealth.lastReconcile",
+    "syncHealth.lagP50",
+    "syncHealth.dirty",
+    "syncHealth.backfillDays",
+    "syncHealth.cursor",
+    "syncHealth.backfill",
+    "syncHealth.needsResync",
+    "runnerData.speedIndex",
+    "runners.pools.title",
+    "runners.pools.pool",
+    "workflow.pool",
+    "costs.bySku.title",
+    "costs.bySku.sku",
+    "costs.unmatched",
+  ];
+
+  it("uses the plain wording for internal terms in both languages", () => {
+    for (const key of glossaryKeys) {
+      // Placeholders such as {reconcile} are not shown text.
+      const text = (m: unknown) => value(m, key).replace(/\{\w+\}/g, "");
+      expect(text(en), `en:${key}`).not.toMatch(internal);
+      expect(text(de), `de:${key}`).not.toMatch(internal);
+    }
+  });
+
+  it("German glossary entries are not left in English", () => {
+    const spot: Record<string, string> = {
+      "syncHealth.backfill": "Verlaufsimport",
+      "syncHealth.cursor": "Neuester importierter Lauf",
+      "syncHealth.dirty": "Tagesauswertungen, die neu berechnet werden",
+      "run.wall": "Gesamtdauer",
+      "run.critical": "längste Kette abhängiger Jobs",
+      "costs.bySku.sku": "Runner-Typ",
+      "runners.pools.pool": "Runner-Gruppe (Labels)",
+      "charts.p50": "typisch (Median)",
+      "charts.p95": "95 % fertig innerhalb",
+      "ignore.badge.ignored": "Ignoriert",
+      "table.range": "{from}-{to} von {total}",
+      "repos.chips.ignored": "Ignorierte anzeigen",
+      "management.audit.actionLabel.REPO_IGNORE": "Repository ignoriert",
+    };
+    for (const [key, text] of Object.entries(spot)) {
+      expect(value(de, key), key).toBe(text);
+      expect(value(de, key), key).not.toBe(value(en, key));
+    }
   });
 });
 

@@ -92,7 +92,14 @@ export function AuditTable({
                 ) : null}
               </TableCell>
               <TableCell className="text-xs">
-                <span className="font-mono">{e.action}</span>
+                <span className="block">
+                  {t.has(`actionLabel.${e.action}`)
+                    ? t(`actionLabel.${e.action}`)
+                    : e.action}
+                </span>
+                <span className="font-mono text-muted-foreground">
+                  {e.action}
+                </span>
                 {e.batchId ? (
                   <Link
                     href={filterHref({ batch: e.batchId })}

@@ -2,8 +2,9 @@ import { getTranslations } from "next-intl/server";
 import { DependabotSection } from "@/components/management/sections";
 import { loadAccount, orNotFound } from "@/lib/account-page";
 import { getManagementState } from "@/server/data/management";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Dependabot" };
+export const generateMetadata = accountMeta("dependabot");
 
 /** Open Dependabot alerts by severity × repo; read-only (design §7). */
 export default async function DependabotPage({

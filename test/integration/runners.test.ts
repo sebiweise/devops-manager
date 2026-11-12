@@ -12,6 +12,7 @@ import type * as Reconcile from "@/server/ingest/reconcile";
 import type * as RunnerRollup from "@/server/ingest/runner-rollup";
 import type * as RunnerSync from "@/server/ingest/runners";
 import type * as Runners from "@/server/data/runners";
+import type * as Summaries from "@/server/data/summaries";
 import type * as Installations from "@/server/data/installations";
 import type * as Db from "@/server/db";
 import type { TenantScope } from "@/server/authz/scope";
@@ -45,6 +46,7 @@ let runners: typeof Runners;
 let installations: typeof Installations;
 let runnerSync: typeof RunnerSync;
 let runnerRollup: typeof RunnerRollup;
+let summaries: typeof Summaries;
 
 const scope = (installationIds: bigint[] = [A, B]): TenantScope => ({
   userId: "user-admin",
@@ -76,6 +78,7 @@ describe.skipIf(!DATABASE_URL)("runners", () => {
     reconcile = await import("@/server/ingest/reconcile");
     budget = await import("@/server/ingest/budget");
     runners = await import("@/server/data/runners");
+    summaries = await import("@/server/data/summaries");
     installations = await import("@/server/data/installations");
     runnerSync = await import("@/server/ingest/runners");
     runnerRollup = await import("@/server/ingest/runner-rollup");
@@ -527,6 +530,12 @@ describe.skipIf(!DATABASE_URL)("runners", () => {
       noMatchingRunner: false,
     });
     expect(q.stuck).toBe(2);
+    // The start page card and the overview tile count the same stuck jobs.
+    const stuckOnCard = async () =>
+      (await summaries.getAccountSummaries(scope(), new Date(now))).find(
+        (s) => s.installationId === String(A),
+      )!.queuedStuck;
+    expect(await stuckOnCard()).toBe(q.stuck);
     expect(q.approvals.map((j) => j.jobId)).toEqual(["5"]);
     const group = q.groups.find((g) => g.labelKey === "linux,self-hosted")!;
     expect(group).toMatchObject({
@@ -543,6 +552,8 @@ describe.skipIf(!DATABASE_URL)("runners", () => {
     });
     const after = await runners.getLiveQueue(scope(), A, new Date(now));
     expect(after.jobs.find((j) => j.jobId === "1")!.stuck).toBe(false);
+    expect(after.stuck).toBe(1);
+    expect(await stuckOnCard()).toBe(1);
   });
 
   it("samples lazily at most once per two minutes", async () => {

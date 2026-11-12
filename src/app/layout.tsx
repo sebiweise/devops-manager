@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale } from "next-intl/server";
+import { parseTheme, THEME_COOKIE, themeClass } from "@/lib/theme";
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
@@ -14,9 +16,10 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const locale = await getLocale();
+  const [locale, jar] = await Promise.all([getLocale(), cookies()]);
+  const theme = parseTheme(jar.get(THEME_COOKIE)?.value);
   return (
-    <html lang={locale}>
+    <html lang={locale} className={themeClass(theme)}>
       <body className="min-h-dvh antialiased">
         <NextIntlClientProvider>{children}</NextIntlClientProvider>
       </body>

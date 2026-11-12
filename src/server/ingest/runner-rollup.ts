@@ -32,7 +32,15 @@ import type { Deadline } from "./budget";
  * jobs that started that day; busyS and the peak use the overlap of every job
  * with the day; onlineS (self-hosted only) is the union of online sample
  * intervals and job intervals inside the day.
+ *
+ * `keepOnline` recomputes only the job-derived fields of a day whose runner
+ * samples are already pruned (older than SAMPLE_RETENTION_DAYS): the stored
+ * onlineS of each self-hosted row is kept, and a row that only had online
+ * time stays. The ignore purge uses it for the days between the sample and
+ * the raw retention.
  */
+
+export type RunnerDayOptions = { keepOnline?: boolean };
 
 const FAILURES = new Set<Conclusion>([
   "FAILURE",
@@ -58,7 +66,9 @@ export async function rollupRunnerDay(
   installationId: bigint,
   day: string,
   timezone: string,
+  opts: RunnerDayOptions = {},
 ): Promise<number> {
+  const dayDate = new Date(`${day}T00:00:00.000Z`);
   const [bounds] = await db.$queryRaw<Array<{ lo: Date; hi: Date }>>`
     SELECT (${day}::date::timestamp AT TIME ZONE ${timezone}::text) AS lo,
            ((${day}::date + 1)::timestamp AT TIME ZONE ${timezone}::text) AS hi`;
@@ -88,13 +98,26 @@ export async function rollupRunnerDay(
     },
   });
   // Samples within the day, plus the first one after it (its interval reaches back).
-  const samples = await db.runnerSample.findMany({
-    where: {
-      installationId,
-      sampledAt: { gt: bounds!.lo, lte: new Date(hi + 86_400_000) },
-    },
-    orderBy: { sampledAt: "asc" },
-  });
+  const samples = opts.keepOnline
+    ? []
+    : await db.runnerSample.findMany({
+        where: {
+          installationId,
+          sampledAt: { gt: bounds!.lo, lte: new Date(hi + 86_400_000) },
+        },
+        orderBy: { sampledAt: "asc" },
+      });
+  // keepOnline: the stored online time per self-hosted stat key.
+  const storedOnline = new Map<string, { kind: RunnerKind; onlineS: bigint }>();
+  if (opts.keepOnline)
+    for (const r of await db.dailyRunnerStat.findMany({
+      where: { installationId, day: dayDate, onlineS: { not: null } },
+      select: { runnerKey: true, runnerKind: true, onlineS: true },
+    }))
+      storedOnline.set(r.runnerKey, {
+        kind: r.runnerKind,
+        onlineS: r.onlineS!,
+      });
   // Runner cache key -> stat key (repo runners by repository and name).
   const statKeyOf = new Map(runners.map((r) => [r.key, runnerStatKey(r)]));
   const removedAt = new Map<string, Date | null>();
@@ -134,6 +157,9 @@ export async function rollupRunnerDay(
   for (const key of samplesBy.keys())
     if (!acc.has(key))
       acc.set(key, { kind: "SELF_HOSTED", jobs: [], started: [] });
+  for (const [key, stored] of storedOnline)
+    if (!acc.has(key) && stored.onlineS > 0n)
+      acc.set(key, { kind: stored.kind, jobs: [], started: [] });
 
   const startedAll = keyed.filter(
     (j) => j.startedAt!.getTime() >= lo && j.startedAt!.getTime() < hi,
@@ -145,15 +171,20 @@ export async function rollupRunnerDay(
       .filter((i): i is Interval => i !== null)
       .map((i) => ({ start: Math.max(i.start, lo), end: Math.min(i.end, hi) }))
       .filter((i) => i.end > i.start);
-    const online = selfHosted
-      ? Math.round(onlineSeconds(samplesBy.get(runnerKey) ?? [], a.jobs, w, hi))
-      : null;
+    const stored = storedOnline.get(runnerKey);
+    const online = !selfHosted
+      ? null
+      : stored
+        ? Number(stored.onlineS)
+        : Math.round(
+            onlineSeconds(samplesBy.get(runnerKey) ?? [], a.jobs, w, hi),
+          );
     const removed = selfHosted ? (removedAt.get(runnerKey) ?? null) : null;
     return {
       installationId,
       runnerKey,
       runnerKind: a.kind,
-      day: new Date(`${day}T00:00:00.000Z`),
+      day: dayDate,
       jobs: a.started.length,
       failures: a.started.filter(
         (j) => j.conclusion && FAILURES.has(j.conclusion),
@@ -179,7 +210,7 @@ export async function rollupRunnerDay(
 
   await db.$transaction([
     db.dailyRunnerStat.deleteMany({
-      where: { installationId, day: new Date(`${day}T00:00:00.000Z`) },
+      where: { installationId, day: dayDate },
     }),
     db.dailyRunnerStat.createMany({ data: kept }),
   ]);
@@ -192,11 +223,12 @@ export async function rollupRunnerDays(
   days: Iterable<string>,
   timezone: string,
   deadline: Deadline,
+  opts: RunnerDayOptions = {},
 ): Promise<number> {
   let done = 0;
   for (const day of [...new Set(days)].sort()) {
     if (deadline.expired(5_000)) break;
-    await rollupRunnerDay(installationId, day, timezone);
+    await rollupRunnerDay(installationId, day, timezone, opts);
     done++;
   }
   return done;

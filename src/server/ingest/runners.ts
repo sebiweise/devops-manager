@@ -8,6 +8,7 @@ import {
   type Deadline,
   type RateBudget,
 } from "./budget";
+import { activeRepoWhere } from "./active-repos";
 import { errorStatus, pages, type GitHubApi } from "./github-client";
 import { redactError } from "./webhook";
 
@@ -348,7 +349,7 @@ export async function sampleRunners(
     const known = await db.repository.findMany({
       where: {
         installationId: ctx.installationId,
-        removedAt: null,
+        ...activeRepoWhere,
         OR: [{ hasSelfHosted: true }, { id: { in: knownRunnerRepos } }],
       },
       orderBy: { id: "asc" },
@@ -375,7 +376,7 @@ export async function sampleRunners(
       const rest = await db.repository.findMany({
         where: {
           installationId: ctx.installationId,
-          removedAt: null,
+          ...activeRepoWhere,
           ...(after != null ? { id: { gt: after } } : {}),
         },
         orderBy: { id: "asc" },

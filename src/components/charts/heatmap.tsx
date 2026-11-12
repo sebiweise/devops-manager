@@ -4,10 +4,10 @@ import { cn } from "@/lib/utils";
 /** Literal classes so Tailwind sees them; step 0 is "no data". */
 const STEPS = [
   "bg-muted",
-  "bg-chart-1/25",
-  "bg-chart-1/50",
-  "bg-chart-1/75",
-  "bg-chart-1",
+  "bg-seq-1",
+  "bg-seq-2",
+  "bg-seq-3",
+  "bg-seq-4",
 ] as const;
 
 export type HeatmapCell = { value: number | null; title: string };

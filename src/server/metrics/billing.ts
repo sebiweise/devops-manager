@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { SkuRateLike } from "./classify";
+import { rateFor } from "./cost";
 
 /**
  * GitHub enhanced billing usage (design §6.6) and the cost arithmetic on top
@@ -119,6 +121,34 @@ export function aggregateUsageItems(
     prev.netAmount += i.netAmount;
   }
   return [...out.values()];
+}
+
+export type MinuteItemLike = {
+  product: string;
+  unitType: string;
+  sku: string;
+  date: Date;
+  quantity: unknown;
+};
+
+/**
+ * Minutes counted against the included minutes: the billed quantity of the
+ * Actions minute items times the runner type's minute multiplier on that
+ * day (1 when the SKU is unknown). The start page card and the costs page
+ * both use this, so they show the same "minutes used".
+ */
+export function includedMinutesUsed(
+  items: ReadonlyArray<MinuteItemLike>,
+  rates: ReadonlyArray<SkuRateLike>,
+): number {
+  let used = 0;
+  for (const i of items) {
+    if (!isActionsProduct(i.product) || !isMinutesUnit(i.unitType)) continue;
+    const multiplier =
+      rateFor(rates, skuKeyOf(i.sku), i.date)?.minuteMultiplier ?? 1;
+    used += Number(i.quantity) * multiplier;
+  }
+  return used;
 }
 
 export function isActionsProduct(product: string): boolean {

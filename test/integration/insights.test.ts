@@ -337,7 +337,7 @@ describe.skipIf(!DATABASE_URL)("insights", () => {
       const calls: Array<() => Promise<unknown>> = [
         () => insights.getFreshness(onlyA, B, now),
         () => insights.getInstallationOverview(onlyA, B, "7d", now),
-        () => insights.listRepoStats(onlyA, B, now),
+        () => insights.listRepoStats(onlyA, B, {}, now),
         () => insights.listWorkflowStats(onlyA, B, {}, now),
         () => insights.getWorkflowDetail(onlyA, B, 401n, "7d", now),
         () => insights.listRuns(onlyA, B),
@@ -389,9 +389,12 @@ describe.skipIf(!DATABASE_URL)("insights", () => {
       expect(wfA.map((w) => w.workflowId)).toEqual(["301"]);
       const wfB = await insights.listWorkflowStats(both, B, {}, now);
       expect(wfB.map((w) => w.workflowId)).toEqual(["401"]);
-      const repoStats = await insights.listRepoStats(both, B, now);
-      expect(repoStats.map((r) => r.fullName)).toEqual(["example-org/repo-b"]);
-      expect(repoStats[0]!.runs7d).toBe(3);
+      const repoStats = await insights.listRepoStats(both, B, {}, now);
+      expect(repoStats.rows.map((r) => r.fullName)).toEqual([
+        "example-org/repo-b",
+      ]);
+      expect(repoStats.total).toBe(1);
+      expect(repoStats.rows[0]!.runs).toBe(3);
       const oA = await insights.getInstallationOverview(both, A, "7d", now);
       const oB = await insights.getInstallationOverview(both, B, "7d", now);
       expect(oA.summary.p50).toBe(110);

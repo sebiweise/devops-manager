@@ -1,4 +1,5 @@
 import "server-only";
+import { storeRepoCounts } from "@/server/ingest/repo-counts";
 import { LRUCache } from "lru-cache";
 import { mapLimit } from "@/lib/concurrency";
 import type { TenantScope } from "@/server/authz/scope";
@@ -225,6 +226,17 @@ async function loadAlerts(
       counts,
     };
   });
+  // The live read also refreshes the cached counts of the repositories table.
+  await storeRepoCounts(
+    inst.id,
+    rows
+      .filter((r) => r.status === "ok")
+      .map((r) => ({
+        repositoryId: BigInt(r.repositoryId),
+        openAlertCount: SEVERITIES.reduce((s, k) => s + r.counts[k], 0),
+        openAlertHighCount: r.counts.critical + r.counts.high,
+      })),
+  ).catch(() => undefined);
   const rank = (s: Severity) => SEVERITIES.indexOf(s);
   alerts.sort(
     (a, b) =>

@@ -1,12 +1,7 @@
-import type {
-  Freshness,
-  JobBreakdown,
-  RepoStat,
-  WorkflowStat,
-} from "@/server/data/insights";
+import type { Freshness, JobBreakdown } from "@/server/data/insights";
 
 /**
- * View logic of the insights pages: sorting, leaderboards, the hosted vs
+ * View logic of the insights pages: sorting, the hosted vs
  * self-hosted comparison and the stale-banner reasons. Pure functions over
  * the DTOs of `src/server/data/insights`.
  */
@@ -112,130 +107,6 @@ export function staleReasons(f: Freshness, now: Date): StaleReason[] {
     out.push("noReconcile");
   if (f.failedDeliveries + f.deadDeliveries > 0) out.push("failedDeliveries");
   return out;
-}
-
-// ---------- repositories ----------
-
-export const REPO_SORTS = [
-  "name",
-  "lastRun",
-  "runs",
-  "success",
-  "p50",
-  "minutes",
-] as const;
-export type RepoSort = (typeof REPO_SORTS)[number];
-
-export function parseRepoSort(value: string | undefined): RepoSort {
-  return (REPO_SORTS as readonly string[]).includes(value ?? "")
-    ? (value as RepoSort)
-    : "name";
-}
-
-/** Nulls always sort last, whatever the direction. */
-function compareNullable(
-  a: number | string | null,
-  b: number | string | null,
-  dir: 1 | -1,
-): number {
-  if (a === b) return 0;
-  if (a === null) return 1;
-  if (b === null) return -1;
-  if (typeof a === "string" && typeof b === "string")
-    return a.localeCompare(b) * dir;
-  return (a < b ? -1 : 1) * dir;
-}
-
-export function sortRepoStats(
-  rows: ReadonlyArray<RepoStat>,
-  sort: RepoSort,
-  dir: "asc" | "desc",
-  query?: string,
-): RepoStat[] {
-  const q = query?.trim().toLowerCase();
-  const d = dir === "asc" ? 1 : -1;
-  const key = (r: RepoStat): number | string | null => {
-    switch (sort) {
-      case "name":
-        return r.fullName.toLowerCase();
-      case "lastRun":
-        return r.lastRun?.createdAt ?? null;
-      case "runs":
-        return r.runs7d;
-      case "success":
-        return r.successRate7d;
-      case "p50":
-        return r.p50Duration7d;
-      case "minutes":
-        return r.billableMinEst30d;
-    }
-  };
-  return rows
-    .filter((r) => !q || r.fullName.toLowerCase().includes(q))
-    .slice()
-    .sort(
-      (a, b) =>
-        compareNullable(key(a), key(b), d) ||
-        a.fullName.localeCompare(b.fullName),
-    );
-}
-
-// ---------- workflow leaderboards ----------
-
-export type Leaderboards = {
-  slowest: WorkflowStat[];
-  flakiest: WorkflowStat[];
-  mostMinutes: WorkflowStat[];
-  lowestSuccess: WorkflowStat[];
-  regressions: WorkflowStat[];
-};
-
-export function leaderboards(
-  stats: ReadonlyArray<WorkflowStat>,
-  limit = 10,
-): Leaderboards {
-  const top = (
-    rows: WorkflowStat[],
-    by: (w: WorkflowStat) => number,
-    dir: 1 | -1 = -1,
-  ) =>
-    rows
-      .slice()
-      .sort(
-        (a, b) =>
-          (by(a) - by(b)) * dir ||
-          a.repoFullName.localeCompare(b.repoFullName) ||
-          a.workflowName.localeCompare(b.workflowName),
-      )
-      .slice(0, limit);
-  const all = [...stats];
-  return {
-    slowest: top(
-      all.filter((w) => w.summary.p95 != null && enoughData(w.summary.n)),
-      (w) => w.summary.p95!,
-    ),
-    flakiest: top(
-      all.filter((w) => (w.summary.flakyRate ?? 0) > 0),
-      (w) => w.summary.flakyRate!,
-    ),
-    mostMinutes: top(
-      all.filter((w) => w.billableMinEst > 0),
-      (w) => w.billableMinEst,
-    ),
-    lowestSuccess: top(
-      all.filter(
-        (w) =>
-          w.summary.successRate != null &&
-          w.summary.success + w.summary.failure >= MIN_SAMPLES,
-      ),
-      (w) => w.summary.successRate!,
-      1,
-    ),
-    regressions: top(
-      all.filter((w) => w.regression),
-      (w) => w.regression!.ratio,
-    ),
-  };
 }
 
 // ---------- hosted vs self-hosted ----------

@@ -1,12 +1,18 @@
+import { X } from "lucide-react";
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { Button } from "@/components/ui/button";
 import { CONCLUSION_FILTERS } from "@/lib/insights-view";
 
-/** GET form for the run list filters (branch, event, conclusion, actor). */
+/**
+ * GET form for the run list filters (branch, event, conclusion, actor): one
+ * compact row with visible labels, and "Clear filters" while any is set.
+ */
 export async function RunFilters({
   action,
   hidden,
   values,
+  clearHref,
 }: {
   action: string;
   hidden: Record<string, string>;
@@ -16,21 +22,23 @@ export async function RunFilters({
     conclusion?: string;
     actor?: string;
   };
+  clearHref?: string;
 }) {
   const t = await getTranslations();
   const input =
-    "h-8 w-36 rounded-md border bg-background px-2 text-sm placeholder:text-muted-foreground";
+    "h-8 w-32 rounded-md border bg-background px-2 text-sm placeholder:text-muted-foreground";
+  const label = "flex items-center gap-1.5 text-xs text-muted-foreground";
   return (
     <form
       action={action}
       method="get"
       aria-label={t("runs.filters")}
-      className="flex flex-wrap items-end gap-2"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2"
     >
       {Object.entries(hidden).map(([k, v]) => (
         <input key={k} type="hidden" name={k} value={v} />
       ))}
-      <label className="flex flex-col gap-1 text-xs">
+      <label className={label}>
         {t("runs.branch")}
         <input
           name="branch"
@@ -38,7 +46,7 @@ export async function RunFilters({
           className={input}
         />
       </label>
-      <label className="flex flex-col gap-1 text-xs">
+      <label className={label}>
         {t("runs.event")}
         <input
           name="event"
@@ -47,7 +55,7 @@ export async function RunFilters({
           className={input}
         />
       </label>
-      <label className="flex flex-col gap-1 text-xs">
+      <label className={label}>
         {t("runs.conclusion")}
         <select
           name="conclusion"
@@ -62,7 +70,7 @@ export async function RunFilters({
           ))}
         </select>
       </label>
-      <label className="flex flex-col gap-1 text-xs">
+      <label className={label}>
         {t("runs.actor")}
         <input
           name="actor"
@@ -73,6 +81,15 @@ export async function RunFilters({
       <Button type="submit" size="sm" variant="outline">
         {t("repos.apply")}
       </Button>
+      {clearHref ? (
+        <Link
+          href={clearHref}
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        >
+          <X aria-hidden="true" className="size-3" />
+          {t("table.clearFilters")}
+        </Link>
+      ) : null}
     </form>
   );
 }

@@ -44,6 +44,7 @@ const costs = (c: Partial<Costs>): Costs => ({
   },
   bySku: [],
   byRepo: [],
+  ignored: null,
   byDay: [
     {
       day: "2026-11-01",
@@ -88,7 +89,7 @@ describe("IncludedGauge", () => {
       />,
     );
     expect(html).toContain("Above the included minutes.");
-    expect(html).toContain("bg-destructive");
+    expect(html).toContain("bg-status-critical");
     expect(html).toContain("(estimated), with the projection");
   });
 });

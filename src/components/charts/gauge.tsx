@@ -35,13 +35,13 @@ export function Gauge({
         <div
           className={cn(
             "absolute inset-y-0 left-0",
-            over ? "bg-destructive" : "bg-chart-2",
+            over ? "bg-status-critical" : "bg-series-1",
           )}
           style={{ width: clamp(usedPct) }}
         />
         {projectedWidth > 0 ? (
           <div
-            className="absolute inset-y-0 bg-chart-2/40 bg-[repeating-linear-gradient(45deg,transparent_0_3px,var(--background)_3px_5px)]"
+            className="absolute inset-y-0 bg-series-1/40 bg-[repeating-linear-gradient(45deg,transparent_0_3px,var(--background)_3px_5px)]"
             style={{ left: clamp(usedPct), width: clamp(projectedWidth) }}
           />
         ) : null}
@@ -58,7 +58,7 @@ export function Gauge({
             aria-hidden="true"
             className={cn(
               "inline-block size-3 rounded-sm",
-              over ? "bg-destructive" : "bg-chart-2",
+              over ? "bg-status-critical" : "bg-series-1",
             )}
           />
           {legend.used}
@@ -66,7 +66,7 @@ export function Gauge({
         <li className="flex items-center gap-1.5">
           <span
             aria-hidden="true"
-            className="inline-block size-3 rounded-sm bg-chart-2/40 bg-[repeating-linear-gradient(45deg,transparent_0_2px,var(--background)_2px_3px)]"
+            className="inline-block size-3 rounded-sm bg-series-1/40 bg-[repeating-linear-gradient(45deg,transparent_0_2px,var(--background)_2px_3px)]"
           />
           {legend.projected}
         </li>

@@ -4,7 +4,6 @@ import { fetchInstallationRepositories } from "@/server/ingest/discovery";
 import { syncRepositorySet } from "@/server/ingest/inventory";
 import {
   inScope,
-  listInstallations,
   listRepositories,
   NotFoundError,
   type InstallationRow,
@@ -80,14 +79,4 @@ export async function liveRepositories(
       })),
     };
   }
-}
-
-/** Live repository lists of all visible installations, fetched in parallel. */
-export async function dashboardRepositories(
-  scope: TenantScope,
-): Promise<InstallationRepos[]> {
-  const installations = await listInstallations(scope);
-  return Promise.all(
-    installations.map((inst) => liveRepositories(scope, inst)),
-  );
 }

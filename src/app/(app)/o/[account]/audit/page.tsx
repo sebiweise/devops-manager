@@ -13,8 +13,9 @@ import { withParams, type SearchParams } from "@/lib/insights-view";
 import { hasRole } from "@/server/authz/roles";
 import { INSTANCE_CHAIN, listAuditEntries } from "@/server/data/audit";
 import { listRepoTargets } from "@/server/data/management";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Audit log" };
+export const generateMetadata = accountMeta("audit");
 
 /**
  * The audit log of an installation (design §7 /audit). Every role sees the
@@ -45,7 +46,9 @@ export default async function AuditPage({
         limit: 50,
       }),
     ),
-    orNotFound(listRepoTargets(scope, installation.id)),
+    orNotFound(
+      listRepoTargets(scope, installation.id, { includeIgnored: true }),
+    ),
   ]);
   const login = installation.accountLogin;
   const base = accountPath(login, "/audit");
@@ -132,7 +135,7 @@ export default async function AuditPage({
             <option value="">{t("any")}</option>
             {AUDIT_ACTIONS.map((a) => (
               <option key={a} value={a}>
-                {a}
+                {t(`actionLabel.${a}`)}
               </option>
             ))}
           </select>

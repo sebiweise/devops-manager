@@ -21,6 +21,7 @@ any number of organisations, through **one least-privilege GitHub App**.
 ## Contents
 
 - [Features by milestone](#features-by-milestone)
+- [Screenshots](#screenshots)
 - [How it works](#how-it-works)
 - [GitHub App permissions](#github-app-permissions)
 - [What is stored](#what-is-stored)
@@ -43,10 +44,59 @@ any number of organisations, through **one least-privilege GitHub App**.
 | Milestone                        | Scope                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **M0**                           | OIDC login via better-auth (generic provider, optional GitHub), sign-in gate and roles from env allowlists, installation discovery with the App JWT, onboarding with Setup URL verification, dashboard with a live repository list across installations, webhook endpoint (HMAC, dedupe, installation and repository events), encrypted token storage helpers, health and readiness probes, CSP and security headers, Docker and Vercel setups, CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| **M1** Actions insights          | Workflow runs and jobs with an order-independent fold, reconcile (replay, redelivery, incremental sync, backfill), lazy reconcile on page view and Sync now, daily rollups with histograms, success rate, p50/p95 durations, queue times, flaky-run and regression detection, estimated minutes (minutes only). Pages: installation overview (KPI tiles, runs per day, duration and queue charts, regressions, flaky jobs, success drops), repositories (sortable, filterable, 14-day sparklines), repository detail (workflows, runs with filters), workflow detail (trends, job breakdown by pool, hosted vs self-hosted), run detail (job timeline with queue, approval wait and execution, critical path, steps loaded live), workflow leaderboards, sync health (admin), freshness banner. Every chart has an aria-label, a caption and a table view (sparklines: a per-row table disclosure); the chart components are checked with axe-core in the unit tests                                                                         |
+| **M1** Actions insights          | Workflow runs and jobs with an order-independent fold, reconcile (replay, redelivery, incremental sync, backfill), lazy reconcile on page view and Sync now, daily rollups with histograms, success rate, p50/p95 durations, queue times, flaky-run and regression detection, estimated minutes (minutes only). Pages: installation overview (KPI tiles, runs per day, duration and queue charts, regressions, flaky jobs, success drops), repositories (sortable, filterable, 14-day sparklines), repository detail (workflows, runs with filters), workflow detail (trends, job breakdown by pool, hosted vs self-hosted), run detail (job timeline with queue, approval wait and execution, critical path, steps loaded live), workflow leaderboards, sync health (admin), freshness banner. Every chart has an aria-label, a caption and a table view (sparklines: one trend-table toggle per table); the chart components are checked with axe-core in the unit tests                                                                   |
 | **M2** Runners and costs         | Runner cache with sampling on reconcile and lazily on the runner and queue pages, daily discovery of repository and organisation runners, utilisation (busy / online, with the sample interval shown and "insufficient samples" below 50% coverage), speed index, infrastructure failures, concurrency timeline, pools with a weekday × hour queue heatmap, hosted vs self-hosted comparison; live queue with STUCK and no-matching-runner flags and a separate approvals section; daily billing sync for organisations (installation token) and personal accounts (optional billing credential: token or "Connect GitHub"); costs page with month picker, used vs included gauge with projection, by SKU, repository, day and workflow (estimated, scaled), estimate vs billed with flags, estimate-only fallback with the reason; `/admin/github` for the billing credential. Charts have an aria-label, a caption and a table view and are checked with axe-core                                                                          |
 | **M3** Management (this release) | Action pipeline (kill switch, per-installation toggle, live role check, App permission check, idempotency, rate limit, typed confirmations, hash-chained audit with the app user and the App identity, installation tokens narrowed per action and repository). Re-run, re-run failed, cancel and force cancel on the run page and in run lists (operator); repository and organisation variables with a name × repo matrix, inline edit with diff, the `LINUX_RUNNER` / `MACOS_RUNNER` presets, bulk set with preview diff and per-repo results, batch revert, optional value redaction (admin); open PRs per installation and per repository with checks, mergeable state, review decision and chips, SHA-pinned merge as the App including workflow-changing PRs, GitHub's 405/409 shown verbatim (admin); read-only Dependabot alerts by severity × repo with the matching Dependabot PR; audit log with filters, chain Verify, CSV export and Revert batch links; management disabled banner; the guarded Dependabot bulk merge (admin) |
 | **M4** Polish, v0.1.0            | Complete German translation, user and role management, `/admin/ops`, setup wizard, full docs, signed GHCR image                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+
+## Screenshots
+
+No images are kept in the repository; the [local demo](CONTRIBUTING.md#local-demo-with-synthetic-data)
+renders every page with synthetic data (example-org, example-user,
+repo-a..) for your own screenshots. Every page works in English and German,
+in light and dark mode (System, Light or Dark in the user menu) and down to
+phone width, where secondary columns move into a detail row that the
+chevron at the start of each row opens, so tables fit without scrolling
+sideways.
+
+- **Accounts & organisations** (start page): one card per account that opens
+  its overview, with runs and success rate over 7 days (with the change), the
+  queue, this month's minutes against the included ones, a 14-day trend,
+  counts (repositories, ignored, offline runners, failing workflows) and up
+  to three workflows that need attention; below, the most failing and
+  slowest workflows across all accounts.
+- **Account header**: the account switcher in the app header, the freshness
+  chip ("Data updated 3 min ago", Sync now), one time range for all insights
+  pages (the last 24 hours, or the last 7, 30, 90 or 365 calendar days
+  including today in the installation's time zone, the same window on every
+  page and on the start page), Settings & sync for admins, and the sections grouped into Insights,
+  Manage and Audit.
+- **Overview**: six KPIs that link to their section, runs and durations per
+  day, week or month depending on the range, and two lists: what needs
+  attention and the most active repositories.
+- **Repositories**: a paged, sortable table with search and the Failing,
+  Forks, Private, Archived and Show ignored chips; admins select rows
+  (page or all matching) to ignore them, or use the row menu.
+- **Repository**: KPIs and tabs with counts for workflows, runs, pull
+  requests, Dependabot and variables; an ignored repository shows only its
+  state and Un-ignore.
+- **Workflows**: one table with quick views (slowest, flakiest, most
+  minutes, lowest success, regressions), a repository filter and magnitude
+  bars behind the sorted column; the workflow page adds the slowest jobs,
+  hosted vs self-hosted and the run list.
+- **Run**: breadcrumbs, a one-line summary of branch, commit, event and
+  actor, run actions, KPIs, the job timeline and the steps per job.
+- **Runners**: KPIs and three views: every runner, the runner groups with a
+  weekday x hour heatmap per group, and hosted vs self-hosted for the same
+  jobs.
+- **Queue**: live KPIs including stuck jobs and jobs without a matching
+  runner, grouped by runner group or as one list of all jobs.
+- **Costs**: net this month, projection, minutes used and the estimate, the
+  included-minutes gauge and minutes per day, and one breakdown by
+  repository (estimate vs billed merged in, ignored repositories as one row),
+  by workflow and by runner type.
+- **Settings & sync**: management toggles, ignored repositories, the
+  history import per repository and diagnostics.
 
 ## How it works
 

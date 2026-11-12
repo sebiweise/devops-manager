@@ -27,7 +27,7 @@ import type {
   InstallationRepositoriesEvent,
   RepositoryEvent,
 } from "./types";
-import type { WebhookStore } from "./webhook";
+import { ignoredRepoCheck, type WebhookStore } from "./webhook";
 
 const LOCK_MS = 5 * 60 * 1000;
 
@@ -187,7 +187,7 @@ export const prismaWebhookStore: WebhookStore = {
     if (payload.repository?.id != null) {
       const repo = await db.repository.findUnique({
         where: { id: BigInt(payload.repository.id) },
-        select: { installationId: true },
+        select: { installationId: true, ignoredAt: true },
       });
       if (repo && repo.installationId !== installationId) {
         console.warn(
@@ -203,6 +203,8 @@ export const prismaWebhookStore: WebhookStore = {
           reason: "repository belongs to another installation",
         };
       }
+      const ignored = ignoredRepoCheck(event, repo?.ignoredAt != null);
+      if (ignored) return ignored;
     }
     return { ok: true, installationId };
   },
