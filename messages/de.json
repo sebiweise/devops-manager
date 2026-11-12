@@ -557,14 +557,12 @@
   "billingStatus": {
     "billed": "Abgerechnete Werte aus GitHubs Billing-Usage-Bericht.",
     "estimated": "Geschätzt aus Job-Dauern und den Preisen je Runner-Typ.",
-    "scaled": "geschätzt, auf die abgerechneten Minuten skaliert",
     "no_permission": "Kosten sind Schätzungen: Der App wurde die Organisations-Berechtigung Administration: read nicht erteilt.",
     "no_credential": "Kosten sind Schätzungen: Für dieses persönliche Konto ist kein Billing-Zugang hinterlegt.",
     "unavailable": "Kosten sind Schätzungen: GitHubs Billing-Usage-Bericht ist für dieses Konto nicht verfügbar (erweiterte Billing-Plattform nötig).",
     "credential_error": "Kosten sind Schätzungen: Der Billing-Zugang funktioniert nicht mehr.",
     "not_synced": "Kosten sind Schätzungen, bis die erste Billing-Synchronisierung gelaufen ist.",
-    "reconnect": "Verbinde den Billing-Zugang in den GitHub-Einstellungen dieser Instanz neu.",
-    "deviation": "Schätzung und Abrechnung weichen um mehr als 15 % ab, oft wegen eines unbekannten größeren Runner-Typs."
+    "reconnect": "Verbinde den Billing-Zugang in den GitHub-Einstellungen dieser Instanz neu."
   },
   "billingCredential": {
     "states": {
@@ -897,7 +895,8 @@
       "minutes": "Abgerechnete Minuten",
       "unattributed": "Keinem Repository zugeordnet",
       "unattributedInfo": "Abgerechnete Nutzung, die GitHubs Bericht ohne Repository führt.",
-      "empty": "Kein Repository hat diesen Monat Nutzung."
+      "empty": "Kein Repository hat diesen Monat Nutzung.",
+      "grossBilled": "Brutto (abgerechnet)"
     },
     "byDay": {
       "title": "Nach Tag",
@@ -910,22 +909,21 @@
     },
     "byWorkflow": {
       "title": "Nach Workflow",
-      "description": "Geschätzte Minuten je Workflow, skaliert mit abgerechnet / Σ geschätzt des Repositorys und Runner-Typs.",
+      "description": "Skalierungsfaktor = abgerechnete Minuten ÷ Summe der geschätzten Minuten desselben Repositorys und Runner-Typs.",
       "empty": "Keine geschätzten Minuten in diesem Monat.",
       "workflow": "Workflow",
       "scale": "Skalierungsfaktor",
       "scaledMin": "Skalierte Minuten",
       "scaledNet": "Skaliert netto",
-      "ignoredNote": "Workflows ignorierter Repositories fehlen; ihre Läufe sind gelöscht, daher gibt es keine Schätzung."
+      "ignoredNote": "Workflows ignorierter Repositories fehlen; ihre Läufe sind gelöscht, daher gibt es keine Schätzung.",
+      "plain": "Geschätzte Minuten je Workflow, so skaliert, dass die Summe je Repository zur Abrechnung passt."
     },
     "reconciliation": {
       "title": "Schätzung vs. Abrechnung",
-      "description": "Je Repository und Runner-Typ, auf Brutto-USD.",
       "estimate": "Schätzung",
-      "billed": "Abgerechnet",
       "deviation": "Abweichung",
       "allOk": "Die Schätzungen passen zur Abrechnung (innerhalb von 15 %).",
-      "billedGross": "Abgerechnet (brutto)"
+      "note": "Die Abweichung vergleicht die Schätzung mit dem abgerechneten Bruttobetrag je Repository und Runner-Typ; mehr als 15 % wird markiert, oft wegen eines unbekannten größeren Runner-Typs."
     },
     "breakdown": "Aufschlüsselung",
     "tabs": {

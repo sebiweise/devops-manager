@@ -157,7 +157,7 @@ export default async function CostsPage({
             <span className="font-medium text-foreground">{monthLabel}</span>
             <span
               className={cn(
-                "rounded-full border px-2 py-0.5 text-xs",
+                "rounded-full border px-2 py-0.5 text-xs text-foreground",
                 billed ? "bg-secondary" : "border-dashed",
               )}
             >
@@ -386,6 +386,7 @@ async function ReposTab({ costs, sp, base, login, locale }: TabProps) {
       label: t("costs.byRepo.repo"),
       header: t("costs.byRepo.repo"),
       sortKey: "name",
+      className: "whitespace-normal",
       cell: (r) =>
         r.repositoryFullName === IGNORED_KEY ? (
           <span className="inline-flex items-center gap-1">
@@ -430,8 +431,8 @@ async function ReposTab({ costs, sp, base, login, locale }: TabProps) {
           },
           {
             id: "gross",
-            label: t("costs.bySku.gross"),
-            header: t("costs.bySku.gross"),
+            label: t("costs.byRepo.grossBilled"),
+            header: t("costs.byRepo.grossBilled"),
             sortKey: "gross",
             align: "right",
             hideBelow: "md",
@@ -457,29 +458,19 @@ async function ReposTab({ costs, sp, base, login, locale }: TabProps) {
       magnitude: billed
         ? undefined
         : (r) => (special(r) ? null : r.estUsd / estMax),
-      cell: (r) =>
-        special(r) ? (
-          "—"
-        ) : (
-          <span className="flex flex-col items-end">
-            <span>{usd(r.estUsd)}</span>
-            <span className="text-xs text-muted-foreground">
-              {min(r.estMin)}
-            </span>
-          </span>
-        ),
+      cell: (r) => (special(r) ? "—" : usd(r.estUsd)),
+    },
+    {
+      id: "estMin",
+      label: t("costs.bySku.estMin"),
+      header: t("costs.bySku.estMin"),
+      align: "right",
+      // With a bill the estimated minutes are a detail of the row.
+      ...(billed ? { expanderOnly: true } : { hideBelow: "sm" as const }),
+      cell: (r) => (special(r) ? "—" : min(r.estMin)),
     },
     ...(billed
       ? ([
-          {
-            id: "billed",
-            label: t("costs.reconciliation.billed"),
-            header: t("costs.reconciliation.billedGross"),
-            align: "right",
-            hideBelow: "lg",
-            cell: (r) =>
-              r.billedGrossUsd == null ? "—" : usd(r.billedGrossUsd),
-          },
           {
             id: "deviation",
             label: t("costs.reconciliation.deviation"),
@@ -554,7 +545,7 @@ async function ReposTab({ costs, sp, base, login, locale }: TabProps) {
       ) : null}
       {billed ? (
         <p className="text-xs text-muted-foreground">
-          {t("costs.reconciliation.description")} {t("billingStatus.deviation")}
+          {t("costs.reconciliation.note")}
         </p>
       ) : null}
     </div>
@@ -576,6 +567,7 @@ async function WorkflowsTab({ costs, sp, base, login, locale }: TabProps) {
       label: t("costs.byWorkflow.workflow"),
       header: t("costs.byWorkflow.workflow"),
       sortKey: "name",
+      className: "whitespace-normal",
       cell: (w) => (
         <span className="flex flex-col">
           <Link
@@ -605,6 +597,7 @@ async function WorkflowsTab({ costs, sp, base, login, locale }: TabProps) {
       header: t("costs.bySku.estUsd"),
       sortKey: "estimate",
       align: "right",
+      hideBelow: "sm",
       cell: (w) => usd(w.estUsd),
     },
     ...(billed
@@ -612,7 +605,14 @@ async function WorkflowsTab({ costs, sp, base, login, locale }: TabProps) {
           {
             id: "scale",
             label: t("costs.byWorkflow.scale"),
-            header: t("costs.byWorkflow.scale"),
+            header: (
+              <span className="inline-flex items-center gap-1">
+                {t("costs.byWorkflow.scale")}
+                <InfoTip label={t("costs.byWorkflow.scale")}>
+                  {t("costs.byWorkflow.description")}
+                </InfoTip>
+              </span>
+            ),
             align: "right",
             hideBelow: "lg",
             cell: (w) =>
@@ -643,10 +643,8 @@ async function WorkflowsTab({ costs, sp, base, login, locale }: TabProps) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-muted-foreground">
-        {billed
-          ? `${t("billingStatus.scaled")}: ${t("costs.byWorkflow.description")}`
-          : t("billingStatus.estimated")}{" "}
-        {t("costs.byWorkflow.ignoredNote")}
+        {billed ? t("costs.byWorkflow.plain") : t("billingStatus.estimated")}
+        {costs.ignored ? ` ${t("costs.byWorkflow.ignoredNote")}` : null}
       </p>
       <FilterBar>
         <SearchBox label={t("costs.searchWorkflow")} />

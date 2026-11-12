@@ -557,14 +557,12 @@
   "billingStatus": {
     "billed": "Billed figures from GitHub's billing usage report.",
     "estimated": "Estimated from job durations and the runner type rates.",
-    "scaled": "estimated, scaled to the billed minutes",
     "no_permission": "Costs are estimates: the App has not been granted the organisation permission Administration: read.",
     "no_credential": "Costs are estimates: this personal account has no billing credential.",
     "unavailable": "Costs are estimates: GitHub's billing usage report is not available for this account (enhanced billing platform required).",
     "credential_error": "Costs are estimates: the billing credential no longer works.",
     "not_synced": "Costs are estimates until the first billing sync has run.",
-    "reconnect": "Reconnect the billing credential in the GitHub settings of this instance.",
-    "deviation": "Estimate and billed differ by more than 15%, often an unknown larger runner type."
+    "reconnect": "Reconnect the billing credential in the GitHub settings of this instance."
   },
   "billingCredential": {
     "states": {
@@ -897,7 +895,8 @@
       "minutes": "Billed minutes",
       "unattributed": "Not attributed to a repository",
       "unattributedInfo": "Billed usage that GitHub's report lists without a repository.",
-      "empty": "No repository has usage this month."
+      "empty": "No repository has usage this month.",
+      "grossBilled": "Gross (billed)"
     },
     "byDay": {
       "title": "By day",
@@ -910,22 +909,21 @@
     },
     "byWorkflow": {
       "title": "By workflow",
-      "description": "Estimated minutes per workflow, scaled with billed / Σ estimated of the repository and runner type.",
+      "description": "Scale factor = billed minutes ÷ the sum of the estimated minutes of the same repository and runner type.",
       "empty": "No estimated minutes for this month.",
       "workflow": "Workflow",
       "scale": "Scale factor",
       "scaledMin": "Scaled minutes",
       "scaledNet": "Scaled net",
-      "ignoredNote": "Workflows of ignored repositories are not listed; their runs are deleted, so they have no estimate."
+      "ignoredNote": "Workflows of ignored repositories are not listed; their runs are deleted, so they have no estimate.",
+      "plain": "Estimated minutes per workflow, scaled so that each repository's total matches the bill."
     },
     "reconciliation": {
       "title": "Estimate vs billed",
-      "description": "Per repository and runner type, on gross USD.",
       "estimate": "Estimate",
-      "billed": "Billed",
       "deviation": "Deviation",
       "allOk": "Estimates match the bill (within 15 %).",
-      "billedGross": "Billed (gross)"
+      "note": "Deviation compares the estimate with the billed gross amount per repository and runner type; more than 15 % is flagged, often because of an unknown larger runner type."
     },
     "breakdown": "Breakdown",
     "tabs": {
