@@ -13,8 +13,8 @@ export type TimelineRow = {
 const SEGMENT_CLASS: Record<SegmentKind, string> = {
   queue:
     "bg-muted-foreground/50 bg-[radial-gradient(var(--background)_1px,transparent_1.5px)] bg-[length:4px_4px]",
-  wait: "bg-chart-4 bg-[repeating-linear-gradient(45deg,transparent_0_3px,var(--background)_3px_5px)]",
-  run: "bg-chart-2",
+  wait: "bg-series-2 bg-[repeating-linear-gradient(45deg,transparent_0_3px,var(--background)_3px_5px)]",
+  run: "bg-series-1",
 };
 
 /**

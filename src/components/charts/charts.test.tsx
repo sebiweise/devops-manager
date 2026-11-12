@@ -210,7 +210,7 @@ describe("Heatmap, Gauge and StateStrip (M2)", () => {
     );
     expect(html).toContain('aria-label="Queue heatmap"');
     expect(html).toContain(
-      'title="Mon 00:00" class="h-4 rounded-[2px] bg-chart-1"',
+      'title="Mon 00:00" class="h-4 rounded-[2px] bg-seq-4"',
     );
     expect(html).toContain(
       'title="Mon 01:00" class="h-4 rounded-[2px] bg-muted"',

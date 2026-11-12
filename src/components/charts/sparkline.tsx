@@ -67,7 +67,7 @@ export function Sparkline({
                 y={height - total}
                 width={bar}
                 height={total - failed}
-                className="fill-chart-2"
+                className="fill-status-good"
               />
               {failed > 0 ? (
                 <>
@@ -76,7 +76,7 @@ export function Sparkline({
                     y={height - failed}
                     width={bar}
                     height={failed}
-                    className="fill-destructive"
+                    className="fill-status-critical"
                   />
                   <rect
                     x={x}

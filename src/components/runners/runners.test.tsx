@@ -170,10 +170,10 @@ describe("runner charts", () => {
     const html = render(<PoolHeatmap pool={pool} />);
     expect(html).toContain('role="img"');
     expect(html).toContain(
-      'aria-label="Heatmap of the p95 queue time of pool linux,self-hosted by weekday and hour; the longest is 5m 00s."',
+      'aria-label="Heatmap of the 95 % queue time of runner group linux,self-hosted by weekday and hour; the longest is 5m 00s."',
     );
-    expect(html).toContain('title="Mon 09:00: 4 jobs, queue p95 5m 00s"');
-    expect(html).toContain("bg-chart-1");
+    expect(html).toContain('title="Mon 09:00: 4 jobs, queue time 95 % 5m 00s"');
+    expect(html).toContain("bg-seq-4");
     expect(html).toContain("no jobs");
   });
 
@@ -282,8 +282,8 @@ describe("runner charts", () => {
         }}
       />,
     );
-    expect(html).toContain("(3 jobs) compared with its pool (6 jobs)");
+    expect(html).toContain("(3 jobs) compared with its runner group (6 jobs)");
     expect(html).toContain("<title>&lt; 1 min: This runner 100%</title>");
-    expect(html).toContain("<title>5–15 min: Pool 50%</title>");
+    expect(html).toContain("<title>5–15 min: Runner group 50%</title>");
   });
 });
