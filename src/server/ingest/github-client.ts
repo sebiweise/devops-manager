@@ -30,6 +30,11 @@ export type GitHubClients = {
     granted: Record<string, unknown>,
     repoIds?: ReadonlyArray<bigint>,
   ): Promise<GitHubApi>;
+  /**
+   * Authenticated with a user token: only the personal-account billing step
+   * uses it (design §3.4). Without it, personal billing falls back to estimates.
+   */
+  user?(token: string): GitHubApi;
 };
 
 export function errorStatus(error: unknown): number | null {
