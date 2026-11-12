@@ -435,7 +435,20 @@ export class FakeManagedGitHub {
         const list = this.alerts.get(repo.id);
         if (!list)
           this.fail(403, "Dependabot alerts are disabled for this repository.");
-        return this.ok(list);
+        // Cursor pagination only, like GitHub: `page` is rejected.
+        if (p.page !== undefined)
+          this.fail(
+            400,
+            "Pagination using the `page` parameter is not supported.",
+          );
+        const perPage = Number(p.per_page ?? 30);
+        const start = p.after
+          ? Number(Buffer.from(String(p.after), "base64url").toString())
+          : 0;
+        const res = this.ok(list.slice(start, start + perPage));
+        if (start + perPage < list.length)
+          res.headers.link = `<https://api.github.com/repositories/${repo.id}/dependabot/alerts?per_page=${perPage}&after=${Buffer.from(String(start + perPage)).toString("base64url")}>; rel="next"`;
+        return res;
       }
       default:
         this.fail(404, `Unexpected route ${route}`);

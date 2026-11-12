@@ -4,7 +4,11 @@ import { mapLimit } from "@/lib/concurrency";
 import type { TenantScope } from "@/server/authz/scope";
 import { githubErrorInfo } from "@/server/github/errors";
 import { missingOf } from "@/server/github/purposes";
-import type { GitHubApi, GitHubClients } from "@/server/ingest/github-client";
+import {
+  nextLink,
+  type GitHubApi,
+  type GitHubClients,
+} from "@/server/ingest/github-client";
 import { githubClients } from "@/server/ingest/triggers";
 import {
   findInstallationAccount,
@@ -145,12 +149,28 @@ export async function listDependabotAlerts(
   return { status: "ok", ...(await pending) };
 }
 
+/** The `after` cursor of the next page, or null on the last page. */
+export function afterCursor(
+  headers: Record<string, string | number | undefined>,
+): string | null {
+  const next = nextLink(headers);
+  if (!next) return null;
+  try {
+    return new URL(next).searchParams.get("after") || null;
+  } catch {
+    return null;
+  }
+}
+
 async function repoAlerts(
   api: GitHubApi,
   repo: RepoTarget,
 ): Promise<{ status: AlertRepo["status"]; alerts: AlertRow[] }> {
   const alerts: AlertRow[] = [];
   try {
+    // This endpoint pages with cursors only (`after` from the Link header's
+    // rel="next"); it has no `page` parameter.
+    let after: string | null = null;
     for (let page = 1; page <= MAX_PAGES; page++) {
       const res = await api.request<GhAlert[]>(
         "GET /repos/{owner}/{repo}/dependabot/alerts",
@@ -159,11 +179,12 @@ async function repoAlerts(
           repo: repo.name,
           state: "open",
           per_page: 100,
-          page,
+          ...(after ? { after } : {}),
         },
       );
       alerts.push(...res.data.map((a) => mapAlert(repo, a)));
-      if (res.data.length < 100) break;
+      after = afterCursor(res.headers);
+      if (!after) break;
     }
     return { status: "ok", alerts };
   } catch (error) {

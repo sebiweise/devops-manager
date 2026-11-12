@@ -1540,6 +1540,40 @@ describe.skipIf(!DATABASE_URL)("management", () => {
   });
 
   describe("dependabot", () => {
+    it("follows the cursor of the Link header and counts each alert once", async () => {
+      gh.alerts.set(
+        11,
+        Array.from({ length: 150 }, (_, i) => ({
+          number: i + 1,
+          html_url: `https://github.com/example-user/repo-a/security/dependabot/${i + 1}`,
+          dependency: {
+            package: { name: `example-lib-${i}`, ecosystem: "npm" },
+            manifest_path: "package.json",
+          },
+          security_advisory: {
+            ghsa_id: "GHSA-xxxx-xxxx-xxxx",
+            summary: "Example advisory",
+            severity: "low",
+          },
+          security_vulnerability: { severity: "low" },
+          created_at: "2026-11-01T00:00:00Z",
+        })),
+      );
+      const res = await dependabot.listDependabotAlerts(
+        actor("VIEWER").scope,
+        A,
+        gh.clients(),
+      );
+      if (res.status !== "ok") throw new Error(res.status);
+      expect(res.totals.low).toBe(150);
+      expect(new Set(res.alerts.map((a) => a.number)).size).toBe(150);
+      const calls = gh.requests.filter((r) =>
+        r.route.endsWith("/dependabot/alerts"),
+      );
+      expect(calls.filter((c) => c.params.after)).toHaveLength(1);
+      expect(calls.every((c) => c.params.page === undefined)).toBe(true);
+    });
+
     it("lists open alerts by severity, read-only", async () => {
       gh.alerts.set(11, [
         {
