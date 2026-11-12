@@ -584,6 +584,47 @@ export async function getInstallationOverview(
   };
 }
 
+/**
+ * The KPIs of one repository's page (UI overhaul §2.4): the run summary and
+ * estimated minutes over the range, plus the cached open pull request and
+ * alert counts. A foreign, removed or ignored repository answers 404.
+ */
+export async function getRepositorySummary(
+  scope: TenantScope,
+  installationId: bigint,
+  repositoryId: bigint,
+  range: InsightRange = "7d",
+  now: Date = new Date(),
+): Promise<{
+  summary: RunSummary;
+  billableMinEst: number;
+  openPrCount: number | null;
+  openAlertCount: number | null;
+  openAlertHighCount: number | null;
+}> {
+  const inst = await visibleInstallation(scope, installationId);
+  await visibleRepository(installationId, repositoryId);
+  const from = rangeStart(range, now);
+  const f: RunFilter = { repositoryId };
+  const [summary, days, counts] = await Promise.all([
+    summarize(inst, f, from, now, now),
+    perDay(inst, f, from, now, now),
+    db.repository.findUniqueOrThrow({
+      where: { id: repositoryId },
+      select: {
+        openPrCount: true,
+        openAlertCount: true,
+        openAlertHighCount: true,
+      },
+    }),
+  ]);
+  return {
+    summary,
+    billableMinEst: days.reduce((s, d) => s + d.billableMinEst, 0),
+    ...counts,
+  };
+}
+
 // ---------- repositories ----------
 
 export type RepoStat = {
