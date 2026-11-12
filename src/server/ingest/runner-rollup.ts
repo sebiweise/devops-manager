@@ -1,7 +1,11 @@
 import "server-only";
 import type { RunnerKind } from "@/generated/prisma/client";
 import { db } from "@/server/db";
-import { runnerKeyOf } from "@/server/metrics/classify";
+import {
+  isSelfHostedKey,
+  jobRunnerKeyResolver,
+  runnerStatKey,
+} from "@/server/metrics/classify";
 import { histogramOf } from "@/server/metrics/histogram";
 import {
   busySeconds,
@@ -21,7 +25,9 @@ import type { Deadline } from "./budget";
  * local day), recomputed with DELETE + INSERT in one transaction like the
  * other rollups, so late events and new samples never double-count.
  *
- * runnerKey is "sh:<runnerName>" for self-hosted runners and
+ * runnerKey is "shr:<repositoryId>:<runnerName>" for repo-level runners
+ * (GitHub runner names are unique per repository only), "sh:<runnerName>"
+ * for org runners and self-hosted runners not in the cache, and
  * "pool:<labelKey>" for hosted pools. Jobs, failures and histograms count the
  * jobs that started that day; busyS and the peak use the overlap of every job
  * with the day; onlineS (self-hosted only) is the union of online sample
@@ -35,6 +41,7 @@ const FAILURES = new Set<Conclusion>([
 ]);
 
 type JobRow = {
+  repositoryId: bigint;
   workflowId: bigint | null;
   baseName: string;
   labelKey: string;
@@ -60,7 +67,7 @@ export async function rollupRunnerDay(
   const w = { from: lo, to: hi };
 
   const jobs = await db.$queryRaw<JobRow[]>`
-    SELECT j."workflowId", j."baseName", j."labelKey", j."runnerName",
+    SELECT j."repositoryId", j."workflowId", j."baseName", j."labelKey", j."runnerName",
       j."runnerKind", j."conclusion"::text AS conclusion, j."startedAt", j."completedAt",
       j."durationS", j."queueS"
     FROM "WorkflowJob" j
@@ -72,7 +79,13 @@ export async function rollupRunnerDay(
 
   const runners = await db.runner.findMany({
     where: { installationId },
-    select: { key: true, name: true, removedAt: true },
+    select: {
+      key: true,
+      scope: true,
+      repositoryId: true,
+      name: true,
+      removedAt: true,
+    },
   });
   // Samples within the day, plus the first one after it (its interval reaches back).
   const samples = await db.runnerSample.findMany({
@@ -82,20 +95,21 @@ export async function rollupRunnerDay(
     },
     orderBy: { sampledAt: "asc" },
   });
-  const nameOf = new Map(runners.map((r) => [r.key, r.name]));
+  // Runner cache key -> stat key (repo runners by repository and name).
+  const statKeyOf = new Map(runners.map((r) => [r.key, runnerStatKey(r)]));
   const removedAt = new Map<string, Date | null>();
   for (const r of runners) {
-    // A live runner of that name wins; otherwise the latest removal counts.
-    const prev = removedAt.get(r.name);
+    // A live runner with that stat key wins; otherwise the latest removal counts.
+    const k = runnerStatKey(r);
+    const prev = removedAt.get(k);
     if (prev === null) continue;
     if (r.removedAt == null || prev === undefined || r.removedAt > prev)
-      removedAt.set(r.name, r.removedAt);
+      removedAt.set(k, r.removedAt);
   }
   const samplesBy = new Map<string, SampleRow[]>();
   for (const s of samples) {
-    const name = nameOf.get(s.runnerKey);
-    if (!name) continue;
-    const key = `sh:${name}`;
+    const key = statKeyOf.get(s.runnerKey);
+    if (!key) continue;
     const list = samplesBy.get(key) ?? [];
     list.push(s);
     samplesBy.set(key, list);
@@ -103,10 +117,8 @@ export async function rollupRunnerDay(
 
   type Acc = { kind: RunnerKind; jobs: JobRow[]; started: JobRow[] };
   const acc = new Map<string, Acc>();
-  const keyed = jobs.map((j) => ({
-    ...j,
-    runnerKey: runnerKeyOf(j.runnerKind, j.runnerName, j.labelKey),
-  }));
+  const keyOf = jobRunnerKeyResolver(runners);
+  const keyed = jobs.map((j) => ({ ...j, runnerKey: keyOf(j) }));
   for (const j of keyed) {
     const a = acc.get(j.runnerKey) ?? {
       kind: j.runnerKind,
@@ -127,8 +139,7 @@ export async function rollupRunnerDay(
     (j) => j.startedAt!.getTime() >= lo && j.startedAt!.getTime() < hi,
   );
   const rows = [...acc.entries()].map(([runnerKey, a]) => {
-    const selfHosted = runnerKey.startsWith("sh:");
-    const name = selfHosted ? runnerKey.slice(3) : null;
+    const selfHosted = isSelfHostedKey(runnerKey);
     const intervals = a.jobs
       .map((j) => jobInterval(j, hi))
       .filter((i): i is Interval => i !== null)
@@ -137,7 +148,7 @@ export async function rollupRunnerDay(
     const online = selfHosted
       ? Math.round(onlineSeconds(samplesBy.get(runnerKey) ?? [], a.jobs, w, hi))
       : null;
-    const removed = name ? (removedAt.get(name) ?? null) : null;
+    const removed = selfHosted ? (removedAt.get(runnerKey) ?? null) : null;
     return {
       installationId,
       runnerKey,

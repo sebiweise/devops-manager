@@ -9,6 +9,7 @@ import {
 } from "vitest";
 import type * as Budget from "@/server/ingest/budget";
 import type * as Reconcile from "@/server/ingest/reconcile";
+import type * as RunnerRollup from "@/server/ingest/runner-rollup";
 import type * as RunnerSync from "@/server/ingest/runners";
 import type * as Runners from "@/server/data/runners";
 import type * as Installations from "@/server/data/installations";
@@ -43,6 +44,7 @@ let budget: typeof Budget;
 let runners: typeof Runners;
 let installations: typeof Installations;
 let runnerSync: typeof RunnerSync;
+let runnerRollup: typeof RunnerRollup;
 
 const scope = (installationIds: bigint[] = [A, B]): TenantScope => ({
   userId: "user-admin",
@@ -76,6 +78,7 @@ describe.skipIf(!DATABASE_URL)("runners", () => {
     runners = await import("@/server/data/runners");
     installations = await import("@/server/data/installations");
     runnerSync = await import("@/server/ingest/runners");
+    runnerRollup = await import("@/server/ingest/runner-rollup");
   });
 
   afterAll(async () => {
@@ -290,7 +293,8 @@ describe.skipIf(!DATABASE_URL)("runners", () => {
       where: { installationId: A },
       orderBy: { runnerKey: "asc" },
     });
-    const sh = stats.find((s) => s.runnerKey === "sh:runner-1");
+    // runner-1 is a repo runner of repo-a (11): keyed by repository and name.
+    const sh = stats.find((s) => s.runnerKey === "shr:11:runner-1");
     const pool = stats.find((s) => s.runnerKey === "pool:ubuntu-latest");
     expect(sh).toMatchObject({
       runnerKind: "SELF_HOSTED",
@@ -310,7 +314,7 @@ describe.skipIf(!DATABASE_URL)("runners", () => {
       A,
       {
         range: "7d",
-        runnerKey: "sh:runner-1",
+        runnerKey: "shr:11:runner-1",
       },
       new Date(gh.now),
     );
@@ -393,6 +397,66 @@ describe.skipIf(!DATABASE_URL)("runners", () => {
     gh.requests.length = 0;
     expect((await pass(600_000)).discovery).toBe("not_due");
     expect(listedRepos()).toEqual(["repo-f"]);
+  });
+
+  it("keeps repo runners with the same name in different repositories apart", async () => {
+    await seedInstallations(db, { permissions: { administration: "read" } });
+    await db.repository.create({
+      data: {
+        id: 12n,
+        installationId: A,
+        ownerLogin: "example-user",
+        name: "repo-c",
+        fullName: "example-user/repo-c",
+        private: true,
+      },
+    });
+    const gh = new FakeGitHub();
+    // Both repositories register a runner called runner-1 (e.g. one host).
+    gh.runners.set("repo:example-user/repo-a", [RUNNER_1]);
+    gh.runners.set("repo:example-user/repo-c", [{ ...RUNNER_1, id: 502 }]);
+    gh.addRun(A, {
+      createdAt: new Date(gh.now - 2 * 3_600_000),
+      durationS: 300,
+      labels: ["self-hosted", "linux"],
+      runnerName: "runner-1",
+    });
+    await run(gh, A);
+    const jobs = await db.workflowJob.findMany({
+      where: { installationId: A },
+    });
+    expect(jobs.map((j) => j.repositoryId)).toEqual([11n]);
+
+    const list = await runners.listRunners(scope(), A, new Date(gh.now));
+    const byKey = new Map(list.runners.map((r) => [r.key, r]));
+    expect(byKey.get(`${A}:REPO:501`)!.jobs7d).toBe(1);
+    expect(byKey.get(`${A}:REPO:501`)!.utilisation7d.busyS).toBe(300);
+    expect(byKey.get(`${A}:REPO:502`)!.jobs7d).toBe(0);
+    expect(byKey.get(`${A}:REPO:502`)!.utilisation7d.busyS).toBe(0);
+
+    const other = await runners.getRunnerDetail(
+      scope(),
+      A,
+      `${A}:REPO:502`,
+      "7d",
+      new Date(gh.now),
+    );
+    expect(other.topJobs).toEqual([]);
+    expect(other.distribution.runner.n).toBe(0);
+
+    const inst = await db.installation.findUniqueOrThrow({ where: { id: A } });
+    const day = new Date(gh.now - 2 * 3_600_000).toISOString().slice(0, 10);
+    await runnerRollup.rollupRunnerDay(A, day, inst.timezone);
+    const stats = await db.dailyRunnerStat.findMany({
+      where: { installationId: A, runnerKind: "SELF_HOSTED" },
+    });
+    expect(
+      stats.find((s) => s.runnerKey === "shr:11:runner-1")?.jobs ?? 0,
+    ).toBe(1);
+    expect(
+      stats.find((s) => s.runnerKey === "shr:12:runner-1")?.jobs ?? 0,
+    ).toBe(0);
+    expect(stats.some((s) => s.runnerKey === "sh:runner-1")).toBe(false);
   });
 
   it("flags STUCK and no-matching-runner jobs in the live queue", async () => {

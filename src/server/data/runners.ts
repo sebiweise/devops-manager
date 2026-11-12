@@ -2,7 +2,11 @@ import "server-only";
 import { Prisma, type RunnerKind } from "@/generated/prisma/client";
 import type { TenantScope } from "@/server/authz/scope";
 import { db } from "@/server/db";
-import { runnerKeyOf } from "@/server/metrics/classify";
+import {
+  jobRunnerKeyResolver,
+  runnerStatKey,
+  type RunnerScopeRow,
+} from "@/server/metrics/classify";
 import { localDay } from "@/server/metrics/days";
 import {
   histogramOf,
@@ -92,8 +96,21 @@ async function jobsIn(
     LIMIT ${MAX_JOB_ROWS}`;
 }
 
-const keyOf = (j: JobRow) =>
-  runnerKeyOf(j.runnerKind, j.runnerName, j.labelKey);
+type KeyOf = (j: JobRow) => string;
+
+/**
+ * The runner key of every job ("sh:<name>", "shr:<repositoryId>:<name>" for
+ * repo runners, "pool:<labelKey>"), from all cached runners of the
+ * installation, removed ones included: repo runner names are unique per
+ * repository only, so jobs are matched by repository and name.
+ */
+async function jobKeyResolver(installationId: bigint): Promise<KeyOf> {
+  const rows = await db.runner.findMany({
+    where: { installationId },
+    select: { scope: true, repositoryId: true, name: true },
+  });
+  return jobRunnerKeyResolver(rows);
+}
 
 async function samplesOf(
   installationId: bigint,
@@ -176,8 +193,9 @@ async function installationMeta(installationId: bigint) {
 
 /** Utilisation, infra failures and speed index of every listed runner over `w`. */
 function runnerMetrics(
-  runner: { key: string; name: string; removedAt: Date | null },
+  runner: RunnerScopeRow & { key: string; removedAt: Date | null },
   jobs: JobRow[],
+  keyOf: KeyOf,
   samples: SampleRow[],
   allJobs: ReadonlyArray<{
     workflowId: bigint | null;
@@ -188,9 +206,8 @@ function runnerMetrics(
   w: { from: number; to: number },
   now: number,
 ) {
-  const own = jobs.filter(
-    (j) => j.runnerKind === "SELF_HOSTED" && j.runnerName === runner.name,
-  );
+  const statKey = runnerStatKey(runner);
+  const own = jobs.filter((j) => keyOf(j) === statKey);
   const started = own.filter(
     (j) => j.startedAt && j.startedAt.getTime() >= w.from,
   );
@@ -213,7 +230,7 @@ function runnerMetrics(
       ...u,
       medianSampleIntervalS: medianSampleInterval(samples),
     },
-    speedIndex: speedIndex(allJobs, `sh:${runner.name}`),
+    speedIndex: speedIndex(allJobs, statKey),
   };
 }
 
@@ -231,7 +248,7 @@ export async function listRunners(
   const meta = await installationMeta(installationId);
   const from = new Date(now.getTime() - UTILISATION_WINDOW_MS);
   const w = { from: from.getTime(), to: now.getTime() };
-  const [runners, repos, jobs] = await Promise.all([
+  const [runners, repos, jobs, keyOf] = await Promise.all([
     db.runner.findMany({
       where: { installationId, removedAt: null },
       orderBy: [{ scope: "asc" }, { name: "asc" }],
@@ -241,6 +258,7 @@ export async function listRunners(
       select: { id: true, fullName: true },
     }),
     jobsIn(installationId, from, now),
+    jobKeyResolver(installationId),
   ]);
   const repoName = new Map(repos.map((r) => [r.id, r.fullName]));
   const samples = await samplesOf(
@@ -258,6 +276,7 @@ export async function listRunners(
       const m = runnerMetrics(
         r,
         jobs,
+        keyOf,
         samples.get(r.key) ?? [],
         allJobs,
         w,
@@ -382,23 +401,23 @@ export async function getRunnerDetail(
     Math.max(from.getTime(), now.getTime() - 30 * DAY_MS),
   );
   const w = { from: from.getTime(), to: now.getTime() };
-  const [jobs, samples, stats] = await Promise.all([
+  const statKey = runnerStatKey(runner);
+  const [jobs, samples, stats, keyOf] = await Promise.all([
     jobsIn(installationId, from, now),
     samplesOf(installationId, [runner.key], sampleFrom, now),
     db.dailyRunnerStat.findMany({
       where: {
         installationId,
-        runnerKey: `sh:${runner.name}`,
+        runnerKey: statKey,
         day: {
           gte: new Date(`${localDay(from, inst.timezone)}T00:00:00.000Z`),
         },
       },
       orderBy: { day: "asc" },
     }),
+    jobKeyResolver(installationId),
   ]);
-  const own = jobs.filter(
-    (j) => j.runnerKind === "SELF_HOSTED" && j.runnerName === runner.name,
-  );
+  const own = jobs.filter((j) => keyOf(j) === statKey);
   const ownSamples = samples.get(runner.key) ?? [];
   const u = utilisation(
     busySeconds(own, w, now.getTime()),
@@ -600,7 +619,7 @@ export async function listRunnerPools(
   const from = rangeStart(range, now);
   const w = { from: from.getTime(), to: now.getTime() };
   const windowS = (w.to - w.from) / 1000;
-  const [jobs, runners, heat] = await Promise.all([
+  const [jobs, runners, heat, keyOf] = await Promise.all([
     jobsIn(installationId, from, now),
     db.runner.findMany({ where: { installationId, removedAt: null } }),
     db.$queryRaw<
@@ -622,6 +641,7 @@ export async function listRunnerPools(
       WHERE j."installationId" = ${installationId} AND j."queueS" IS NOT NULL
         AND j."createdAt" >= ${from} AND j."createdAt" < ${now}
       GROUP BY 1, 2, 3, 4`,
+    jobKeyResolver(installationId),
   ]);
   const samples = await samplesOf(
     installationId,
@@ -671,9 +691,8 @@ export async function listRunnerPools(
       let online = 0;
       const memberSamples: SampleRow[] = [];
       for (const m of members) {
-        const own = jobs.filter(
-          (j) => j.runnerKind === "SELF_HOSTED" && j.runnerName === m.name,
-        );
+        const memberKey = runnerStatKey(m);
+        const own = jobs.filter((j) => keyOf(j) === memberKey);
         const s = samples.get(m.key) ?? [];
         memberSamples.push(...s);
         busy += busySeconds(own, w, w.to);

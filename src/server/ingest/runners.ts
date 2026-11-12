@@ -178,8 +178,15 @@ async function applyList(
   let removed = 0;
   for (const r of existing) {
     if (seen.has(r.key) || r.removedAt) continue;
+    // Repo runner names are unique per repository only.
     const jobs = await db.workflowJob.count({
-      where: { installationId: ctx.installationId, runnerName: r.name },
+      where: {
+        installationId: ctx.installationId,
+        runnerName: r.name,
+        ...(r.scope === "REPO" && r.repositoryId != null
+          ? { repositoryId: r.repositoryId }
+          : {}),
+      },
     });
     await db.runner.update({
       where: { key: r.key },

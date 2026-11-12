@@ -460,7 +460,7 @@ model RunnerSample {
 
 model DailyRunnerStat {
   installationId  BigInt
-  /// "sh:<runnerName>" | "pool:<labelKey>"
+  /// "shr:<repositoryId>:<runnerName>" (repo runner), "sh:<runnerName>" or "pool:<labelKey>"
   runnerKey       String
   runnerKind      RunnerKind
   day             DateTime   @db.Date
