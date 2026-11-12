@@ -18,7 +18,8 @@
   "nav": {
     "dashboard": "Dashboard",
     "onboarding": "Installations",
-    "settings": "Settings"
+    "settings": "Settings",
+    "github": "GitHub billing"
   },
   "landing": {
     "title": "GitHub Actions insights and management, self-hosted",
@@ -99,7 +100,10 @@
     "overview": "Overview",
     "repos": "Repositories",
     "workflows": "Workflows",
-    "settings": "Settings"
+    "settings": "Settings",
+    "runners": "Runners",
+    "queue": "Queue",
+    "costs": "Costs"
   },
   "freshness": {
     "label": "Data freshness",
@@ -356,5 +360,365 @@
     "resource": "Resource",
     "remaining": "Remaining",
     "reset": "Resets"
+  },
+  "runnerData": {
+    "stuck": "Stuck",
+    "stuckHint": "Queued for more than 15 minutes and no free online runner has these labels.",
+    "noMatchingRunner": "No matching runner",
+    "noMatchingRunnerHint": "No runner of this installation has all of these labels, online or not.",
+    "insufficientSamples": "Insufficient samples",
+    "insufficientSamplesHint": "Runner samples cover less than half of the period, so utilisation cannot be told apart from gaps between samples.",
+    "sampleInterval": "± one sample interval ({interval})",
+    "repoRunnersMissing": "Repository runners need the repository permission Administration: read. Without it they are known from job data only.",
+    "orgRunnersMissing": "Organisation runners need the organisation permission Self-hosted runners: read.",
+    "speedIndex": "Speed index",
+    "speedIndexHint": "Median job duration on this runner relative to all runners; 1.0 is average, 0.8 is 20% faster.",
+    "infraFailures": "Infrastructure failures",
+    "ephemeral": "ephemeral"
+  },
+  "billingStatus": {
+    "billed": "Billed figures from GitHub's billing usage report.",
+    "estimated": "Estimated from job durations and the SKU rates.",
+    "scaled": "estimated, scaled to the billed minutes",
+    "no_permission": "Costs are estimates: the App has not been granted the organisation permission Administration: read.",
+    "no_credential": "Costs are estimates: this personal account has no billing credential.",
+    "unavailable": "Costs are estimates: GitHub's billing usage report is not available for this account (enhanced billing platform required).",
+    "credential_error": "Costs are estimates: the billing credential no longer works.",
+    "not_synced": "Costs are estimates until the first billing sync has run.",
+    "reconnect": "Reconnect the billing credential in the GitHub settings of this instance.",
+    "deviation": "Estimate and billed differ by more than 15%, often an unknown larger-runner SKU."
+  },
+  "billingCredential": {
+    "states": {
+      "none": "No credential",
+      "env": "Token from the environment",
+      "pat": "Stored token",
+      "connected": "Connected with GitHub",
+      "reconnect": "Reconnect required"
+    },
+    "expiringSoon": "Expires on {date}",
+    "results": {
+      "saved": "Token stored for {login}.",
+      "connected": "Connected as {login}.",
+      "revoked": "Credential removed.",
+      "revoked_locally": "Credential deleted here, but the authorisation could not be revoked at GitHub because the App client id and secret are not configured. Revoke it under GitHub Settings > Applications > Authorized GitHub Apps.",
+      "revoke_failed": "GitHub did not confirm the revocation, so nothing was removed. Try again, or revoke the App under GitHub Settings > Applications > Authorized GitHub Apps and then remove the credential here.",
+      "redirect": "Continue on GitHub.",
+      "forbidden": "Only admins can manage billing credentials.",
+      "confirmation_mismatch": "Type the account login to confirm.",
+      "invalid_token": "GitHub did not accept this token.",
+      "token_too_broad": "Only fine-grained personal access tokens (github_pat_...) with the account permission \"Plan: read\" are accepted. Classic tokens carry more access than billing needs.",
+      "login_mismatch": "The token belongs to {login}, not to this account.",
+      "not_configured": "Connect GitHub is not configured on this instance.",
+      "invalid_state": "The connection request expired or was started by someone else. Start again.",
+      "github_error": "GitHub could not be reached. Try again later.",
+      "denied": "The authorisation was cancelled on GitHub."
+    }
+  },
+  "runners": {
+    "title": "Runners",
+    "summary": "{total, plural, one {# self-hosted runner} other {# self-hosted runners}}: {busy} busy, {idle} idle, {offline} offline",
+    "sampled": "Runner state sampled {sampled} · discovery {discovered}",
+    "sampling": "Sampling runners in the background; this page refreshes every 30 seconds.",
+    "orgRunners": "Organisation runners",
+    "repoRunners": "Repository runners: {repo}",
+    "noSelfHosted": "No self-hosted runners known yet. Hosted pools are listed below.",
+    "caption": "Self-hosted runners",
+    "name": "Runner",
+    "status": "Status",
+    "labels": "Labels",
+    "os": "OS",
+    "group": "Group",
+    "lastSeen": "Last seen",
+    "utilisation": "Utilisation (7 days)",
+    "jobs": "Jobs (7 days)",
+    "noSamples": "no samples yet",
+    "states": {
+      "busy": "busy",
+      "idle": "idle",
+      "offline": "offline"
+    },
+    "pools": {
+      "title": "Pools",
+      "description": "Jobs per label set and runner kind in this range. Self-hosted utilisation is Σ busy / Σ online over the runners that have every label of the pool.",
+      "empty": "No jobs in this range.",
+      "pool": "Pool",
+      "kind": "Runner kind",
+      "minutes": "Minutes",
+      "avgConcurrency": "Avg concurrency",
+      "peakConcurrency": "Peak concurrency",
+      "queueP50": "Queue p50",
+      "queueP95": "Queue p95",
+      "runners": "Runners",
+      "highQueue": "A high queue p95 on hosted runners suggests that the account's concurrency limit is reached."
+    },
+    "heatmap": {
+      "title": "Queue p95 by weekday and hour: {pool}",
+      "description": "Time jobs waited for a runner, by weekday and hour in the installation's time zone.",
+      "label": "Heatmap of the p95 queue time of pool {pool} by weekday and hour; the longest is {max}.",
+      "noData": "no jobs",
+      "low": "short",
+      "high": "long",
+      "cell": "{day} {hour}:00: {jobs, plural, one {# job} other {# jobs}}, queue p95 {p95}",
+      "weekday": "Weekday",
+      "hour": "Hour",
+      "jobs": "Jobs",
+      "queueP95": "Queue p95"
+    },
+    "weekdays": {
+      "1": "Mon",
+      "2": "Tue",
+      "3": "Wed",
+      "4": "Thu",
+      "5": "Fri",
+      "6": "Sat",
+      "7": "Sun"
+    },
+    "concurrency": {
+      "title": "Concurrency, last 24 hours",
+      "description": "Jobs running (solid) and queued (dashed) in 5-minute buckets.",
+      "label": "Line chart of running and queued jobs in 5-minute buckets over the last 24 hours; peak {running} running and {queued} queued.",
+      "running": "Running",
+      "queued": "Queued",
+      "time": "Time",
+      "summary": "Peak {running} running, {queued} queued; on average {avg} running."
+    },
+    "split": {
+      "title": "Hosted vs self-hosted",
+      "description": "Execution minutes per runner kind in this range.",
+      "label": "Bar chart of execution minutes per runner kind, {minutes} in total.",
+      "kind": "Runner kind",
+      "jobs": "Jobs",
+      "minutes": "Minutes",
+      "billable": "Est. billable minutes"
+    },
+    "compare": {
+      "title": "Same jobs on hosted and self-hosted runners",
+      "description": "Jobs with at least 5 runs on each kind in this range; Δ is the change of the self-hosted p50 against hosted.",
+      "empty": "No job ran at least 5 times on both hosted and self-hosted runners in this range."
+    }
+  },
+  "runner": {
+    "back": "All runners",
+    "scopeOrg": "Organisation runner",
+    "scopeRepo": "Repository runner of {repo}",
+    "seen": "First seen {first} · last seen {last}",
+    "utilisation": "Utilisation ({range})",
+    "coverage": "Sample coverage",
+    "coverageHint": "sampled online time / period",
+    "failures": "Failures",
+    "insufficientExplain": "Samples cover {coverage} of this period; a utilisation figure needs at least 50%. Samples are taken by reconcile (every {interval} with the Docker cron sidecar, daily on Vercel) and at most every 2 minutes while the runner or queue pages are open.",
+    "utilChart": {
+      "title": "Utilisation per day",
+      "description": "Busy time / online time per day; days with insufficient samples are left out.",
+      "label": "Line chart of the daily utilisation of the runner over {days} days.",
+      "utilisation": "Utilisation",
+      "busy": "Busy",
+      "online": "Online"
+    },
+    "status": {
+      "title": "Status timeline",
+      "description": "Runner state from the samples of this range (at most 30 days); gaps had no sample.",
+      "label": "Status of runner {name} from {from} to {to}: busy {busy}, idle {idle}, offline {offline} of the window.",
+      "empty": "No samples in this range.",
+      "state": "State",
+      "from": "From",
+      "to": "To"
+    },
+    "distribution": {
+      "title": "Job duration vs the pool",
+      "description": "Share of jobs per duration band on this runner (solid) and on every job with the labels {labels} (dashed).",
+      "label": "Line chart of the job duration distribution of this runner ({runner} jobs) compared with its pool ({pool} jobs).",
+      "runner": "This runner",
+      "pool": "Pool",
+      "band": "Duration",
+      "bands": {
+        "b0": "< 1 min",
+        "b1": "1–5 min",
+        "b2": "5–15 min",
+        "b3": "15–30 min",
+        "b4": "30–60 min",
+        "b5": "> 1 h"
+      }
+    },
+    "topJobs": {
+      "title": "Top jobs",
+      "empty": "No jobs on this runner in this range.",
+      "job": "Job",
+      "workflow": "Workflow",
+      "jobs": "Jobs",
+      "failures": "Failures"
+    },
+    "recentFailures": {
+      "title": "Recent failures",
+      "empty": "No failures in this range.",
+      "conclusion": "Conclusion",
+      "completed": "Completed",
+      "duration": "Duration",
+      "infra": "Infrastructure"
+    }
+  },
+  "queue": {
+    "title": "Queue",
+    "summary": "{count, plural, one {# job} other {# jobs}} queued · oldest {oldest} · {stuck, plural, =0 {none stuck} other {# stuck}}",
+    "updated": "Updated {time}",
+    "empty": "Nothing queued.",
+    "groups": "Queued jobs by labels and repository",
+    "labels": "Labels",
+    "repo": "Repository",
+    "count": "Jobs",
+    "oldest": "Oldest",
+    "p95": "Age p95",
+    "workflows": "Workflows",
+    "flags": "Flags",
+    "jobs": "Queued jobs",
+    "job": "Job",
+    "workflow": "Workflow",
+    "age": "Age",
+    "stuckCount": "{count} stuck",
+    "approvals": {
+      "title": "Waiting for approval",
+      "description": "Jobs waiting for an environment approval; they do not need a runner yet.",
+      "empty": "No job waits for an approval."
+    }
+  },
+  "costs": {
+    "title": "Costs",
+    "monthNav": "Month",
+    "prev": "Previous month",
+    "next": "Next month",
+    "current": "Current month",
+    "synced": "Billing synced {ago}",
+    "neverSynced": "Billing not synced yet",
+    "adminLink": "Manage the billing credential",
+    "adminError": "Last billing error: {error}",
+    "noData": "No billed usage and no estimated minutes for this month.",
+    "unmatched": "{count, plural, one {# job} other {# jobs}} on larger or unknown runners matched no SKU and are excluded from the estimates.",
+    "notBilled": "not billed",
+    "kpi": {
+      "net": "Net, billed",
+      "gross": "Gross, billed",
+      "discount": "Included (discount)",
+      "allProducts": "Net, all products",
+      "estUsd": "Estimated",
+      "estMin": "Estimated minutes",
+      "projectedNet": "Projected net, month end",
+      "projectedEst": "Projected estimate, month end",
+      "estimateFlag": "estimate",
+      "billedFlag": "billed"
+    },
+    "gauge": {
+      "title": "Included minutes",
+      "description": "Minutes counted against the included quota ({source}), with the projection to the month end ({elapsed} of {days} days elapsed).",
+      "label": "{used} of {included} included minutes used; projected {projected} by the end of the month.",
+      "used": "Used: {used}",
+      "projected": "Projected: {projected}",
+      "included": "Included: {included}",
+      "over": "Above the included minutes.",
+      "projectedOver": "The projection exceeds the included minutes.",
+      "sources": {
+        "billed": "billed",
+        "estimate": "estimated"
+      },
+      "measure": "Measure",
+      "minutes": "Minutes",
+      "rowUsed": "Used ({source})",
+      "rowProjected": "Projected, month end",
+      "rowIncluded": "Included"
+    },
+    "bySku": {
+      "title": "By SKU",
+      "sku": "SKU",
+      "multiplier": "Multiplier",
+      "quantity": "Billed quantity",
+      "unit": "Unit",
+      "gross": "Gross",
+      "discount": "Discount",
+      "net": "Net",
+      "estMin": "Est. minutes",
+      "estUsd": "Est. USD"
+    },
+    "byRepo": {
+      "title": "By repository",
+      "repo": "Repository"
+    },
+    "byDay": {
+      "title": "By day",
+      "description": "{kind} minutes per day (UTC).",
+      "label": "Bar chart of {kind} minutes per day in {month}, {minutes} in total.",
+      "kinds": {
+        "billed": "Billed",
+        "estimate": "Estimated"
+      }
+    },
+    "byWorkflow": {
+      "title": "By workflow",
+      "description": "Estimated minutes per workflow, scaled with billed / Σ estimated of the repository and SKU.",
+      "empty": "No estimated minutes for this month.",
+      "workflow": "Workflow",
+      "scale": "Scale factor",
+      "scaledMin": "Scaled minutes",
+      "scaledNet": "Scaled net"
+    },
+    "reconciliation": {
+      "title": "Estimate vs billed",
+      "description": "Per repository and SKU, on gross USD.",
+      "empty": "Shown once billed figures are available.",
+      "estimate": "Estimate",
+      "billed": "Billed",
+      "deviation": "Deviation",
+      "flag": "Check",
+      "flagged": "⚠ check",
+      "ok": "ok"
+    }
+  },
+  "adminGithub": {
+    "title": "GitHub billing credentials",
+    "intro": "GitHub's billing usage report of a personal account needs a user token. Without a credential, the costs of a personal account are estimates. Organisations use the installation token (organisation permission Administration: read) and need nothing here.",
+    "none": "No personal-account installation is visible.",
+    "status": "Status",
+    "login": "GitHub login: {login}",
+    "expires": "Token expires {date}",
+    "refreshExpires": "Refresh token expires {date}",
+    "lastUsed": "Last used {ago}",
+    "lastError": "Last error: {error}",
+    "billing": "Billing sync: {status}",
+    "billingSynced": "synced {ago}",
+    "neverSynced": "not synced yet",
+    "envNote": "GITHUB_BILLING_TOKEN is set and applies to this installation. It is never stored; remove the variable to manage the credential here.",
+    "reconnectBanner": "The authorisation was revoked or has expired. Reconnect GitHub or store a token to get billed figures again.",
+    "failed": "The action failed. Try again.",
+    "optionA": {
+      "title": "Option A: store a token",
+      "description": "A fine-grained personal access token of {account} with the account permission Plan: read. It is checked with GitHub, stored encrypted and used only for billing.",
+      "token": "Token",
+      "confirm": "Type {account} to confirm",
+      "submit": "Store token",
+      "pending": "Checking…"
+    },
+    "optionB": {
+      "title": "Option B: Connect GitHub",
+      "description": "{account} authorises the App on GitHub (user-to-server token with refresh-token rotation). Be signed in on GitHub as {account} before you continue.",
+      "submit": "Connect GitHub",
+      "reconnect": "Reconnect GitHub",
+      "pending": "Redirecting…",
+      "notConfigured": "Set GITHUB_CONNECT_ENABLED=true, GITHUB_APP_CLIENT_ID and GITHUB_APP_CLIENT_SECRET to enable this option."
+    },
+    "revoke": {
+      "title": "Remove the credential",
+      "description": "Deletes the stored token and revokes a connected authorisation on GitHub. Costs fall back to estimates.",
+      "confirm": "Type {account} to confirm",
+      "submit": "Remove credential",
+      "pending": "Removing…"
+    },
+    "connect": {
+      "connected": "Connected with GitHub.",
+      "denied": "The authorisation was cancelled on GitHub.",
+      "invalid_state": "The connection request expired or was started by someone else. Start again.",
+      "github_error": "GitHub could not be reached. Try again later.",
+      "login_mismatch": "The GitHub account that authorised the App is not the account of this installation. Nothing was stored.",
+      "not_configured": "Connect GitHub is not configured on this instance.",
+      "forbidden": "Only admins can manage billing credentials."
+    }
   }
 }

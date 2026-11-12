@@ -141,6 +141,16 @@ model Installation {
   lastPrunedAt         DateTime?     @db.Timestamptz(3)
   /// Last "Sync now" (operator), rate-limited to once per 5 minutes.
   syncRequestedAt      DateTime?     @db.Timestamptz(3)
+  /// Last runner sample (reconcile step f or a lazy /runners view, at most every 2 min).
+  runnersSampledAt     DateTime?     @db.Timestamptz(3)
+  /// Last daily discovery pass over the repo-level runners of every active repo.
+  runnersDiscoveredAt  DateTime?     @db.Timestamptz(3)
+  /// Last billing sync (reconcile step h, once a day).
+  billingSyncedAt      DateTime?     @db.Timestamptz(3)
+  /// ok | no_permission | no_credential | unavailable | credential_error
+  billingStatus        String?
+  /// Truncated and redacted; never contains a token.
+  billingError         String?
   createdAt            DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime      @updatedAt @db.Timestamptz(3)
 
@@ -395,7 +405,134 @@ model DailyJobStat {
   @@index([installationId, day])
 }
 
+// ---------- runners (M2) ----------
+//
+// Runners are a cache of GitHub's runner lists (org and repo level), refreshed
+// by reconcile step f and lazily by /runners views. Samples are kept 30 days
+// and feed utilisation (design §6.5).
+
+enum RunnerScope {
+  ORG
+  REPO
+}
+
+model Runner {
+  /// "<installationId>:<ORG|REPO>:<githubRunnerId>"
+  key            String      @id
+  installationId BigInt
+  scope          RunnerScope
+  /// Set for REPO runners.
+  repositoryId   BigInt?
+  githubRunnerId BigInt
+  name           String
+  os             String
+  /// Lowercase, sorted (as WorkflowJob.labels).
+  labels         String[]
+  groupName      String?
+  online         Boolean
+  busy           Boolean
+  /// Reported by GitHub, or inferred: seen for a single job and then removed.
+  ephemeral      Boolean     @default(false)
+  firstSeenAt    DateTime    @db.Timestamptz(3)
+  lastSeenAt     DateTime    @db.Timestamptz(3)
+  lastOnlineAt   DateTime?   @db.Timestamptz(3)
+  removedAt      DateTime?   @db.Timestamptz(3)
+
+  @@index([installationId, removedAt])
+  @@index([installationId, name])
+  /// labels @> job labels (STUCK and no-matching-runner checks).
+  @@index([labels], type: Gin, map: "Runner_labels_gin_idx")
+}
+
+/// One observation of a runner. intervalS = seconds since the previous sample,
+/// capped at twice the target interval, so a gap does not count as online.
+model RunnerSample {
+  installationId BigInt
+  runnerKey      String
+  sampledAt      DateTime @db.Timestamptz(3)
+  online         Boolean
+  busy           Boolean
+  intervalS      Int
+
+  @@id([runnerKey, sampledAt])
+  @@index([installationId, sampledAt])
+}
+
+model DailyRunnerStat {
+  installationId  BigInt
+  /// "shr:<repositoryId>:<runnerName>" (repo runner), "sh:<runnerName>" or "pool:<labelKey>"
+  runnerKey       String
+  runnerKind      RunnerKind
+  day             DateTime   @db.Date
+  jobs            Int
+  failures        Int
+  /// failure or startup_failure with a duration under 10 s, or the runner was removed mid-job.
+  infraFailures   Int        @default(0)
+  busyS           BigInt
+  /// From RunnerSample plus job intervals; null for hosted pools.
+  onlineS         BigInt?
+  peakConcurrency Int
+  durHist         Int[]
+  queueHist       Int[]
+  speedIndex      Float?
+
+  @@id([installationId, runnerKey, day])
+  @@index([installationId, day])
+}
+
 // ---------- costs ----------
+
+/// One row of GitHub's enhanced billing usage report (per day, product, SKU, repository).
+model BillingUsageItem {
+  installationId     BigInt
+  date               DateTime @db.Date
+  product            String
+  sku                String
+  /// "" when the item is not attributed to a repository.
+  repositoryFullName String   @default("")
+  unitType           String
+  quantity           Decimal  @db.Decimal(18, 4)
+  pricePerUnit       Decimal  @db.Decimal(18, 6)
+  grossAmount        Decimal  @db.Decimal(18, 6)
+  discountAmount     Decimal  @db.Decimal(18, 6)
+  netAmount          Decimal  @db.Decimal(18, 6)
+  fetchedAt          DateTime @db.Timestamptz(3)
+
+  @@id([installationId, date, product, sku, repositoryFullName])
+}
+
+enum GitHubCredentialKind {
+  PAT
+  USER_TO_SERVER
+}
+
+/// Personal-account billing credential (optional, design §3.4), one per USER
+/// installation. Tokens are ciphertext "v1:<keyId>:<iv>:<ct>:<tag>" bound to
+/// the row and column; GITHUB_BILLING_TOKEN from env is never written here.
+model GitHubCredential {
+  installationId        BigInt               @id
+  kind                  GitHubCredentialKind
+  githubUserId          BigInt
+  /// Must equal Installation.accountLogin.
+  githubLogin           String
+  /// Ciphertext; null after a revocation (reconnect required).
+  accessToken           String?
+  accessTokenExpiresAt  DateTime?            @db.Timestamptz(3)
+  /// Ciphertext; USER_TO_SERVER only, rotated on every refresh.
+  refreshToken          String?
+  refreshTokenExpiresAt DateTime?            @db.Timestamptz(3)
+  /// App user who stored or connected it.
+  createdByUserId       String
+  lastUsedAt            DateTime?            @db.Timestamptz(3)
+  lastRefreshedAt       DateTime?            @db.Timestamptz(3)
+  /// Set by github_app_authorization.revoked or a rejected refresh token.
+  revokedAt             DateTime?            @db.Timestamptz(3)
+  lastError             String?
+  createdAt             DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime             @updatedAt @db.Timestamptz(3)
+
+  @@index([githubUserId])
+}
 
 /// Seeded from prisma/seed/sku-rates.json (idempotent, on reconcile); editable by admins.
 model SkuRate {

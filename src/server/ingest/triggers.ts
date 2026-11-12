@@ -2,9 +2,16 @@ import "server-only";
 import { getDeadline } from "@vercel/functions";
 import { env } from "@/env";
 import { db } from "@/server/db";
-import { appOctokit, installationOctokit } from "@/server/github/app";
-import { Deadline, LAZY_BUDGET_MS, SOFT_BUDGET_MS } from "./budget";
-import type { GitHubApi, GitHubClients } from "./github-client";
+import { appOctokit, installationOctokit, Octokit } from "@/server/github/app";
+import { PermissionNotGrantedError } from "@/server/github/purposes";
+import { Deadline, LAZY_BUDGET_MS, RateBudget, SOFT_BUDGET_MS } from "./budget";
+import {
+  withBudget,
+  type GitHubApi,
+  type GitHubClients,
+} from "./github-client";
+import { persistRateBudget } from "./rate-store";
+import { claimLazyRunnerSample, sampleRunners } from "./runners";
 import {
   claimInstallation,
   runReconcile,
@@ -34,6 +41,7 @@ export const githubClients: GitHubClients = {
       granted,
       repoIds,
     )) as unknown as GitHubApi,
+  user: (token) => new Octokit({ auth: token }) as unknown as GitHubApi,
 };
 
 /** Deadline for the cron route: Vercel's deadline minus 30 s, else 240 s. */
@@ -178,4 +186,56 @@ export function scheduleInstallationReconcile(
       );
     });
   });
+}
+
+/**
+ * Lazy runner sample for /runners and /queue views (design §5.3 f): at most
+ * once per two minutes per installation, in `after()` of the page request.
+ * Returns true when this call scheduled the sample.
+ */
+export async function maybeLazyRunnerSample(
+  installationId: bigint,
+  schedule: Scheduler,
+  opts: { clients?: GitHubClients; now?: Date } = {},
+): Promise<boolean> {
+  if (!(await claimLazyRunnerSample(installationId, opts.now))) return false;
+  const clients = opts.clients ?? githubClients;
+  schedule(async () => {
+    try {
+      const inst = await db.installation.findUnique({
+        where: { id: installationId },
+        select: { accountLogin: true, accountType: true, permissions: true },
+      });
+      if (!inst) return;
+      const permissions = (inst.permissions ?? {}) as Record<string, unknown>;
+      const deadline = lazyDeadline();
+      const budget = new RateBudget(() => deadline.now());
+      const api = await clients.installation(
+        installationId,
+        "sync.runners",
+        permissions,
+      );
+      await sampleRunners(
+        {
+          installationId,
+          accountLogin: inst.accountLogin,
+          accountType: inst.accountType,
+          permissions,
+          api: withBudget(api, budget, deadline),
+          budget,
+          deadline,
+          targetIntervalS: env.CRON_INTERVAL_SECONDS,
+        },
+        false,
+      );
+      await persistRateBudget(installationId, budget);
+    } catch (error) {
+      if (error instanceof PermissionNotGrantedError) return;
+      console.warn(
+        "lazy runner sample failed",
+        error instanceof Error ? error.name : "unknown",
+      );
+    }
+  });
+  return true;
 }

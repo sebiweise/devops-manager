@@ -165,7 +165,12 @@ export async function markAllDaysDirty(
     ON CONFLICT ("installationId", "repositoryId", "day") DO UPDATE SET "markedAt" = now()`;
 }
 
-export type DrainResult = { partitions: number; remaining: boolean };
+export type DrainResult = {
+  partitions: number;
+  remaining: boolean;
+  /** Local days ("YYYY-MM-DD") that were recomputed (for DailyRunnerStat). */
+  days: string[];
+};
 
 const DAY_MS = 86_400_000;
 /** Clock margin between this process and the prune that set the cutoff. */
@@ -207,12 +212,15 @@ export async function drainRollups(
     ORDER BY "markedAt" ASC
     LIMIT ${limit + 1}`;
   let partitions = 0;
+  const days = new Set<string>();
   for (const row of dirty.slice(0, limit)) {
-    if (deadline.expired()) return { partitions, remaining: true };
+    if (deadline.expired())
+      return { partitions, remaining: true, days: [...days] };
     if (!row.beforeCutoff) {
       const day = row.day.toISOString().slice(0, 10);
       await rollupPartition(installationId, row.repositoryId, day, timezone);
       partitions++;
+      days.add(day);
     }
     await db.rollupDirty.deleteMany({
       where: {
@@ -223,5 +231,5 @@ export async function drainRollups(
       },
     });
   }
-  return { partitions, remaining: dirty.length > limit };
+  return { partitions, remaining: dirty.length > limit, days: [...days] };
 }

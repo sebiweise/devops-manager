@@ -34,9 +34,12 @@ export function proxy(request: NextRequest) {
 
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const formActionOrigins = [originOf(process.env.OIDC_ISSUER)];
-  const githubOn = ["true", "1", "yes"].includes(
-    (process.env.GITHUB_LOGIN_ENABLED ?? "").toLowerCase(),
-  );
+  const on = (v: string | undefined) =>
+    ["true", "1", "yes"].includes((v ?? "").toLowerCase());
+  // GitHub login and "Connect GitHub" (personal billing) both post to github.com.
+  const githubOn =
+    on(process.env.GITHUB_LOGIN_ENABLED) ||
+    on(process.env.GITHUB_CONNECT_ENABLED);
   if (githubOn) formActionOrigins.push("https://github.com");
   const csp = pageCsp({
     nonce,

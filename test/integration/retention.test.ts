@@ -143,7 +143,7 @@ describe.skipIf(!DATABASE_URL)("retention", () => {
       new budget.Deadline(now + 60_000),
       14,
     );
-    expect(drained).toEqual({ partitions: 0, remaining: false });
+    expect(drained).toEqual({ partitions: 0, remaining: false, days: [] });
     expect(await db.rollupDirty.count()).toBe(0);
     const kept = await db.dailyWorkflowStat.findFirstOrThrow({
       where: { installationId: A, day: oldDay },

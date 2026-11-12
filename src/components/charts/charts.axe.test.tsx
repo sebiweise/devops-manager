@@ -6,11 +6,14 @@ import { describe, expect, it } from "vitest";
 import en from "../../../messages/en.json";
 import { ChartFrame } from "./chart-frame";
 import { DataTable } from "./data-table";
+import { Gauge } from "./gauge";
+import { Heatmap } from "./heatmap";
 import { Legend } from "./legend";
 import { LineChart } from "./line-chart";
 import { RunTimeline } from "./run-timeline";
 import { Sparkline } from "./sparkline";
 import { StackedBarChart } from "./stacked-bar-chart";
+import { StateStrip } from "./state-strip";
 
 /**
  * axe-core over every chart building block as the insights pages render it
@@ -181,6 +184,78 @@ describe("charts pass axe", () => {
         kindLabels={{ queue: "Queue", wait: "Approval wait", run: "Execution" }}
         criticalLabel="critical path"
         formatS={(s) => `${s}s`}
+      />,
+    );
+    expect(await violations(html)).toEqual([]);
+  });
+
+  it("heatmap in a chart frame (M2 queue by weekday and hour)", async () => {
+    const html = render(
+      <ChartFrame
+        title="Queue p95 by weekday and hour"
+        chart={
+          <Heatmap
+            label="Heatmap of the p95 queue time by weekday and hour"
+            rows={["Mon", "Tue"]}
+            columns={["00", "01", "02"]}
+            max={300}
+            scaleLabels={["no jobs", "short", "long"]}
+            cells={[
+              [
+                { value: 300, title: "Mon 00:00: 3 jobs, queue p95 5m 00s" },
+                { value: null, title: "Mon 01:00: 0 jobs" },
+                { value: 30, title: "Mon 02:00: 1 job, queue p95 30s" },
+              ],
+              [
+                { value: null, title: "Tue 00:00: 0 jobs" },
+                { value: 10, title: "Tue 01:00: 1 job, queue p95 10s" },
+                { value: null, title: "Tue 02:00: 0 jobs" },
+              ],
+            ]}
+          />
+        }
+        table={
+          <DataTable
+            caption="Queue p95 by weekday and hour"
+            columns={["Weekday", "Hour", "Queue p95"]}
+            rows={[["Mon", "00:00", "5m 00s"]]}
+          />
+        }
+      />,
+    );
+    expect(await violations(html)).toEqual([]);
+  });
+
+  it("included-minutes gauge (M2 costs)", async () => {
+    const html = render(
+      <Gauge
+        label="1,500 of 3,000 included minutes used; projected 4,500 by the end of the month."
+        usedPct={33}
+        projectedPct={100}
+        markerPct={67}
+        over={false}
+        legend={{
+          used: "Used: 1,500 min",
+          projected: "Projected: 4,500 min",
+          marker: "Included: 3,000 min",
+        }}
+      />,
+    );
+    expect(await violations(html)).toEqual([]);
+  });
+
+  it("runner status strip (M2 runner detail)", async () => {
+    const html = render(
+      <StateStrip
+        label="Status of runner runner-1: busy 25%, idle 50%, offline 25%"
+        segments={[
+          { kind: "busy", from: 0, to: 0.25 },
+          { kind: "idle", from: 0.25, to: 0.75 },
+          { kind: "offline", from: 0.75, to: 1 },
+        ]}
+        stateLabels={{ busy: "busy", idle: "idle", offline: "offline" }}
+        startLabel="11/11/26, 10:00"
+        endLabel="11/11/26, 12:00"
       />,
     );
     expect(await violations(html)).toEqual([]);
