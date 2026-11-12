@@ -14,8 +14,8 @@ any number of organisations, through **one least-privilege GitHub App**.
 - One codebase, two hosting modes: **Vercel Hobby + Neon Free**, or
   **`docker compose up`** (app, Postgres, cron sidecar).
 
-> Status: **M1** (Actions insights). Runners and costs arrive with M2,
-> management actions with M3. See [Features by milestone](#features-by-milestone).
+> Status: **M2** (runners and costs). Management actions arrive with M3.
+> See [Features by milestone](#features-by-milestone).
 
 ## Contents
 
@@ -29,6 +29,7 @@ any number of organisations, through **one least-privilege GitHub App**.
   - [3a. Deploy on Vercel Hobby with Neon](#3a-deploy-on-vercel-hobby-with-neon)
   - [3b. Run with Docker Compose](#3b-run-with-docker-compose)
   - [4. Install the App and sign in](#4-install-the-app-and-sign-in)
+  - [5. Optional: personal-account billing](#5-optional-personal-account-billing)
 - [Sync and freshness](#sync-and-freshness)
 - [Roles](#roles)
 - [Configuration](#configuration)
@@ -37,13 +38,13 @@ any number of organisations, through **one least-privilege GitHub App**.
 
 ## Features by milestone
 
-| Milestone                              | Scope                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **M0**                                 | OIDC login via better-auth (generic provider, optional GitHub), sign-in gate and roles from env allowlists, installation discovery with the App JWT, onboarding with Setup URL verification, dashboard with a live repository list across installations, webhook endpoint (HMAC, dedupe, installation and repository events), encrypted token storage helpers, health and readiness probes, CSP and security headers, Docker and Vercel setups, CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| **M1** Actions insights (this release) | Workflow runs and jobs with an order-independent fold, reconcile (replay, redelivery, incremental sync, backfill), lazy reconcile on page view and Sync now, daily rollups with histograms, success rate, p50/p95 durations, queue times, flaky-run and regression detection, estimated minutes (minutes only). Pages: installation overview (KPI tiles, runs per day, duration and queue charts, regressions, flaky jobs, success drops), repositories (sortable, filterable, 14-day sparklines), repository detail (workflows, runs with filters), workflow detail (trends, job breakdown by pool, hosted vs self-hosted), run detail (job timeline with queue, approval wait and execution, critical path, steps loaded live), workflow leaderboards, sync health (admin), freshness banner. Every chart has an aria-label, a caption and a table view (sparklines: a per-row table disclosure); the chart components are checked with axe-core in the unit tests |
-| **M2** Runners and costs               | Live runners and queue with STUCK detection, utilisation from samples, hosted vs self-hosted comparison, billing usage for organisations, optional personal-account billing credential, costs page with projection                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| **M3** Management                      | Re-run, re-run failed, cancel (operator); repository and organisation variables with `LINUX_RUNNER` / `MACOS_RUNNER` presets, bulk set and revert, SHA-pinned PR merge and guarded Dependabot batch merge (admin); hash-chained audit log                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| **M4** Polish, v0.1.0                  | Complete German translation, user and role management, `/admin/ops`, setup wizard, full docs, signed GHCR image                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Milestone                               | Scope                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **M0**                                  | OIDC login via better-auth (generic provider, optional GitHub), sign-in gate and roles from env allowlists, installation discovery with the App JWT, onboarding with Setup URL verification, dashboard with a live repository list across installations, webhook endpoint (HMAC, dedupe, installation and repository events), encrypted token storage helpers, health and readiness probes, CSP and security headers, Docker and Vercel setups, CI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **M1** Actions insights                 | Workflow runs and jobs with an order-independent fold, reconcile (replay, redelivery, incremental sync, backfill), lazy reconcile on page view and Sync now, daily rollups with histograms, success rate, p50/p95 durations, queue times, flaky-run and regression detection, estimated minutes (minutes only). Pages: installation overview (KPI tiles, runs per day, duration and queue charts, regressions, flaky jobs, success drops), repositories (sortable, filterable, 14-day sparklines), repository detail (workflows, runs with filters), workflow detail (trends, job breakdown by pool, hosted vs self-hosted), run detail (job timeline with queue, approval wait and execution, critical path, steps loaded live), workflow leaderboards, sync health (admin), freshness banner. Every chart has an aria-label, a caption and a table view (sparklines: a per-row table disclosure); the chart components are checked with axe-core in the unit tests |
+| **M2** Runners and costs (this release) | Runner cache with sampling on reconcile and lazily on the runner and queue pages, daily discovery of repository and organisation runners, utilisation (busy / online, with the sample interval shown and "insufficient samples" below 50% coverage), speed index, infrastructure failures, concurrency timeline, pools with a weekday × hour queue heatmap, hosted vs self-hosted comparison; live queue with STUCK and no-matching-runner flags and a separate approvals section; daily billing sync for organisations (installation token) and personal accounts (optional billing credential: token or "Connect GitHub"); costs page with month picker, used vs included gauge with projection, by SKU, repository, day and workflow (estimated, scaled), estimate vs billed with flags, estimate-only fallback with the reason; `/admin/github` for the billing credential. Charts have an aria-label, a caption and a table view and are checked with axe-core  |
+| **M3** Management                       | Re-run, re-run failed, cancel (operator); repository and organisation variables with `LINUX_RUNNER` / `MACOS_RUNNER` presets, bulk set and revert, SHA-pinned PR merge and guarded Dependabot batch merge (admin); hash-chained audit log                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **M4** Polish, v0.1.0                   | Complete German translation, user and role management, `/admin/ops`, setup wizard, full docs, signed GHCR image                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ## How it works
 
@@ -81,12 +82,12 @@ of failing.
 | Repository: Commit statuses       | read   | read      | status rollup in the PR list (optional)                                                                           | PRs (M3)                        |
 | Repository: Variables             | write  | read      | repository Actions variables and the runs-on presets                                                              | variables (M3)                  |
 | Repository: Dependabot alerts     | read   | read      | alert overview (optional)                                                                                         | Dependabot (M3)                 |
-| Repository: Administration        | read   | read      | repository-level self-hosted runners                                                                              | runners (M2)                    |
+| Repository: Administration        | read   | read      | repository-level self-hosted runners (without it, runners are known from job data only)                           | runners (M2)                    |
 | Organization: Self-hosted runners | read   | read      | organisation runners and runner groups (optional)                                                                 | runners (M2)                    |
 | Organization: Variables           | write  | read      | organisation Actions variables (optional)                                                                         | variables (M3)                  |
 | Organization: Administration      | read   | read      | organisation billing usage (optional; without it costs are estimates)                                             | costs (M2)                      |
 | Account: Email addresses          | read   | read      | verified email for the optional GitHub login (removable)                                                          | login (M0)                      |
-| Account: Plan                     | read   | read      | personal-account billing via "Connect GitHub" (removable)                                                         | costs (M2)                      |
+| Account: Plan                     | read   | read      | personal-account billing via "Connect GitHub" (removable; option A needs it on the token instead)                 | costs (M2)                      |
 
 Webhook events: `workflow_run`, `workflow_job`, `repository` (subscribed);
 `installation`, `installation_repositories`, `github_app_authorization`
@@ -106,6 +107,12 @@ any actor; add it to a ruleset's bypass list yourself if you want it to bypass.
   (`DEFAULT_RETENTION_DAYS`); daily rollups are kept.
 - App users: email, name, the groups snapshot of the last sign-in, roles and
   login times. Provider access, refresh and ID tokens are **not** stored.
+- From M2: the self-hosted runners of each installation (name, labels, OS,
+  group, online and busy state), runner samples (online and busy at a point
+  in time) and daily runner stats; the Actions billing usage report (SKU,
+  repository, day, quantity and amounts); an optional billing credential of a
+  personal account, **encrypted** with `TOKEN_ENCRYPTION_KEY` and never
+  logged or shown again.
 - Webhook deliveries for 14 days; payloads are dropped once processed.
 - Audit entries (from M3) for 400 days; IP addresses only as a salted hash.
 - Never stored: logs, job steps, Actions secrets.
@@ -154,14 +161,36 @@ unverified email addresses.
    (`vercel.json` uses `fra1`; use `aws-eu-central-1` with it).
 2. Import the repository in Vercel (from a personal fork or with the Vercel
    CLI; Hobby cannot connect to organisation-owned repositories).
-3. Set the environment variables from [`.env.example`](.env.example):
-   `DATABASE_URL` = the pooled `-pooler` URL, `DIRECT_URL` = the direct URL
-   (used for migrations), `BETTER_AUTH_URL` and `NEXT_PUBLIC_APP_URL` = the
-   deployment URL, the secrets, the OIDC client, the roles, the App
-   credentials and `ALLOWED_ACCOUNTS`.
-4. Deploy. The build runs `prisma generate && next build && prisma migrate deploy`.
+3. Set the environment variables (Project → Settings → Environment
+   Variables, environment "Production"), see the table below and
+   [`.env.example`](.env.example).
+4. Deploy, or redeploy after changing variables: Vercel applies them to new
+   deployments only. The build runs
+   `prisma generate && next build && prisma migrate deploy`.
 5. The daily cron (`17 3 * * *`) calls `/api/cron/reconcile` with
-   `Authorization: Bearer $CRON_SECRET`.
+   `Authorization: Bearer $CRON_SECRET`; Vercel sends that header itself once
+   `CRON_SECRET` is set.
+
+Environment variables on Vercel. The server refuses to start when a required
+one is missing or malformed, and the function log names the variable.
+
+| Variable                                                     | Required                       | Value                                                                                                    |
+| ------------------------------------------------------------ | ------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                               | yes                            | Neon **pooled** connection string (host with `-pooler`)                                                  |
+| `DIRECT_URL`                                                 | yes                            | Neon **direct** connection string (migrations during the build)                                          |
+| `BETTER_AUTH_URL`, `NEXT_PUBLIC_APP_URL`                     | yes                            | the public URL, e.g. `https://devops.example.com` (no trailing slash)                                    |
+| `BETTER_AUTH_SECRET`                                         | yes                            | `openssl rand -base64 48`                                                                                |
+| `TOKEN_ENCRYPTION_KEY`                                       | yes                            | `openssl rand -base64 32` (exactly 32 bytes); keep it, stored credentials cannot be decrypted without it |
+| `CRON_SECRET`, `AUDIT_IP_SALT`                               | yes                            | `openssl rand -hex 32` each                                                                              |
+| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`        | yes                            | from the OIDC client of step 2                                                                           |
+| `ADMIN_EMAILS` or `ADMIN_GROUPS`                             | yes                            | at least one admin rule; `OPERATOR_*` and `VIEWER_*` are optional                                        |
+| `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY` | yes                            | from step 1; the private key as PEM with `\n` escapes or as base64 of the PEM                            |
+| `GITHUB_WEBHOOK_SECRET`                                      | yes (except polling-only mode) | the webhook secret of the App                                                                            |
+| `ALLOWED_ACCOUNTS`                                           | yes                            | comma-separated GitHub accounts whose installations are accepted, e.g. `example-user,example-org`        |
+| `TRUSTED_IP_HEADERS`                                         | no                             | the default `x-forwarded-for` is right on Vercel                                                         |
+| `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`           | no                             | only for the optional GitHub login or "Connect GitHub"                                                   |
+| `GITHUB_BILLING_TOKEN`, `GITHUB_CONNECT_ENABLED`             | no                             | personal-account billing, see [step 5](#5-optional-personal-account-billing)                             |
+| everything else                                              | no                             | the defaults in [`.env.example`](.env.example) work on Vercel                                            |
 
 Vercel Hobby is for non-commercial use only. For company or employer
 accounts use Vercel Pro or Docker.
@@ -194,6 +223,33 @@ Secrets can be passed as files: every secret accepts `<NAME>_FILE`
    is shown.
 3. The dashboard lists the repositories of all installations live from GitHub.
 
+### 5. Optional: personal-account billing
+
+Organisations need nothing extra: with the organisation permission
+Administration: read, the installation token reads the billing usage report
+(organisations on GitHub's enhanced billing platform). For a **personal
+account** GitHub answers only to a user token, so without one the costs page
+shows estimates and says why. Configure one per personal installation:
+
+- **Option A, token.** Create a fine-grained personal access token of that
+  account with the account permission **Plan: read** (no repository access
+  needed). Either set it as `GITHUB_BILLING_TOKEN` (applies when the instance
+  has exactly one personal installation; never written to the database), or
+  store it under **GitHub billing** (`/admin/github`, admin only): the token
+  is checked with GitHub, its login must match the account, and it is stored
+  encrypted. The page warns 14 days before it expires.
+- **Option B, "Connect GitHub".** Set `GITHUB_CONNECT_ENABLED=true`,
+  `GITHUB_APP_CLIENT_ID` and `GITHUB_APP_CLIENT_SECRET`, add the callback
+  URL `https://<host>/api/github/connect/callback` to the App, keep "Expire
+  user authorization tokens" on and grant the account permission
+  **Plan: read**. Then click **Connect GitHub** on `/admin/github` while you
+  are signed in on GitHub as that account. Tokens are refreshed
+  automatically; if the authorisation is revoked, admins see a reconnect
+  notice and costs fall back to estimates.
+
+Details, the verified endpoints and the refresh rules are in
+[docs/BILLING.md](docs/BILLING.md).
+
 ## Sync and freshness
 
 Workflow runs and jobs arrive through the `workflow_run` and `workflow_job`
@@ -210,14 +266,25 @@ deadline; elsewhere 240 s) and with cursors, so the next call resumes:
 4. incremental sync of new runs per repository,
 5. backfill of `BACKFILL_DAYS` in three-day windows (split further when a
    window holds 1,000 runs or more),
-6. daily rollups, recomputed for every touched day,
-7. a daily prune of raw rows older than the retention.
+6. runner sampling (online and busy state of every self-hosted runner), with
+   a daily discovery of repository and organisation runners,
+7. daily rollups, recomputed for every touched day (including runner stats),
+8. the daily billing sync (the current month; on days 1 to 3 the previous
+   month as well),
+9. a daily prune of raw rows older than the retention.
 
 Triggers: the daily Vercel cron, the Docker cron sidecar, a **lazy reconcile**
 when an installation page is opened and the last reconcile is older than
 `LAZY_RECONCILE_MINUTES`, and **Sync now** (operator or admin, once per five
 minutes per installation, audited). Reconcile is idempotent; concurrent
 triggers are serialised per installation.
+
+The **Runners** and **Queue** pages also take a runner sample when they are
+opened (at most every two minutes per installation) and refresh every 30
+seconds, so a STUCK job shows up within one refresh even on Vercel, where the
+cron runs only once a day. Utilisation is shown with its sample interval (10
+minutes with the Docker sidecar; on Vercel it depends on page views) and as
+"insufficient samples" when samples cover less than half of the period.
 
 Every installation page shows a **freshness pill** (age of the last webhook
 and the last reconcile) and a stale banner when no webhook arrived for 6 hours
@@ -232,11 +299,11 @@ created from their jobs and completed by reconcile.
 
 ## Roles
 
-| Role     | May                                                                                                   |
-| -------- | ----------------------------------------------------------------------------------------------------- |
-| Viewer   | read every page of every visible installation                                                         |
-| Operator | everything a viewer may, plus Sync now (M1), re-run and cancel (M3)                                   |
-| Admin    | everything an operator may, plus variables, merges, installation settings and instance administration |
+| Role     | May                                                                                                                                             |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Viewer   | read every page of every visible installation, including runners, queue and costs                                                               |
+| Operator | everything a viewer may, plus Sync now (M1), re-run and cancel (M3)                                                                             |
+| Admin    | everything an operator may, plus variables, merges, installation settings, the billing credential (`/admin/github`) and instance administration |
 
 Roles come from comma-separated, case-insensitive allowlists:
 `ADMIN_EMAILS`, `ADMIN_GROUPS`, `OPERATOR_EMAILS`, `OPERATOR_GROUPS`,
