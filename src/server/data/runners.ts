@@ -22,7 +22,7 @@ import {
   runnerStatKey,
   type RunnerScopeRow,
 } from "@/server/metrics/classify";
-import { localDay } from "@/server/metrics/days";
+import { localDay, rangeWindow } from "@/server/metrics/days";
 import {
   histogramOf,
   histogramPercentile,
@@ -50,7 +50,6 @@ import {
 import { percentileExact, type Conclusion } from "@/server/metrics/stats";
 import {
   ignoredRepoIds,
-  rangeStart,
   visibleInstallation,
   type InsightRange,
 } from "./insights";
@@ -377,6 +376,8 @@ export type RunnerDetail = {
   range: InsightRange;
   utilisation: UtilisationDto;
   perDay: RunnerDayPoint[];
+  /** Start of the status timeline: the range, at most the 30 sample days. */
+  statusFrom: string;
   /** Samples in the range (status timeline). */
   statusTimeline: Array<{
     t: string;
@@ -431,7 +432,7 @@ export async function getRunnerDetail(
   const dto = list[0];
   if (!dto) throw new NotFoundError();
 
-  const from = rangeStart(range, now);
+  const { from } = rangeWindow(range, now, inst.timezone);
   const sampleFrom = new Date(
     Math.max(from.getTime(), now.getTime() - 30 * DAY_MS),
   );
@@ -509,6 +510,7 @@ export async function getRunnerDetail(
   return {
     runner: dto,
     range,
+    statusFrom: sampleFrom.toISOString(),
     utilisation: {
       ...u,
       medianSampleIntervalS: medianSampleInterval(ownSamples),
@@ -651,7 +653,7 @@ export async function listRunnerPools(
   now: Date = new Date(),
 ): Promise<PoolOverview> {
   const inst = await visibleInstallation(scope, installationId);
-  const from = rangeStart(range, now);
+  const { from } = rangeWindow(range, now, inst.timezone);
   const w = { from: from.getTime(), to: now.getTime() };
   const windowS = (w.to - w.from) / 1000;
   const [jobs, runners, heat, keyOf] = await Promise.all([
@@ -809,9 +811,9 @@ export async function getConcurrencyTimeline(
   opts: { range?: "24h" | "7d"; labelKey?: string } = {},
   now: Date = new Date(),
 ): Promise<ConcurrencyDto> {
-  await visibleInstallation(scope, installationId);
+  const inst = await visibleInstallation(scope, installationId);
   const range = opts.range ?? "24h";
-  const from = rangeStart(range, now);
+  const { from } = rangeWindow(range, now, inst.timezone);
   const jobs = await jobsIn(
     installationId,
     from,
@@ -872,9 +874,9 @@ export async function getHostedVsSelfHosted(
   opts: { range?: InsightRange; workflowId?: bigint } = {},
   now: Date = new Date(),
 ): Promise<HostedComparisonDto> {
-  await visibleInstallation(scope, installationId);
+  const inst = await visibleInstallation(scope, installationId);
   const range = opts.range ?? "30d";
-  const from = rangeStart(range, now);
+  const { from } = rangeWindow(range, now, inst.timezone);
   const jobs = (
     await jobsIn(
       installationId,
@@ -1081,7 +1083,7 @@ export async function listRunnerDailyStats(
   now: Date = new Date(),
 ): Promise<RunnerStatPoint[]> {
   const inst = await visibleInstallation(scope, installationId);
-  const fromDay = localDay(rangeStart(opts.range ?? "30d", now), inst.timezone);
+  const { fromDay } = rangeWindow(opts.range ?? "30d", now, inst.timezone);
   const ignored = await ignoredRepoIds(installationId);
   const rows = await db.dailyRunnerStat.findMany({
     where: {

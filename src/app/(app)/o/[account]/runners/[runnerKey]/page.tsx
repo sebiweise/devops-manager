@@ -33,7 +33,6 @@ import { type SearchParams } from "@/lib/insights-view";
 import { first } from "@/lib/url-state";
 import { parseRunnerKey } from "@/lib/runners-view";
 import { runnerState } from "@/lib/table-pages";
-import { rangeStart } from "@/server/data/insights";
 import { getRunnerDetail } from "@/server/data/runners";
 import { accountMeta } from "@/lib/page-meta";
 import { pageRange } from "@/lib/page-range";
@@ -73,9 +72,7 @@ export default async function RunnerPage({
     iso ? format.relativeTime(new Date(iso), now) : t("freshness.never");
   const rangeLabel = t(`filters.ranges.${range}`);
   // The status timeline covers the samples of the range, at most 30 days.
-  const statusFrom = new Date(
-    Math.max(rangeStart(range, now).getTime(), now.getTime() - 30 * 86_400_000),
-  ).toISOString();
+  const statusFrom = detail.statusFrom;
 
   return (
     <div className="flex flex-col gap-6">

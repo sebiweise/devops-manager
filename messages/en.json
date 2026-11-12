@@ -57,7 +57,7 @@
       "queued": "Queued now",
       "minutes": "Minutes · month",
       "minutesOf": "of {included} included",
-      "stuck": "{count} waiting > 15 min",
+      "stuck": "{count, plural, one {# job stuck} other {# jobs stuck}}",
       "minutesOfEst": "of {included} included (est.)",
       "est": "estimate",
       "over": "over the included minutes"
@@ -92,7 +92,8 @@
       "runners": "Runners",
       "queue": "Queue",
       "costs": "Costs"
-    }
+    },
+    "attentionOf": "Needs attention in {name}"
   },
   "onboarding": {
     "title": "GitHub App installations",
@@ -278,7 +279,7 @@
       "minutesInfo": "Billable minutes estimated from job durations and runner types; the bill on the Costs page is authoritative.",
       "queueHint": "95 % got a runner within {queue}",
       "queued": "Queued now",
-      "queuedInfo": "Jobs waiting for a runner right now. Stuck: no runner picked them up for more than 15 minutes.",
+      "queuedInfo": "Jobs waiting for a runner right now. Stuck: queued for more than 15 minutes and no free online runner has all the labels the job asks for.",
       "live": "live",
       "offline": "Offline runners",
       "offlineInfo": "Self-hosted runners that are registered but not connected to GitHub.",
@@ -787,7 +788,7 @@
     "repo": "Repository",
     "count": "Jobs",
     "oldest": "Oldest",
-    "p95": "Age (95 %)",
+    "p95": "95 % wait less than",
     "workflows": "Workflows",
     "flags": "Flags",
     "jobs": "Queued jobs",

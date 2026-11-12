@@ -23,6 +23,7 @@ import {
   daysInMonth,
   elapsedDays,
   includedMinutes,
+  includedMinutesUsed,
   isActionsProduct,
   isMinutesUnit,
   projectMonth,
@@ -410,10 +411,7 @@ export async function getCosts(
 
   // ---- included vs used, projection
   const included = includedMinutes(inst.includedMinutes, inst.planName);
-  const usedBilled = minuteItems.reduce(
-    (s, i) => s + n(i.quantity) * (multiplierOf(skuKeyOf(i.sku), i.date) ?? 1),
-    0,
-  );
+  const usedBilled = includedMinutesUsed(minuteItems, rates);
   const usedEst = est.rows.reduce((s, e) => s + e.billableMin, 0);
   const used = source === "billed" ? usedBilled : usedEst;
   const elapsed = elapsedDays(m.year, m.month, now);

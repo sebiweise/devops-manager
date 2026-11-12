@@ -283,7 +283,7 @@ export default async function AccountPage({
           })}
           href={`${base}/costs`}
         />
-        {card && card.queuedLong > 0 ? (
+        {card && card.queuedStuck > 0 ? (
           <KpiTile
             variant="status"
             icon={TriangleAlert}
@@ -291,7 +291,7 @@ export default async function AccountPage({
             label={t("overview.kpi.queued")}
             info={t("overview.kpi.queuedInfo")}
             value={formatNumber(card.queuedNow, locale)}
-            hint={t("dashboard.kpi.stuck", { count: card.queuedLong })}
+            hint={t("dashboard.kpi.stuck", { count: card.queuedStuck })}
             href={`${base}/queue?f=stuck`}
           />
         ) : (

@@ -57,7 +57,7 @@
       "queued": "In Warteschlange",
       "minutes": "Minuten · Monat",
       "minutesOf": "von {included} inklusive",
-      "stuck": "{count} warten > 15 Min.",
+      "stuck": "{count, plural, one {# Job hängt fest} other {# Jobs hängen fest}}",
       "minutesOfEst": "von {included} inklusive (gesch.)",
       "est": "Schätzung",
       "over": "über den inklusiven Minuten"
@@ -92,7 +92,8 @@
       "runners": "Runner",
       "queue": "Warteschlange",
       "costs": "Kosten"
-    }
+    },
+    "attentionOf": "Braucht Aufmerksamkeit in {name}"
   },
   "onboarding": {
     "title": "GitHub-App-Installationen",
@@ -278,7 +279,7 @@
       "minutesInfo": "Abrechenbare Minuten, geschätzt aus Jobdauern und Runner-Typen; maßgeblich ist die Abrechnung auf der Seite Kosten.",
       "queueHint": "95 % bekamen innerhalb {queue} einen Runner",
       "queued": "In Warteschlange",
-      "queuedInfo": "Jobs, die gerade auf einen Runner warten. Hängt fest: seit mehr als 15 Min. kein Runner.",
+      "queuedInfo": "Jobs, die gerade auf einen Runner warten. Hängt fest: seit mehr als 15 Minuten in der Warteschlange, und kein freier Runner online hat alle Labels, die der Job verlangt.",
       "live": "live",
       "offline": "Runner offline",
       "offlineInfo": "Self-hosted Runner, die registriert, aber nicht mit GitHub verbunden sind.",
@@ -787,7 +788,7 @@
     "repo": "Repository",
     "count": "Jobs",
     "oldest": "Ältester",
-    "p95": "Alter (95 %)",
+    "p95": "95 % warten kürzer als",
     "workflows": "Workflows",
     "flags": "Hinweise",
     "jobs": "Wartende Jobs",

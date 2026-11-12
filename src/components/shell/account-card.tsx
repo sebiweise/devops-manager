@@ -184,7 +184,7 @@ export async function AccountCard({
               label={t("kpi.queued")}
               value={formatNumber(s.queuedNow, locale)}
             >
-              {s.queuedLong > 0 ? (
+              {s.queuedStuck > 0 ? (
                 <Link
                   href={`${base}/queue?f=stuck`}
                   className={cn(link, "inline-flex items-center gap-0.5")}
@@ -193,7 +193,7 @@ export async function AccountCard({
                     aria-hidden="true"
                     className="size-3 text-status-warning"
                   />
-                  {t("kpi.stuck", { count: s.queuedLong })}
+                  {t("kpi.stuck", { count: s.queuedStuck })}
                 </Link>
               ) : null}
             </Mini>
@@ -268,7 +268,10 @@ export async function AccountCard({
       </p>
 
       {s.attention.length > 0 ? (
-        <section aria-label={t("attention")} className="flex flex-col gap-1.5">
+        <section
+          aria-label={t("attentionOf", { name: s.accountLogin })}
+          className="flex flex-col gap-1.5"
+        >
           <h3 className="text-xs font-medium text-muted-foreground">
             {t("attention")}
           </h3>

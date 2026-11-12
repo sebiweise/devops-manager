@@ -4,13 +4,19 @@ import { MIN_SAMPLES } from "@/lib/insights-view";
 import type { TenantScope } from "@/server/authz/scope";
 import { db } from "@/server/db";
 import { notIgnoredRepo } from "@/server/ingest/active-repos";
-import { isActionsProduct, isMinutesUnit } from "@/server/metrics/billing";
-import { includedMinutes } from "@/server/metrics/billing";
-import { daysBetween, localDay } from "@/server/metrics/days";
+import { loadSkuRates } from "@/server/ingest/sku-rates";
+import { includedMinutes, includedMinutesUsed } from "@/server/metrics/billing";
+import {
+  daysBetween,
+  lastDaysWindow,
+  previousWindow,
+  type DayWindow,
+} from "@/server/metrics/days";
 import {
   histogramCount,
   histogramPercentile,
 } from "@/server/metrics/histogram";
+import { queueFlags, STUCK_AFTER_MS } from "@/server/metrics/runners";
 import { successRate, trendDelta } from "@/server/metrics/stats";
 import { listInstallations } from "./installations";
 
@@ -19,10 +25,39 @@ import { listInstallations } from "./installations";
  * per metric, grouped by installation, from the daily rollups and counts
  * only (no live GitHub read). Ignored repositories are left out of every
  * figure except the "ignored" count.
+ *
+ * "7 d" is the same window as the overview's 7-day range: today and the 6
+ * days before, in the installation's time zone (`lastDaysWindow`). Stuck
+ * jobs use the queue page's definition (`queueFlags`), and the month's
+ * minutes the costs page's formula (`includedMinutesUsed`).
  */
 
 const DAY_MS = 86_400_000;
-const STUCK_MS = 15 * 60 * 1000;
+
+/** Per installation: the last 7, the 7 before, and the last 14 local days. */
+type CardWindows = { last7: DayWindow; prev7: DayWindow; last14: DayWindow };
+
+function cardWindows(now: Date, timeZone: string): CardWindows {
+  const last7 = lastDaysWindow(7, now, timeZone);
+  return {
+    last7,
+    prev7: previousWindow(last7, timeZone),
+    last14: lastDaysWindow(14, now, timeZone),
+  };
+}
+
+/** `VALUES` rows of the per-installation day windows, joined as `w`. */
+function windowValues(
+  installations: ReadonlyArray<{ id: bigint }>,
+  windows: ReadonlyMap<bigint, CardWindows>,
+) {
+  return Prisma.join(
+    installations.map((i) => {
+      const w = windows.get(i.id)!;
+      return Prisma.sql`(${i.id}::bigint, ${w.last7.fromDay}::date, ${w.prev7.fromDay}::date, ${w.last14.fromDay}::date, ${w.last7.toDay}::date)`;
+    }),
+  );
+}
 
 export type AccountSummary = {
   installationId: string;
@@ -35,8 +70,11 @@ export type AccountSummary = {
   /** Success rate of the last 7 days minus the 7 days before. */
   successDelta: number | null;
   queuedNow: number;
-  /** Self-hosted jobs queued for more than 15 minutes (likely stuck). */
-  queuedLong: number;
+  /**
+   * Stuck jobs, as on the queue page: self-hosted, queued for over 15
+   * minutes and no free online runner with matching labels.
+   */
+  queuedStuck: number;
   minutes: {
     used: number;
     included: number;
@@ -53,7 +91,7 @@ export type AccountSummary = {
     repoFullName: string;
     failures: number;
   }>;
-  /** Runs per day, last 14 days (UTC days), oldest first. */
+  /** Runs per day, last 14 local days of the installation, oldest first. */
   sparkline: Array<{ day: string; runs: number; failures: number }>;
   /** 0..1 of the history import over the active repositories; null without any. */
   importProgress: number | null;
@@ -78,17 +116,19 @@ export async function getAccountSummaries(
   if (installations.length === 0) return [];
   const ids = installations.map((i) => i.id);
   const inIds = Prisma.join(ids);
-  const day = (offset: number) =>
-    localDay(new Date(now.getTime() - offset * DAY_MS), "UTC");
-  const today = day(0);
-  const from7 = day(6);
-  const from14 = day(13);
-  const monthStart = `${today.slice(0, 7)}-01`;
+  const cw = new Map(
+    installations.map((i) => [i.id, cardWindows(now, i.timezone)]),
+  );
+  const values = windowValues(installations, cw);
+  // Billing months are UTC calendar months (GitHub's report, Costs page).
+  const monthStart = `${now.toISOString().slice(0, 7)}-01`;
 
   const [
     windows,
     spark,
     queued,
+    longQueued,
+    queueRunners,
     repos,
     runners,
     attention,
@@ -96,6 +136,7 @@ export async function getAccountSummaries(
     estimated,
     meta,
     states,
+    rates,
   ] = await Promise.all([
     db.$queryRaw<
       Array<{
@@ -106,12 +147,13 @@ export async function getAccountSummaries(
         failure: number;
       }>
     >`
-        SELECT s."installationId", s."day" >= ${from7}::date AS recent,
+        WITH w(id, from7, prev7, from14, today) AS (VALUES ${values})
+        SELECT s."installationId", s."day" >= w.from7 AS recent,
           sum(s."runs")::int AS runs, sum(s."success")::int AS success,
           sum(s."failure")::int AS failure
-        FROM "DailyWorkflowStat" s
-        WHERE s."installationId" IN (${inIds}) AND s."day" >= ${from14}::date
-          AND s."day" <= ${today}::date AND ${notIgnoredRepo("s")}
+        FROM "DailyWorkflowStat" s JOIN w ON w.id = s."installationId"
+        WHERE s."day" >= w.prev7 AND s."day" <= w.today
+          AND ${notIgnoredRepo("s")}
         GROUP BY 1, 2`,
     db.$queryRaw<
       Array<{
@@ -121,22 +163,49 @@ export async function getAccountSummaries(
         failures: number;
       }>
     >`
+        WITH w(id, from7, prev7, from14, today) AS (VALUES ${values})
         SELECT s."installationId", to_char(s."day", 'YYYY-MM-DD') AS day,
           sum(s."runs")::int AS runs, sum(s."failure")::int AS failures
-        FROM "DailyWorkflowStat" s
-        WHERE s."installationId" IN (${inIds}) AND s."day" >= ${from14}::date
+        FROM "DailyWorkflowStat" s JOIN w ON w.id = s."installationId"
+        WHERE s."day" >= w.from14 AND s."day" <= w.today
           AND ${notIgnoredRepo("s")}
         GROUP BY 1, 2`,
-    db.$queryRaw<
-      Array<{ installationId: bigint; queued: number; long: number }>
-    >`
-        SELECT j."installationId", count(*)::int AS queued,
-          count(*) FILTER (WHERE j."runnerKind" = 'SELF_HOSTED'
-            AND j."createdAt" < ${new Date(now.getTime() - STUCK_MS)})::int AS long
+    db.$queryRaw<Array<{ installationId: bigint; queued: number }>>`
+        SELECT j."installationId", count(*)::int AS queued
         FROM "WorkflowJob" j
         WHERE j."installationId" IN (${inIds}) AND j."status" = 'QUEUED'
           AND ${notIgnoredRepo("j")}
         GROUP BY 1`,
+    // Candidates for "stuck": queued longer than the threshold; queueFlags
+    // then checks the labels and for a free matching runner, like the queue.
+    db.$queryRaw<
+      Array<{
+        installationId: bigint;
+        repositoryId: bigint;
+        labels: string[];
+        createdAt: Date;
+        waitingS: number;
+      }>
+    >`
+        SELECT j."installationId", j."repositoryId", j."labels", j."createdAt", j."waitingS"
+        FROM "WorkflowJob" j
+        WHERE j."installationId" IN (${inIds}) AND j."status" = 'QUEUED'
+          AND j."createdAt" < ${new Date(now.getTime() - STUCK_AFTER_MS)}
+          AND ${notIgnoredRepo("j")}
+        ORDER BY j."createdAt" ASC
+        LIMIT 5000`,
+    db.runner.findMany({
+      where: { installationId: { in: ids }, removedAt: null },
+      select: {
+        installationId: true,
+        scope: true,
+        repositoryId: true,
+        labels: true,
+        online: true,
+        busy: true,
+        removedAt: true,
+      },
+    }),
     db.$queryRaw<
       Array<{ installationId: bigint; active: number; ignored: number }>
     >`
@@ -164,7 +233,9 @@ export async function getAccountSummaries(
         SELECT s."installationId", s."workflowId", max(s."workflowName") AS "workflowName",
           max(r."fullName") AS "repoFullName", sum(s."failure")::int AS failures
         FROM "DailyWorkflowStat" s JOIN "Repository" r ON r."id" = s."repositoryId"
-        WHERE s."installationId" IN (${inIds}) AND s."day" >= ${from7}::date
+        JOIN (VALUES ${values}) AS w(id, from7, prev7, from14, today)
+          ON w.id = s."installationId"
+        WHERE s."day" >= w.from7 AND s."day" <= w.today
           AND r."ignoredAt" IS NULL AND s."workflowId" <> 0
         GROUP BY 1, 2
         HAVING sum(s."failure") > 0
@@ -178,6 +249,8 @@ export async function getAccountSummaries(
         installationId: true,
         product: true,
         unitType: true,
+        sku: true,
+        date: true,
         quantity: true,
       },
     }),
@@ -203,6 +276,7 @@ export async function getAccountSummaries(
         FROM "SyncState" st JOIN "Repository" r ON r."id" = st."repositoryId"
         WHERE st."installationId" IN (${inIds}) AND r."removedAt" IS NULL
           AND r."ignoredAt" IS NULL`,
+    loadSkuRates(),
   ]);
 
   const w = byInst(windows);
@@ -213,17 +287,16 @@ export async function getAccountSummaries(
   const at = byInst(attention);
   const est = byInst(estimated);
   const metaBy = new Map(meta.map((m) => [m.id, m]));
-  const billedBy = new Map<bigint, number>();
-  const hasBilling = new Set<bigint>();
-  for (const b of billed) {
-    hasBilling.add(b.installationId);
-    if (isActionsProduct(b.product) && isMinutesUnit(b.unitType))
-      billedBy.set(
-        b.installationId,
-        (billedBy.get(b.installationId) ?? 0) + Number(b.quantity),
-      );
+  const hasBilling = new Set(billed.map((b) => b.installationId));
+  const billedItems = byInst(billed);
+  const runnersBy = byInst(queueRunners);
+  const stuckBy = new Map<bigint, number>();
+  for (const j of longQueued) {
+    if (
+      queueFlags(j, runnersBy.get(j.installationId) ?? [], now.getTime()).stuck
+    )
+      stuckBy.set(j.installationId, (stuckBy.get(j.installationId) ?? 0) + 1);
   }
-  const days = daysBetween(from14, today).slice(-14);
   // Same coverage formula as the sync health of the settings page.
   const span = Math.max(1, opts.backfillDays ?? 30) * DAY_MS;
   const progressSum = new Map<bigint, number>();
@@ -253,6 +326,8 @@ export async function getAccountSummaries(
       failure: 0,
     };
     const sparkBy = new Map((sp.get(inst.id) ?? []).map((p) => [p.day, p]));
+    const w14 = cw.get(inst.id)!.last14;
+    const days = daysBetween(w14.fromDay, w14.toDay);
     const m = metaBy.get(inst.id);
     const att = at.get(inst.id) ?? [];
     const billedSource = hasBilling.has(inst.id);
@@ -267,11 +342,11 @@ export async function getAccountSummaries(
       successRate7d: successRate(recent),
       successDelta: trendDelta(successRate(recent), successRate(prev)),
       queuedNow: q.get(inst.id)?.[0]?.queued ?? 0,
-      queuedLong: q.get(inst.id)?.[0]?.long ?? 0,
+      queuedStuck: stuckBy.get(inst.id) ?? 0,
       minutes: {
         used: Math.round(
           billedSource
-            ? (billedBy.get(inst.id) ?? 0)
+            ? includedMinutesUsed(billedItems.get(inst.id) ?? [], rates)
             : (est.get(inst.id)?.[0]?.minutes ?? 0),
         ),
         included: includedMinutes(
@@ -327,7 +402,10 @@ export async function getCrossAccountHighlights(
   const installations = await listInstallations(scope);
   if (installations.length === 0) return { failing: [], slowest: [] };
   const login = new Map(installations.map((i) => [i.id, i.accountLogin]));
-  const from7 = localDay(new Date(now.getTime() - 6 * DAY_MS), "UTC");
+  const cw = new Map(
+    installations.map((i) => [i.id, cardWindows(now, i.timezone)]),
+  );
+  const values = windowValues(installations, cw);
   const rows = await db.$queryRaw<
     Array<{
       installationId: bigint;
@@ -343,8 +421,9 @@ export async function getCrossAccountHighlights(
       max(r."fullName") AS "repoFullName", sum(s."runs")::int AS runs,
       sum(s."failure")::int AS failures, hist_sum(s."durHist") AS dur_hist
     FROM "DailyWorkflowStat" s JOIN "Repository" r ON r."id" = s."repositoryId"
-    WHERE s."installationId" IN (${Prisma.join(installations.map((i) => i.id))})
-      AND s."day" >= ${from7}::date AND r."ignoredAt" IS NULL
+    JOIN (VALUES ${values}) AS w(id, from7, prev7, from14, today)
+      ON w.id = s."installationId"
+    WHERE s."day" >= w.from7 AND s."day" <= w.today AND r."ignoredAt" IS NULL
       AND r."removedAt" IS NULL AND s."workflowId" <> 0
     GROUP BY 1, 2`;
   const all = rows.map((r) => ({

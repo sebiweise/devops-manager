@@ -5,6 +5,9 @@
  * 7 and 30 days daily, 90 days weekly, 12 months monthly.
  *
  * Pure and client-safe; the server reads the cookie and passes its value.
+ * The time window of a range (the last N calendar days including today in
+ * the installation's time zone, or the rolling 24 hours) is `rangeWindow`
+ * in `@/server/metrics/days`, shared by every page.
  */
 
 export const RANGES = ["24h", "7d", "30d", "90d", "12m"] as const;
@@ -56,10 +59,6 @@ export function resolveRange(
   if (isRange(param)) return param;
   if (isRange(cookie)) return cookie;
   return fallback;
-}
-
-export function rangeStart(range: InsightRange, now: Date): Date {
-  return new Date(now.getTime() - RANGE_DAYS[range] * 86_400_000);
 }
 
 /** The `Set-Cookie` attributes of the range cookie (client and server). */

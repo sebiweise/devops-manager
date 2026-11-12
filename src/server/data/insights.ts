@@ -6,7 +6,13 @@ import { hasRole } from "@/server/authz/roles";
 import { db } from "@/server/db";
 import { activeRepoWhere, notIgnoredRepo } from "@/server/ingest/active-repos";
 import { effectiveRetentionDays } from "@/server/ingest/prune";
-import { daysBetween, localDay } from "@/server/metrics/days";
+import {
+  daysBetween,
+  lastDaysWindow,
+  localDay,
+  previousWindow,
+  rangeWindow,
+} from "@/server/metrics/days";
 import {
   histogramCount,
   histogramPercentile,
@@ -30,7 +36,6 @@ import {
   parseRange,
   RANGE_BUCKET,
   RANGES,
-  rangeStart,
   type InsightRange,
   type RangeBucket,
 } from "@/lib/range";
@@ -59,7 +64,7 @@ import { inScope, NotFoundError } from "./installations";
  * "~" in the UI). DTOs carry ids as strings and times as ISO strings.
  */
 
-export { RANGES, parseRange, rangeStart, type InsightRange };
+export { RANGES, parseRange, type InsightRange };
 
 const DAY_MS = 86_400_000;
 const EXACT_LIMIT = 50_000;
@@ -370,7 +375,8 @@ async function summarize(
       inst.id,
       f,
       localDay(from, inst.timezone),
-      localDay(to, inst.timezone),
+      // `to` is exclusive: a window ending at local midnight ends the day before.
+      localDay(new Date(to.getTime() - 1), inst.timezone),
     ),
   );
 }
@@ -383,7 +389,7 @@ async function perDay(
   now: Date,
 ): Promise<DayPoint[]> {
   const fromDay = localDay(from, inst.timezone);
-  const toDay = localDay(to, inst.timezone);
+  const toDay = localDay(new Date(to.getTime() - 1), inst.timezone);
   const points = new Map<string, DayPoint>();
   for (const day of daysBetween(fromDay, toDay)) {
     points.set(day, {
@@ -560,23 +566,20 @@ export async function getInstallationOverview(
   now: Date = new Date(),
 ): Promise<Overview> {
   const inst = await visibleInstallation(scope, installationId);
-  const from = rangeStart(range, now);
-  const [summary, days, last7, prev7] = await Promise.all([
+  const { from } = rangeWindow(range, now, inst.timezone);
+  // The trend compares the same 7-day windows as the start page card.
+  const last7 = lastDaysWindow(7, now, inst.timezone);
+  const prev7 = previousWindow(last7, inst.timezone);
+  const [summary, days, recent, before] = await Promise.all([
     summarize(inst, {}, from, now, now),
     perDay(inst, {}, from, now, now),
-    summarize(inst, {}, new Date(now.getTime() - 7 * DAY_MS), now, now),
-    summarize(
-      inst,
-      {},
-      new Date(now.getTime() - 14 * DAY_MS),
-      new Date(now.getTime() - 7 * DAY_MS),
-      now,
-    ),
+    summarize(inst, {}, last7.from, last7.to, now),
+    summarize(inst, {}, prev7.from, prev7.to, now),
   ]);
   return {
     range,
     summary,
-    successRateDelta: trendDelta(last7.successRate, prev7.successRate),
+    successRateDelta: trendDelta(recent.successRate, before.successRate),
     billableMinEst: days.reduce((s, d) => s + d.billableMinEst, 0),
     perDay: days,
     bucket: RANGE_BUCKET[range],
@@ -604,7 +607,7 @@ export async function getRepositorySummary(
 }> {
   const inst = await visibleInstallation(scope, installationId);
   await visibleRepository(installationId, repositoryId);
-  const from = rangeStart(range, now);
+  const { from } = rangeWindow(range, now, inst.timezone);
   const f: RunFilter = { repositoryId };
   const [summary, days, counts] = await Promise.all([
     summarize(inst, f, from, now, now),
@@ -709,7 +712,9 @@ export async function listRepoStats(
   const inst = await visibleInstallation(scope, installationId);
   const tz = inst.timezone;
   const range = query.range ?? "7d";
-  const from = rangeStart(range, now);
+  // One window for both CTEs: runs over [from, now), rollup minutes over
+  // the same local days.
+  const { from, fromDay, toDay } = rangeWindow(range, now, tz);
   const exact = insideRetention(inst, from, now);
   const sort: RepoSortKey = (REPO_SORTS as readonly string[]).includes(
     query.sort ?? "",
@@ -724,8 +729,6 @@ export async function listRepoStats(
   const size = Math.min(Math.max(query.size ?? DEFAULT_PAGE_SIZE, 1), 100);
   const filters = new Set(query.filters ?? []);
   const q = query.q?.trim().slice(0, 200);
-  const fromDay = localDay(from, tz);
-  const toDay = localDay(now, tz);
 
   const stats = exact
     ? Prisma.sql`
@@ -1043,7 +1046,7 @@ export async function listWorkflowStats(
   if (opts.repositoryId !== undefined)
     await visibleRepository(installationId, opts.repositoryId);
   const range = opts.range ?? "30d";
-  const from = rangeStart(range, now);
+  const { from } = rangeWindow(range, now, inst.timezone);
   const f: RunFilter =
     opts.repositoryId !== undefined ? { repositoryId: opts.repositoryId } : {};
   const exact =
@@ -1262,7 +1265,7 @@ export async function getWorkflowDetail(
   });
   if (!head) throw new NotFoundError();
   const repo = await visibleRepository(installationId, head.repositoryId);
-  const from = rangeStart(range, now);
+  const { from } = rangeWindow(range, now, inst.timezone);
   const f: RunFilter = { workflowId };
   const exact = insideRetention(inst, from, now);
 
@@ -1419,7 +1422,7 @@ export async function listFlakyJobs(
   now: Date = new Date(),
 ): Promise<FlakyJobStat[]> {
   const inst = await visibleInstallation(scope, installationId);
-  const from = rangeStart(range, now);
+  const { from } = rangeWindow(range, now, inst.timezone);
   if (!insideRetention(inst, from, now)) return [];
   const rows = await flakyCandidates(installationId, from, now);
   const key = (wf: bigint | null, name: string) => `${wf ?? 0}\u0000${name}`;
