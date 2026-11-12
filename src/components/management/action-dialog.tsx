@@ -29,6 +29,7 @@ export function ActionDialog({
   triggerVariant = "outline",
   triggerSize = "sm",
   disabled,
+  onChangedClose,
   children,
 }: {
   trigger: ReactNode;
@@ -39,6 +40,8 @@ export function ActionDialog({
     "default" | "outline" | "destructive" | "secondary" | "ghost";
   triggerSize?: "xs" | "sm" | "default";
   disabled?: boolean;
+  /** Runs when the dialog closes after the body reported a change. */
+  onChangedClose?: () => void;
   children: (controls: DialogControls) => ReactNode;
 }) {
   const t = useTranslations("management.dialog");
@@ -59,9 +62,10 @@ export function ActionDialog({
     setOpen(false);
     if (dirty) {
       setDirty(false);
+      onChangedClose?.();
       router.refresh();
     }
-  }, [dirty, router]);
+  }, [dirty, router, onChangedClose]);
 
   const changed = useCallback(() => setDirty(true), []);
 
@@ -88,7 +92,7 @@ export function ActionDialog({
           ref={setDialog}
           aria-labelledby={titleId}
           onClose={onClosed}
-          className="m-auto w-[min(40rem,calc(100vw-2rem))] rounded-xl border bg-background p-0 text-foreground shadow-lg backdrop:bg-black/50"
+          className="m-auto w-[min(40rem,calc(100vw-2rem))] rounded-xl border bg-background p-0 text-left font-normal whitespace-normal text-foreground shadow-lg backdrop:bg-black/50"
         >
           <div className="flex max-h-[85vh] flex-col gap-4 overflow-y-auto p-5">
             <div className="flex items-start justify-between gap-3">

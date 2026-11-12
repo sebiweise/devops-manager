@@ -4,8 +4,15 @@ import { Prisma } from "@/generated/prisma/client";
 import type { TenantScope } from "@/server/authz/scope";
 import { hasRole } from "@/server/authz/roles";
 import { db } from "@/server/db";
+import { activeRepoWhere, notIgnoredRepo } from "@/server/ingest/active-repos";
 import { effectiveRetentionDays } from "@/server/ingest/prune";
-import { daysBetween, localDay } from "@/server/metrics/days";
+import {
+  daysBetween,
+  lastDaysWindow,
+  localDay,
+  previousWindow,
+  rangeWindow,
+} from "@/server/metrics/days";
 import {
   histogramCount,
   histogramPercentile,
@@ -24,6 +31,25 @@ import {
   type PercentileWindow,
   type Regression,
 } from "@/server/metrics/stats";
+import {
+  bucketDays,
+  parseRange,
+  RANGE_BUCKET,
+  RANGES,
+  type InsightRange,
+  type RangeBucket,
+} from "@/lib/range";
+import type { Page } from "@/lib/paging";
+import { pageWorkflows, type ListQuery } from "@/lib/table-pages";
+import {
+  REPO_SORTS,
+  REPO_TABLE,
+  type RepoFilter,
+  type RepoSortKey,
+  type WorkflowFilter,
+  type WorkflowSortKey,
+} from "@/lib/table-specs";
+import { DEFAULT_PAGE_SIZE, type TableQuery } from "@/lib/url-state";
 import { inScope, NotFoundError } from "./installations";
 
 /**
@@ -38,24 +64,12 @@ import { inScope, NotFoundError } from "./installations";
  * "~" in the UI). DTOs carry ids as strings and times as ISO strings.
  */
 
-export const RANGES = ["24h", "7d", "30d", "90d", "12m"] as const;
-export type InsightRange = (typeof RANGES)[number];
+export { RANGES, parseRange, type InsightRange };
 
 const DAY_MS = 86_400_000;
 const EXACT_LIMIT = 50_000;
 const FAILURES = Prisma.raw(`('FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE')`);
 const OTHERS = Prisma.raw(`('SKIPPED', 'NEUTRAL', 'ACTION_REQUIRED', 'STALE')`);
-
-export function parseRange(value: string | null | undefined): InsightRange {
-  return (RANGES as readonly string[]).includes(value ?? "")
-    ? (value as InsightRange)
-    : "7d";
-}
-
-export function rangeStart(range: InsightRange, now: Date): Date {
-  const days = { "24h": 1, "7d": 7, "30d": 30, "90d": 90, "12m": 365 }[range];
-  return new Date(now.getTime() - days * DAY_MS);
-}
 
 export type InstallationInfo = {
   id: bigint;
@@ -101,7 +115,7 @@ export async function visibleInstallation(
 
 async function visibleRepository(installationId: bigint, repositoryId: bigint) {
   const repo = await db.repository.findFirst({
-    where: { id: repositoryId, installationId, removedAt: null },
+    where: { id: repositoryId, installationId, ...activeRepoWhere },
     select: { id: true, fullName: true, defaultBranch: true },
   });
   if (!repo) throw new NotFoundError();
@@ -109,6 +123,17 @@ async function visibleRepository(installationId: bigint, repositoryId: bigint) {
 }
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
+
+/** Ids of the installation's ignored repositories (for Prisma `notIn` filters). */
+export async function ignoredRepoIds(
+  installationId: bigint,
+): Promise<bigint[]> {
+  const rows = await db.repository.findMany({
+    where: { installationId, ignoredAt: { not: null } },
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
 
 /** True when raw rows still cover `from`..now (prune has not cut into the range). */
 function insideRetention(inst: InstallationInfo, from: Date, now: Date) {
@@ -161,6 +186,7 @@ function runWhere(installationId: bigint, f: RunFilter, from: Date, to: Date) {
   return Prisma.sql`r."installationId" = ${installationId}
     AND r."statusRank" = 4
     AND r."createdAt" >= ${from} AND r."createdAt" < ${to}
+    AND ${notIgnoredRepo("r")}
     ${f.repositoryId !== undefined ? Prisma.sql`AND r."repositoryId" = ${f.repositoryId}` : Prisma.empty}
     ${f.workflowId !== undefined ? Prisma.sql`AND r."workflowId" = ${f.workflowId}` : Prisma.empty}
     ${f.defaultBranchOnly ? Prisma.sql`AND r."isDefaultBranch"` : Prisma.empty}`;
@@ -174,6 +200,7 @@ function statWhere(
 ) {
   return Prisma.sql`s."installationId" = ${installationId}
     AND s."day" >= ${fromDay}::date AND s."day" <= ${toDay}::date
+    AND ${notIgnoredRepo("s")}
     ${f.repositoryId !== undefined ? Prisma.sql`AND s."repositoryId" = ${f.repositoryId}` : Prisma.empty}
     ${f.workflowId !== undefined ? Prisma.sql`AND s."workflowId" = ${f.workflowId}` : Prisma.empty}
     ${f.defaultBranchOnly ? Prisma.sql`AND s."defaultBranch"` : Prisma.empty}`;
@@ -348,7 +375,8 @@ async function summarize(
       inst.id,
       f,
       localDay(from, inst.timezone),
-      localDay(to, inst.timezone),
+      // `to` is exclusive: a window ending at local midnight ends the day before.
+      localDay(new Date(to.getTime() - 1), inst.timezone),
     ),
   );
 }
@@ -361,7 +389,7 @@ async function perDay(
   now: Date,
 ): Promise<DayPoint[]> {
   const fromDay = localDay(from, inst.timezone);
-  const toDay = localDay(to, inst.timezone);
+  const toDay = localDay(new Date(to.getTime() - 1), inst.timezone);
   const points = new Map<string, DayPoint>();
   for (const day of daysBetween(fromDay, toDay)) {
     points.set(day, {
@@ -490,7 +518,46 @@ export type Overview = {
   successRateDelta: number | null;
   billableMinEst: number;
   perDay: DayPoint[];
+  /** The chart bucket of the range: hour (24 h), day, week (90 d), month (12 m). */
+  bucket: RangeBucket;
+  /** Run counts and minutes summed per bucket (weeks start on Monday). */
+  perBucket: BucketPoint[];
 };
+
+export type BucketPoint = {
+  bucket: string;
+  runs: number;
+  success: number;
+  failure: number;
+  cancelled: number;
+  other: number;
+  billableMinEst: number;
+};
+
+const BUCKET_KEYS = [
+  "runs",
+  "success",
+  "failure",
+  "cancelled",
+  "other",
+  "billableMinEst",
+] as const;
+
+/** Daily points summed into the range's buckets (hourly ranges stay daily). */
+export function toBuckets(
+  points: ReadonlyArray<DayPoint>,
+  bucket: RangeBucket,
+): BucketPoint[] {
+  return bucketDays(points, bucket, BUCKET_KEYS).map((b) => ({
+    bucket: b.bucket,
+    runs: b.runs ?? 0,
+    success: b.success ?? 0,
+    failure: b.failure ?? 0,
+    cancelled: b.cancelled ?? 0,
+    other: b.other ?? 0,
+    billableMinEst: b.billableMinEst ?? 0,
+  }));
+}
 
 export async function getInstallationOverview(
   scope: TenantScope,
@@ -499,25 +566,65 @@ export async function getInstallationOverview(
   now: Date = new Date(),
 ): Promise<Overview> {
   const inst = await visibleInstallation(scope, installationId);
-  const from = rangeStart(range, now);
-  const [summary, days, last7, prev7] = await Promise.all([
+  const { from } = rangeWindow(range, now, inst.timezone);
+  // The trend compares the same 7-day windows as the start page card.
+  const last7 = lastDaysWindow(7, now, inst.timezone);
+  const prev7 = previousWindow(last7, inst.timezone);
+  const [summary, days, recent, before] = await Promise.all([
     summarize(inst, {}, from, now, now),
     perDay(inst, {}, from, now, now),
-    summarize(inst, {}, new Date(now.getTime() - 7 * DAY_MS), now, now),
-    summarize(
-      inst,
-      {},
-      new Date(now.getTime() - 14 * DAY_MS),
-      new Date(now.getTime() - 7 * DAY_MS),
-      now,
-    ),
+    summarize(inst, {}, last7.from, last7.to, now),
+    summarize(inst, {}, prev7.from, prev7.to, now),
   ]);
   return {
     range,
     summary,
-    successRateDelta: trendDelta(last7.successRate, prev7.successRate),
+    successRateDelta: trendDelta(recent.successRate, before.successRate),
     billableMinEst: days.reduce((s, d) => s + d.billableMinEst, 0),
     perDay: days,
+    bucket: RANGE_BUCKET[range],
+    perBucket: toBuckets(days, RANGE_BUCKET[range]),
+  };
+}
+
+/**
+ * The KPIs of one repository's page (UI overhaul §2.4): the run summary and
+ * estimated minutes over the range, plus the cached open pull request and
+ * alert counts. A foreign, removed or ignored repository answers 404.
+ */
+export async function getRepositorySummary(
+  scope: TenantScope,
+  installationId: bigint,
+  repositoryId: bigint,
+  range: InsightRange = "7d",
+  now: Date = new Date(),
+): Promise<{
+  summary: RunSummary;
+  billableMinEst: number;
+  openPrCount: number | null;
+  openAlertCount: number | null;
+  openAlertHighCount: number | null;
+}> {
+  const inst = await visibleInstallation(scope, installationId);
+  await visibleRepository(installationId, repositoryId);
+  const { from } = rangeWindow(range, now, inst.timezone);
+  const f: RunFilter = { repositoryId };
+  const [summary, days, counts] = await Promise.all([
+    summarize(inst, f, from, now, now),
+    perDay(inst, f, from, now, now),
+    db.repository.findUniqueOrThrow({
+      where: { id: repositoryId },
+      select: {
+        openPrCount: true,
+        openAlertCount: true,
+        openAlertHighCount: true,
+      },
+    }),
+  ]);
+  return {
+    summary,
+    billableMinEst: days.reduce((s, d) => s + d.billableMinEst, 0),
+    ...counts,
   };
 }
 
@@ -529,6 +636,9 @@ export type RepoStat = {
   name: string;
   private: boolean;
   archived: boolean;
+  fork: boolean;
+  /** Shown only with the "ignored" filter; its metrics are null. */
+  ignored: boolean;
   lastRun: {
     id: string;
     status: string;
@@ -536,120 +646,299 @@ export type RepoStat = {
     createdAt: string;
     workflowName: string;
   } | null;
-  runs7d: number;
-  successRate7d: number | null;
-  p50Duration7d: number | null;
-  billableMinEst30d: number;
-  /** Last 14 days, oldest first. */
+  /** Completed runs in the range. */
+  runs: number;
+  successRate: number | null;
+  p50Duration: number | null;
+  /** Estimated billable minutes in the range (daily rollups). */
+  billableMinEst: number;
+  /** Cached counts (null = not read yet). */
+  openPrCount: number | null;
+  openAlertCount: number | null;
+  openAlertHighCount: number | null;
+  /** Last 14 days, oldest first; empty for ignored repositories. */
   sparkline: Array<{ day: string; runs: number; failures: number }>;
 };
 
+export type RepoQuery = Partial<
+  Omit<TableQuery<RepoSortKey, RepoFilter>, "size">
+> & {
+  /** 1..100; pages use 25, 50 or 100. */
+  size?: number;
+  range?: InsightRange;
+  /** Also return the ids of every matching, not ignored repo (bulk select). */
+  withMatching?: boolean;
+};
+
+/** "Select all N matching" covers at most one bulk action (500 repos). */
+export const MATCHING_LIMIT = 500;
+
+export type RepoStatsPage = Page<RepoStat> & {
+  range: InsightRange;
+  /** Repository counts regardless of search and filters (subtitle). */
+  counts: { active: number; ignored: number; forks: number };
+  /** Percentiles come from rollup histograms (range beyond raw retention). */
+  approx: boolean;
+  /** With `withMatching`: matching, not ignored repos, name order, capped. */
+  matching: Array<{ id: string; fullName: string; fork: boolean }> | null;
+};
+
+const REPO_ORDER: Record<RepoSortKey, Prisma.Sql> = {
+  name: Prisma.sql`lower(repo."fullName")`,
+  lastRun: Prisma.sql`l."createdAt"`,
+  runs: Prisma.sql`COALESCE(s.runs, 0)`,
+  success: Prisma.sql`(s.success::float8 / NULLIF(s.success + s.failure, 0))`,
+  p50: Prisma.sql`s.p50`,
+  minutes: Prisma.sql`COALESCE(m.minutes, 0)`,
+  prs: Prisma.sql`repo."openPrCount"`,
+  alerts: Prisma.sql`repo."openAlertCount"`,
+};
+
+/**
+ * One page of the repositories table (UI overhaul §2.3, §4.1): search by
+ * name, filter chips (failing, forks, private, archived, show ignored), an
+ * allow-listed ORDER BY with nulls last and LIMIT/OFFSET in SQL. Metrics
+ * follow the range (raw runs inside retention, rollups beyond); last run,
+ * sparkline and the 14-day trend are read for the page's rows only.
+ * Ignored repositories appear only with the "ignored" filter, without
+ * metrics.
+ */
 export async function listRepoStats(
   scope: TenantScope,
   installationId: bigint,
+  query: RepoQuery = {},
   now: Date = new Date(),
-): Promise<RepoStat[]> {
+): Promise<RepoStatsPage> {
   const inst = await visibleInstallation(scope, installationId);
   const tz = inst.timezone;
-  const from7 = new Date(now.getTime() - 7 * DAY_MS);
-  const from14 = new Date(now.getTime() - 14 * DAY_MS);
-  const fromDay30 = localDay(new Date(now.getTime() - 30 * DAY_MS), tz);
+  const range = query.range ?? "7d";
+  // One window for both CTEs: runs over [from, now), rollup minutes over
+  // the same local days.
+  const { from, fromDay, toDay } = rangeWindow(range, now, tz);
+  const exact = insideRetention(inst, from, now);
+  const sort: RepoSortKey = (REPO_SORTS as readonly string[]).includes(
+    query.sort ?? "",
+  )
+    ? query.sort!
+    : REPO_TABLE.defaultSort;
+  const dir =
+    query.dir ??
+    (typeof REPO_TABLE.defaultDir === "object"
+      ? (REPO_TABLE.defaultDir[sort] ?? "desc")
+      : "desc");
+  const size = Math.min(Math.max(query.size ?? DEFAULT_PAGE_SIZE, 1), 100);
+  const filters = new Set(query.filters ?? []);
+  const q = query.q?.trim().slice(0, 200);
 
-  const [repos, stats, last, spark, minutes] = await Promise.all([
-    db.repository.findMany({
-      where: { installationId, removedAt: null },
-      orderBy: { fullName: "asc" },
-      select: {
-        id: true,
-        fullName: true,
-        name: true,
-        private: true,
-        archived: true,
-      },
-    }),
-    db.$queryRaw<Array<CountRow & { repositoryId: bigint }>>`
-      SELECT r."repositoryId", ${countColumns} FROM "WorkflowRun" r
-      WHERE ${runWhere(installationId, {}, from7, now)}
-      GROUP BY r."repositoryId"`,
-    db.$queryRaw<
-      Array<{
-        repositoryId: bigint;
-        id: bigint;
-        status: string;
-        conclusion: Conclusion | null;
-        createdAt: Date;
-        workflowName: string;
-      }>
-    >`
-      SELECT DISTINCT ON (r."repositoryId") r."repositoryId", r."id", r."status"::text AS status,
-        r."conclusion"::text AS conclusion, r."createdAt", r."workflowName"
+  const stats = exact
+    ? Prisma.sql`
+      SELECT r."repositoryId",
+        count(*)::int AS runs,
+        count(*) FILTER (WHERE r."conclusion" = 'SUCCESS')::int AS success,
+        count(*) FILTER (WHERE r."conclusion" IN ${FAILURES})::int AS failure,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY r."durationS") AS p50
       FROM "WorkflowRun" r
-      WHERE r."installationId" = ${installationId} AND NOT r."isPlaceholder"
-      ORDER BY r."repositoryId", r."createdAt" DESC`,
-    db.$queryRaw<
-      Array<{
-        repositoryId: bigint;
-        day: string;
-        runs: number;
-        failures: number;
-      }>
-    >`
+      WHERE ${runWhere(installationId, {}, from, now)}
+      GROUP BY r."repositoryId"`
+    : Prisma.sql`
+      SELECT s."repositoryId",
+        sum(s."runs")::int AS runs, sum(s."success")::int AS success,
+        sum(s."failure")::int AS failure, NULL::float8 AS p50
+      FROM "DailyWorkflowStat" s
+      WHERE ${statWhere(installationId, {}, fromDay, toDay)}
+      GROUP BY s."repositoryId"`;
+  const where = Prisma.sql`repo."installationId" = ${installationId}
+    AND repo."removedAt" IS NULL
+    ${filters.has("ignored") ? Prisma.empty : Prisma.sql`AND repo."ignoredAt" IS NULL`}
+    ${q ? Prisma.sql`AND repo."fullName" ILIKE ${`%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`}` : Prisma.empty}
+    ${filters.has("forks") ? Prisma.sql`AND repo."fork"` : Prisma.empty}
+    ${filters.has("private") ? Prisma.sql`AND repo."private"` : Prisma.empty}
+    ${filters.has("archived") ? Prisma.sql`AND repo."archived"` : Prisma.empty}
+    ${filters.has("failing") ? Prisma.sql`AND l."conclusion" IN ${FAILURES}` : Prisma.empty}`;
+  const joins = Prisma.sql`
+    LEFT JOIN stats s ON s."repositoryId" = repo."id"
+    LEFT JOIN minutes m ON m."repositoryId" = repo."id"
+    LEFT JOIN LATERAL (
+      SELECT w."id", w."status"::text AS status, w."conclusion"::text AS conclusion,
+        w."createdAt", w."workflowName"
+      FROM "WorkflowRun" w
+      WHERE w."repositoryId" = repo."id" AND w."installationId" = ${installationId}
+        AND NOT w."isPlaceholder" AND repo."ignoredAt" IS NULL
+      ORDER BY w."createdAt" DESC LIMIT 1
+    ) l ON true`;
+  const ctes = Prisma.sql`
+    WITH stats AS (${stats}),
+    minutes AS (
+      SELECT d."repositoryId", sum(d."billableMinEst")::int AS minutes
+      FROM "DailyWorkflowStat" d
+      WHERE d."installationId" = ${installationId}
+        AND d."day" >= ${fromDay}::date AND d."day" <= ${toDay}::date
+        AND ${notIgnoredRepo("d")}
+      GROUP BY 1
+    )`;
+
+  const [[countRow], counts] = await Promise.all([
+    db.$queryRaw<Array<{ n: number }>>`
+      ${ctes}
+      SELECT count(*)::int AS n FROM "Repository" repo ${joins}
+      WHERE ${where}`,
+    Promise.all([
+      db.repository.count({ where: { installationId, ...activeRepoWhere } }),
+      db.repository.count({
+        where: { installationId, removedAt: null, ignoredAt: { not: null } },
+      }),
+      db.repository.count({
+        where: { installationId, ...activeRepoWhere, fork: true },
+      }),
+    ]),
+  ]);
+  const total = countRow?.n ?? 0;
+  const matching = query.withMatching
+    ? (
+        await db.$queryRaw<
+          Array<{ id: bigint; fullName: string; fork: boolean }>
+        >`
+          ${ctes}
+          SELECT repo."id", repo."fullName", repo."fork" FROM "Repository" repo ${joins}
+          WHERE ${where} AND repo."ignoredAt" IS NULL
+          ORDER BY lower(repo."fullName") ASC
+          LIMIT ${MATCHING_LIMIT}`
+      ).map((r) => ({ id: String(r.id), fullName: r.fullName, fork: r.fork }))
+    : null;
+  const pages = Math.max(1, Math.ceil(total / size));
+  const page = Math.min(Math.max(1, query.page ?? 1), pages);
+  const dirSql = Prisma.raw(dir === "asc" ? "ASC" : "DESC");
+
+  const rows = await db.$queryRaw<
+    Array<{
+      id: bigint;
+      fullName: string;
+      name: string;
+      private: boolean;
+      archived: boolean;
+      fork: boolean;
+      ignoredAt: Date | null;
+      openPrCount: number | null;
+      openAlertCount: number | null;
+      openAlertHighCount: number | null;
+      runs: number | null;
+      success: number | null;
+      failure: number | null;
+      p50: number | null;
+      minutes: number | null;
+      lastId: bigint | null;
+      lastStatus: string | null;
+      lastConclusion: Conclusion | null;
+      lastCreatedAt: Date | null;
+      lastWorkflowName: string | null;
+    }>
+  >`
+    ${ctes}
+    SELECT repo."id", repo."fullName", repo."name", repo."private", repo."archived",
+      repo."fork", repo."ignoredAt", repo."openPrCount", repo."openAlertCount",
+      repo."openAlertHighCount",
+      s.runs, s.success, s.failure, s.p50, m.minutes,
+      l."id" AS "lastId", l.status AS "lastStatus", l.conclusion AS "lastConclusion",
+      l."createdAt" AS "lastCreatedAt", l."workflowName" AS "lastWorkflowName"
+    FROM "Repository" repo ${joins}
+    WHERE ${where}
+    ORDER BY ${REPO_ORDER[sort]} ${dirSql} NULLS LAST, lower(repo."fullName") ASC, repo."id" ASC
+    LIMIT ${size} OFFSET ${(page - 1) * size}`;
+
+  const ids = rows.filter((r) => r.ignoredAt == null).map((r) => r.id);
+  const from14 = new Date(now.getTime() - 14 * DAY_MS);
+  const [spark, hist] = await Promise.all([
+    ids.length === 0
+      ? Promise.resolve([])
+      : db.$queryRaw<
+          Array<{
+            repositoryId: bigint;
+            day: string;
+            runs: number;
+            failures: number;
+          }>
+        >`
       SELECT r."repositoryId",
         to_char((r."createdAt" AT TIME ZONE ${tz}::text)::date, 'YYYY-MM-DD') AS day,
         count(*)::int AS runs,
         count(*) FILTER (WHERE r."conclusion" IN ${FAILURES})::int AS failures
       FROM "WorkflowRun" r
       WHERE ${runWhere(installationId, {}, from14, now)}
+        AND r."repositoryId" IN (${Prisma.join(ids)})
       GROUP BY 1, 2`,
-    db.$queryRaw<Array<{ repositoryId: bigint; minutes: number }>>`
-      SELECT s."repositoryId", sum(s."billableMinEst")::int AS minutes
+    exact || ids.length === 0
+      ? Promise.resolve([])
+      : db.$queryRaw<Array<{ repositoryId: bigint; dur_hist: number[] }>>`
+      SELECT s."repositoryId", hist_sum(s."durHist") AS dur_hist
       FROM "DailyWorkflowStat" s
-      WHERE s."installationId" = ${installationId} AND s."day" >= ${fromDay30}::date
+      WHERE ${statWhere(installationId, {}, fromDay, toDay)}
+        AND s."repositoryId" IN (${Prisma.join(ids)})
       GROUP BY 1`,
   ]);
-
   const days = daysBetween(localDay(from14, tz), localDay(now, tz)).slice(-14);
-  const byRepo = <T extends { repositoryId: bigint }>(rows: T[]) => {
-    const m = new Map<bigint, T[]>();
-    for (const r of rows)
-      m.set(r.repositoryId, [...(m.get(r.repositoryId) ?? []), r]);
-    return m;
-  };
-  const statMap = byRepo(stats);
-  const lastMap = byRepo(last);
-  const sparkMap = byRepo(spark);
-  const minuteMap = byRepo(minutes);
+  const sparkBy = new Map<
+    bigint,
+    Map<string, { runs: number; failures: number }>
+  >();
+  for (const p of spark) {
+    const m = sparkBy.get(p.repositoryId) ?? new Map();
+    m.set(p.day, p);
+    sparkBy.set(p.repositoryId, m);
+  }
+  const p50By = new Map(
+    hist.map((h) => [h.repositoryId, histogramPercentile(h.dur_hist, 0.5)]),
+  );
 
-  return repos.map((repo) => {
-    const s = statMap.get(repo.id)?.[0];
-    const l = lastMap.get(repo.id)?.[0];
-    const sp = new Map((sparkMap.get(repo.id) ?? []).map((p) => [p.day, p]));
-    return {
-      repositoryId: String(repo.id),
-      fullName: repo.fullName,
-      name: repo.name,
-      private: repo.private,
-      archived: repo.archived,
-      lastRun: l
-        ? {
-            id: String(l.id),
-            status: l.status,
-            conclusion: l.conclusion,
-            createdAt: l.createdAt.toISOString(),
-            workflowName: l.workflowName,
-          }
-        : null,
-      runs7d: s?.runs ?? 0,
-      successRate7d: s ? successRate(s) : null,
-      p50Duration7d: s?.p50 == null ? null : Number(s.p50),
-      billableMinEst30d: minuteMap.get(repo.id)?.[0]?.minutes ?? 0,
-      sparkline: days.map((day) => ({
-        day,
-        runs: sp.get(day)?.runs ?? 0,
-        failures: sp.get(day)?.failures ?? 0,
-      })),
-    };
-  });
+  return {
+    range,
+    approx: !exact,
+    matching,
+    counts: { active: counts[0], ignored: counts[1], forks: counts[2] },
+    total,
+    page,
+    size,
+    rows: rows.map((r) => {
+      const ignored = r.ignoredAt != null;
+      const sp = sparkBy.get(r.id);
+      const p50 = exact ? r.p50 : (p50By.get(r.id) ?? null);
+      return {
+        repositoryId: String(r.id),
+        fullName: r.fullName,
+        name: r.name,
+        private: r.private,
+        archived: r.archived,
+        fork: r.fork,
+        ignored,
+        lastRun:
+          r.lastId != null && r.lastCreatedAt
+            ? {
+                id: String(r.lastId),
+                status: r.lastStatus ?? "",
+                conclusion: r.lastConclusion,
+                createdAt: r.lastCreatedAt.toISOString(),
+                workflowName: r.lastWorkflowName ?? "",
+              }
+            : null,
+        runs: r.runs ?? 0,
+        successRate:
+          r.success == null || r.failure == null
+            ? null
+            : successRate({ success: r.success, failure: r.failure }),
+        p50Duration: p50 == null ? null : Number(p50),
+        billableMinEst: r.minutes ?? 0,
+        openPrCount: ignored ? null : r.openPrCount,
+        openAlertCount: ignored ? null : r.openAlertCount,
+        openAlertHighCount: ignored ? null : r.openAlertHighCount,
+        sparkline: ignored
+          ? []
+          : days.map((day) => ({
+              day,
+              runs: sp?.get(day)?.runs ?? 0,
+              failures: sp?.get(day)?.failures ?? 0,
+            })),
+      };
+    }),
+  };
 }
 
 // ---------- workflows ----------
@@ -757,7 +1046,7 @@ export async function listWorkflowStats(
   if (opts.repositoryId !== undefined)
     await visibleRepository(installationId, opts.repositoryId);
   const range = opts.range ?? "30d";
-  const from = rangeStart(range, now);
+  const { from } = rangeWindow(range, now, inst.timezone);
   const f: RunFilter =
     opts.repositoryId !== undefined ? { repositoryId: opts.repositoryId } : {};
   const exact =
@@ -891,6 +1180,49 @@ export async function listWorkflowStats(
     );
 }
 
+export type WorkflowQuery = ListQuery<WorkflowSortKey, WorkflowFilter> & {
+  range?: InsightRange;
+  /** Only the workflows of one repository (`?repo=`). */
+  repositoryId?: string;
+};
+
+/**
+ * One page of the workflows table (UI overhaul §2.5): every workflow's stats
+ * for the range (the same figures as listWorkflowStats), then search by
+ * workflow or repository name, the Regressed / Flaky / Low success chips,
+ * an allow-listed sort and the page slice.
+ */
+export async function listWorkflowStatsPage(
+  scope: TenantScope,
+  installationId: bigint,
+  query: WorkflowQuery,
+  now: Date = new Date(),
+): Promise<
+  Page<WorkflowStat> & {
+    repositories: number;
+    /** Workflows with runs in the range, before search and filters. */
+    workflows: number;
+    /** Repositories with runs in the range, for the repository filter. */
+    repositoryOptions: Array<{ id: string; fullName: string }>;
+  }
+> {
+  const all = await listWorkflowStats(
+    scope,
+    installationId,
+    { range: query.range ?? "7d" },
+    now,
+  );
+  const repos = new Map(all.map((w) => [w.repositoryId, w.repoFullName]));
+  return {
+    ...pageWorkflows(all, query),
+    repositories: repos.size,
+    workflows: all.length,
+    repositoryOptions: [...repos.entries()]
+      .map(([id, fullName]) => ({ id, fullName }))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName)),
+  };
+}
+
 export type JobBreakdown = {
   baseName: string;
   labelKey: string;
@@ -933,7 +1265,7 @@ export async function getWorkflowDetail(
   });
   if (!head) throw new NotFoundError();
   const repo = await visibleRepository(installationId, head.repositoryId);
-  const from = rangeStart(range, now);
+  const { from } = rangeWindow(range, now, inst.timezone);
   const f: RunFilter = { workflowId };
   const exact = insideRetention(inst, from, now);
 
@@ -1069,6 +1401,7 @@ async function flakyCandidates(
     WHERE r."installationId" = ${installationId} AND j."installationId" = ${installationId}
       AND r."runAttempt" > 1 AND j."statusRank" = 4
       AND r."createdAt" >= ${from} AND r."createdAt" < ${to}
+      AND ${notIgnoredRepo("r")}
       ${workflowId !== undefined ? Prisma.sql`AND r."workflowId" = ${workflowId}` : Prisma.empty}
     LIMIT 20000`;
 }
@@ -1089,7 +1422,7 @@ export async function listFlakyJobs(
   now: Date = new Date(),
 ): Promise<FlakyJobStat[]> {
   const inst = await visibleInstallation(scope, installationId);
-  const from = rangeStart(range, now);
+  const { from } = rangeWindow(range, now, inst.timezone);
   if (!insideRetention(inst, from, now)) return [];
   const rows = await flakyCandidates(installationId, from, now);
   const key = (wf: bigint | null, name: string) => `${wf ?? 0}\u0000${name}`;
@@ -1197,9 +1530,11 @@ export async function listRuns(
   if (filter.repositoryId !== undefined)
     await visibleRepository(installationId, filter.repositoryId);
   const limit = Math.min(Math.max(filter.limit ?? 50, 1), 200);
+  const ignored = await ignoredRepoIds(installationId);
   const rows = await db.workflowRun.findMany({
     where: {
       installationId,
+      ...(ignored.length > 0 ? { repositoryId: { notIn: ignored } } : {}),
       ...(filter.repositoryId !== undefined
         ? { repositoryId: filter.repositoryId }
         : {}),
@@ -1316,9 +1651,11 @@ export async function getRunDetail(
   });
   if (!run) throw new NotFoundError();
   const repo = await db.repository.findFirst({
-    where: { id: run.repositoryId, installationId },
+    where: { id: run.repositoryId, installationId, ignoredAt: null },
     select: { fullName: true },
   });
+  // Runs of an ignored repository are hidden (and purged by reconcile).
+  if (!repo) throw new NotFoundError();
   const jobsAll = await db.workflowJob.findMany({
     where: { runId, installationId },
     orderBy: [{ runAttempt: "asc" }, { startedAt: "asc" }, { id: "asc" }],
@@ -1441,7 +1778,7 @@ export async function getSyncHealth(
   const since = new Date(now.getTime() - DAY_MS);
   const [repos, states, deliveries, lag, limits, dirty] = await Promise.all([
     db.repository.findMany({
-      where: { installationId, removedAt: null },
+      where: { installationId, ...activeRepoWhere },
       orderBy: { fullName: "asc" },
       select: { id: true, fullName: true },
     }),
@@ -1505,11 +1842,25 @@ export async function getSyncHealth(
 }
 
 /** Repository of a visible installation by name, for `/repos/[repo]` routes. */
+export type RepositoryRef = {
+  id: string;
+  fullName: string;
+  defaultBranch: string;
+  private: boolean;
+  archived: boolean;
+  fork: boolean;
+  /** Ignored repos are found too, so their page can show the ignored banner. */
+  ignored: boolean;
+  ignoredAt: string | null;
+  /** False while reconcile is still deleting the stored data. */
+  purged: boolean;
+};
+
 export async function findRepositoryByName(
   scope: TenantScope,
   installationId: bigint,
   name: string,
-): Promise<{ id: string; fullName: string; defaultBranch: string } | null> {
+): Promise<RepositoryRef | null> {
   if (!inScope(scope, installationId)) return null;
   const repo = await db.repository.findFirst({
     where: {
@@ -1518,13 +1869,28 @@ export async function findRepositoryByName(
       name: { equals: name, mode: "insensitive" },
       installation: { deletedAt: null, suspendedAt: null },
     },
-    select: { id: true, fullName: true, defaultBranch: true },
+    select: {
+      id: true,
+      fullName: true,
+      defaultBranch: true,
+      private: true,
+      archived: true,
+      fork: true,
+      ignoredAt: true,
+      ignorePurgedAt: true,
+    },
   });
   return repo
     ? {
         id: String(repo.id),
         fullName: repo.fullName,
         defaultBranch: repo.defaultBranch,
+        private: repo.private,
+        archived: repo.archived,
+        fork: repo.fork,
+        ignored: repo.ignoredAt != null,
+        ignoredAt: iso(repo.ignoredAt),
+        purged: repo.ignorePurgedAt != null,
       }
     : null;
 }

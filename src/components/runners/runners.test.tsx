@@ -10,17 +10,12 @@ import type {
 import { bucketOf, emptyHistogram } from "@/server/metrics/histogram";
 import de from "../../../messages/de.json";
 import en from "../../../messages/en.json";
-import {
-  LabelList,
-  QueueFlagBadges,
-  RunnerStateBadge,
-  UtilisationValue,
-} from "./runner-badges";
+import { StatusBadge } from "@/components/data/status-badge";
+import { LabelList, UtilisationMeter } from "./runner-badges";
 import {
   ConcurrencyChart,
   DurationVsPoolChart,
   PoolHeatmap,
-  RunnerSplitChart,
   RunnerStatusChart,
   RunnerUtilisationChart,
 } from "./runner-charts";
@@ -56,15 +51,15 @@ const util = (u: Partial<UtilisationDto>): UtilisationDto => ({
 });
 
 describe("runner badges", () => {
-  it("states the runner state as text", () => {
-    expect(render(<RunnerStateBadge state="busy" />)).toContain(">busy<");
-    expect(render(<RunnerStateBadge state="offline" />)).toContain(">offline<");
-    expect(render(<RunnerStateBadge state="idle" />, "de")).toContain(">frei<");
+  it("states the runner state as icon plus text", () => {
+    expect(render(<StatusBadge kind="busy" />)).toContain("Busy");
+    expect(render(<StatusBadge kind="offline" />)).toContain("Offline");
+    expect(render(<StatusBadge kind="idle" />, "de")).toContain("Frei");
   });
 
-  it("shows utilisation with one sample interval of uncertainty", () => {
+  it("shows utilisation as a meter with the sample interval as tooltip", () => {
     const html = render(
-      <UtilisationValue
+      <UtilisationMeter
         u={util({
           value: 0.42,
           coverage: 0.9,
@@ -74,39 +69,34 @@ describe("runner badges", () => {
       />,
     );
     expect(html).toContain("42%");
-    expect(html).toContain("± one sample interval (10m 00s)");
+    expect(html).toContain('title="± one sample interval (10m 00s)"');
+    expect(html).toContain("width:42%");
   });
 
   it("shows insufficient samples below 50% coverage instead of a number", () => {
     const html = render(
-      <UtilisationValue
+      <UtilisationMeter
         u={util({ value: null, coverage: 0.3, medianSampleIntervalS: 900 })}
       />,
     );
     expect(html).toContain("Insufficient samples");
     expect(html).toContain("± one sample interval (15m 00s)");
     expect(html).not.toContain("%");
-    expect(render(<UtilisationValue u={util({})} />)).toContain(
+    expect(render(<UtilisationMeter u={util({})} />)).toContain(
       "no samples yet",
     );
   });
 
-  it("flags STUCK and no matching runner, and nothing otherwise", () => {
-    const both = render(<QueueFlagBadges stuck noMatchingRunner />);
-    expect(both).toContain(">Stuck<");
-    expect(both).toContain(">No matching runner<");
-    expect(
-      render(<QueueFlagBadges stuck={3} noMatchingRunner={false} />),
-    ).toContain(">3 stuck<");
-    expect(
-      render(<QueueFlagBadges stuck={false} noMatchingRunner={false} />),
-    ).toBe("");
-  });
-
-  it("lists labels", () => {
+  it("lists labels, the first ones and +N with max", () => {
     const html = render(<LabelList labels={["self-hosted", "linux"]} />);
     expect(html).toContain("self-hosted");
     expect(render(<LabelList labels={[]} />)).toContain("—");
+    const short = render(
+      <LabelList labels={["linux", "self-hosted", "x64", "gpu"]} max={2} />,
+    );
+    expect(short).toContain("+2");
+    expect(short).toContain('title="linux, self-hosted, x64, gpu"');
+    expect(short).not.toContain(">x64<");
   });
 });
 
@@ -170,34 +160,11 @@ describe("runner charts", () => {
     const html = render(<PoolHeatmap pool={pool} />);
     expect(html).toContain('role="img"');
     expect(html).toContain(
-      'aria-label="Heatmap of the p95 queue time of pool linux,self-hosted by weekday and hour; the longest is 5m 00s."',
+      'aria-label="Heatmap of the 95 % queue time of runner group linux,self-hosted by weekday and hour; the longest is 5m 00s."',
     );
-    expect(html).toContain('title="Mon 09:00: 4 jobs, queue p95 5m 00s"');
-    expect(html).toContain("bg-chart-1");
+    expect(html).toContain('title="Mon 09:00: 4 jobs, queue time 95 % 5m 00s"');
+    expect(html).toContain("bg-seq-4");
     expect(html).toContain("no jobs");
-  });
-
-  it("hosted vs self-hosted split: bars per runner kind", () => {
-    const html = render(
-      <RunnerSplitChart
-        split={[
-          {
-            runnerKind: "GITHUB_HOSTED",
-            jobs: 10,
-            minutes: 120,
-            billableMinEst: 120,
-          },
-          {
-            runnerKind: "SELF_HOSTED",
-            jobs: 12,
-            minutes: 90,
-            billableMinEst: 0,
-          },
-        ]}
-      />,
-    );
-    expect(html).toContain("210 min in total");
-    expect(html).toContain("<title>self-hosted: Minutes 90</title>");
   });
 
   it("daily utilisation leaves out days with insufficient samples", () => {
@@ -282,8 +249,8 @@ describe("runner charts", () => {
         }}
       />,
     );
-    expect(html).toContain("(3 jobs) compared with its pool (6 jobs)");
+    expect(html).toContain("(3 jobs) compared with its runner group (6 jobs)");
     expect(html).toContain("<title>&lt; 1 min: This runner 100%</title>");
-    expect(html).toContain("<title>5–15 min: Pool 50%</title>");
+    expect(html).toContain("<title>5–15 min: Runner group 50%</title>");
   });
 });

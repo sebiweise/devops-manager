@@ -7,6 +7,7 @@ import {
   daysInMonth,
   elapsedDays,
   includedMinutes,
+  includedMinutesUsed,
   isActionsProduct,
   isMinutesUnit,
   parseUsageReport,
@@ -206,5 +207,42 @@ describe("attribution and reconciliation", () => {
     // Estimated but never billed, and billed but never estimated: both flagged.
     expect(by.get("r/c")!.flagged).toBe(true);
     expect(by.get("r/d")!.flagged).toBe(true);
+  });
+});
+
+describe("includedMinutesUsed", () => {
+  const day = new Date("2026-11-01T00:00:00.000Z");
+  const rate = (sku: string, os: "LINUX" | "WINDOWS" | "MACOS", m: number) => ({
+    sku,
+    os,
+    labelPattern: null,
+    minuteMultiplier: m,
+    pricePerMinuteUsd: 0.008 * m,
+    effectiveFrom: new Date("2020-01-01T00:00:00.000Z"),
+  });
+  const rates = [rate("linux", "LINUX", 1), rate("windows", "WINDOWS", 2)];
+  const item = (sku: string, quantity: number, extra = {}) => ({
+    product: "Actions",
+    unitType: "Minutes",
+    sku,
+    date: day,
+    quantity,
+    ...extra,
+  });
+
+  it("weights billed minutes with the runner type's multiplier", () => {
+    expect(
+      includedMinutesUsed(
+        [
+          item("Actions Linux", 100),
+          item("Actions Windows", 50),
+          // Unknown SKU counts once; storage and other products not at all.
+          item("Actions Unknown 8-core", 10),
+          item("Actions storage", 999, { unitType: "GigabyteHours" }),
+          item("Packages", 999, { product: "Packages" }),
+        ],
+        rates,
+      ),
+    ).toBe(100 + 50 * 2 + 10);
   });
 });

@@ -14,8 +14,9 @@ import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
 import { hasRole } from "@/server/authz/roles";
 import { listVariableBatches } from "@/server/data/audit";
 import { getManagementState } from "@/server/data/management";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Variables" };
+export const generateMetadata = accountMeta("variables");
 
 /**
  * Repository and organisation variables (design §7 /variables): every role

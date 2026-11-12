@@ -9,7 +9,7 @@ import { Heatmap } from "./heatmap";
 import { Legend } from "./legend";
 import { LineChart } from "./line-chart";
 import { RunTimeline } from "./run-timeline";
-import { Sparkline } from "./sparkline";
+import { Sparkline, TrendTable } from "./sparkline";
 import { StackedBarChart } from "./stacked-bar-chart";
 import { StateStrip } from "./state-strip";
 
@@ -97,7 +97,7 @@ describe("LineChart", () => {
 });
 
 describe("Sparkline and RunTimeline", () => {
-  it("labels the sparkline with its totals", () => {
+  it("is decorative in a row, with its totals as the tooltip", () => {
     const html = render(
       <Sparkline
         id="s1"
@@ -108,23 +108,29 @@ describe("Sparkline and RunTimeline", () => {
         ]}
       />,
     );
-    expect(html).toContain('aria-label="14 runs, 2 failed"');
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).toContain("<title>14 runs, 2 failed</title>");
     expect(html).toContain('fill="url(#s1-hatch)"');
+    expect(html).not.toContain("NaN");
   });
 
-  it("offers the per-day values as a table disclosure", () => {
+  it("offers the per-day values of a column as one table disclosure", () => {
     const html = render(
-      <Sparkline
-        id="s2"
-        label="4 runs, 2 failed"
-        points={[{ day: "2026-11-10", runs: 4, failures: 2 }]}
+      <TrendTable
+        caption="Trend"
+        rows={[
+          {
+            key: "a",
+            label: "repo-a",
+            points: [{ day: "2026-11-10", runs: 4, failures: 2 }],
+          },
+        ]}
       />,
     );
     expect(html).toContain("<details");
-    expect(html).toContain(">Show as table</summary>");
-    expect(html).toContain(
-      '<th scope="row" class="pr-2 text-left font-normal">2026-11-10</th>',
-    );
+    expect(html).toContain("Show trend as table</summary>");
+    expect(html).toContain(">11-10</th>");
+    expect(html).toContain(">repo-a</th>");
   });
 
   it("positions timeline segments in percent of the span", () => {
@@ -210,7 +216,7 @@ describe("Heatmap, Gauge and StateStrip (M2)", () => {
     );
     expect(html).toContain('aria-label="Queue heatmap"');
     expect(html).toContain(
-      'title="Mon 00:00" class="h-4 rounded-[2px] bg-chart-1"',
+      'title="Mon 00:00" class="h-4 rounded-[2px] bg-seq-4"',
     );
     expect(html).toContain(
       'title="Mon 01:00" class="h-4 rounded-[2px] bg-muted"',

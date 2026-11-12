@@ -1,38 +1,51 @@
 /**
- * Series styles. Colours come from the shadcn theme variables
- * (`--chart-n`, `--destructive`, `--muted-foreground`), so light and dark
- * mode follow the theme. Class names are literal so Tailwind sees them.
- * Meaning never depends on colour alone: bars add patterns, lines add dash
- * patterns, and every chart has a legend with text labels.
+ * Series styles from the data colour tokens in globals.css (UI overhaul
+ * §1.11): outcomes use the reserved status colours (success, failure,
+ * cancelled), measures such as p50, p95 and queue time use the series
+ * slots, never the success green. Class names are literal so Tailwind sees
+ * them. Meaning never depends on colour alone: bars add patterns, lines add
+ * dash patterns, and every chart has a legend with text labels.
  */
 export const TONES = {
-  success: { fill: "fill-chart-2", stroke: "stroke-chart-2", bg: "bg-chart-2" },
+  success: {
+    fill: "fill-status-good",
+    stroke: "stroke-status-good",
+    bg: "bg-status-good",
+  },
   failure: {
-    fill: "fill-destructive",
-    stroke: "stroke-destructive",
-    bg: "bg-destructive",
+    fill: "fill-status-critical",
+    stroke: "stroke-status-critical",
+    bg: "bg-status-critical",
   },
   cancelled: {
-    fill: "fill-muted-foreground",
-    stroke: "stroke-muted-foreground",
-    bg: "bg-muted-foreground",
+    fill: "fill-status-neutral",
+    stroke: "stroke-status-neutral",
+    bg: "bg-status-neutral",
   },
-  other: { fill: "fill-chart-4", stroke: "stroke-chart-4", bg: "bg-chart-4" },
-  primary: { fill: "fill-chart-2", stroke: "stroke-chart-2", bg: "bg-chart-2" },
+  other: {
+    fill: "fill-series-4",
+    stroke: "stroke-series-4",
+    bg: "bg-series-4",
+  },
+  primary: {
+    fill: "fill-series-1",
+    stroke: "stroke-series-1",
+    bg: "bg-series-1",
+  },
   secondary: {
-    fill: "fill-chart-1",
-    stroke: "stroke-chart-1",
-    bg: "bg-chart-1",
+    fill: "fill-series-2",
+    stroke: "stroke-series-2",
+    bg: "bg-series-2",
   },
   tertiary: {
-    fill: "fill-chart-3",
-    stroke: "stroke-chart-3",
-    bg: "bg-chart-3",
+    fill: "fill-series-3",
+    stroke: "stroke-series-3",
+    bg: "bg-series-3",
   },
   quaternary: {
-    fill: "fill-chart-5",
-    stroke: "stroke-chart-5",
-    bg: "bg-chart-5",
+    fill: "fill-series-4",
+    stroke: "stroke-series-4",
+    bg: "bg-series-4",
   },
 } as const;
 

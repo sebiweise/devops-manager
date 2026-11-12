@@ -37,6 +37,7 @@ const inst = (
   deletedAt: null,
   lastWebhookAt: null,
   lastReconciledAt: null,
+  timezone: "UTC",
   ...extra,
 });
 

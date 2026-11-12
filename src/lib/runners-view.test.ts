@@ -1,84 +1,21 @@
 import { describe, expect, it } from "vitest";
-import type { RunnerDto } from "@/server/data/runners";
 import { emptyHistogram, bucketOf } from "@/server/metrics/histogram";
 import {
   bandShares,
   DURATION_BANDS,
-  groupRunners,
   heatmapGrid,
   intensity,
   parseRunnerKey,
-  runnerCounts,
   runnerHref,
   runnerState,
   statusSegments,
 } from "./runners-view";
 
-const runner = (r: Partial<RunnerDto>): RunnerDto => ({
-  key: "1:REPO:7",
-  scope: "REPO",
-  repository: { id: "10", fullName: "example-org/repo-a" },
-  githubRunnerId: "7",
-  name: "runner-1",
-  os: "Linux",
-  labels: ["self-hosted", "linux"],
-  groupName: null,
-  online: true,
-  busy: false,
-  ephemeral: false,
-  firstSeenAt: "2026-11-01T00:00:00.000Z",
-  lastSeenAt: "2026-11-11T12:00:00.000Z",
-  lastOnlineAt: "2026-11-11T12:00:00.000Z",
-  jobs7d: 0,
-  failures7d: 0,
-  infraFailures7d: 0,
-  utilisation7d: {
-    busyS: 0,
-    onlineS: 0,
-    windowS: 604_800,
-    coverage: 0,
-    value: null,
-    insufficientSamples: true,
-    medianSampleIntervalS: null,
-  },
-  speedIndex7d: null,
-  ...r,
-});
-
-describe("runner state and grouping", () => {
+describe("runner state and key", () => {
   it("derives busy, idle and offline", () => {
     expect(runnerState({ online: true, busy: true })).toBe("busy");
     expect(runnerState({ online: true, busy: false })).toBe("idle");
     expect(runnerState({ online: false, busy: true })).toBe("offline");
-  });
-
-  it("puts org runners first, then repo runners grouped by repository", () => {
-    const groups = groupRunners([
-      runner({
-        key: "1:REPO:2",
-        name: "runner-b",
-        repository: { id: "2", fullName: "example-org/repo-b" },
-      }),
-      runner({ key: "1:ORG:3", scope: "ORG", repository: null, name: "org-2" }),
-      runner({ key: "1:REPO:1", name: "runner-a" }),
-      runner({ key: "1:ORG:4", scope: "ORG", repository: null, name: "org-1" }),
-    ]);
-    expect(groups.map((g) => g.repoFullName)).toEqual([
-      null,
-      "example-org/repo-a",
-      "example-org/repo-b",
-    ]);
-    expect(groups[0]!.runners.map((r) => r.name)).toEqual(["org-1", "org-2"]);
-  });
-
-  it("counts runners per state", () => {
-    expect(
-      runnerCounts([
-        runner({ busy: true }),
-        runner({}),
-        runner({ online: false }),
-      ]),
-    ).toEqual({ total: 3, busy: 1, idle: 1, offline: 1 });
   });
 
   it("encodes and validates the runner key of the detail URL", () => {

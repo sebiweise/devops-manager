@@ -2,8 +2,8 @@ import { cn } from "@/lib/utils";
 
 /** Literal classes per state: solid, hatched, dotted (not colour alone). */
 const STATE_CLASS = {
-  busy: "bg-chart-2",
-  idle: "bg-chart-1/60 bg-[repeating-linear-gradient(45deg,transparent_0_3px,var(--background)_3px_5px)]",
+  busy: "bg-series-1",
+  idle: "bg-series-3/60 bg-[repeating-linear-gradient(45deg,transparent_0_3px,var(--background)_3px_5px)]",
   offline:
     "bg-muted-foreground/50 bg-[radial-gradient(var(--background)_1px,transparent_1.5px)] bg-[length:4px_4px]",
 } as const;

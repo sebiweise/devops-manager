@@ -22,6 +22,8 @@ export type GhRepository = {
   full_name: string;
   private: boolean;
   archived?: boolean;
+  /** Missing in installation event lists; REST and repository events carry it. */
+  fork?: boolean;
   default_branch?: string;
   owner?: { login: string };
 };

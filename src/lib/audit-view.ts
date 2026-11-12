@@ -35,6 +35,8 @@ export const AUDIT_ACTIONS = [
   "BILLING_CREDENTIAL_SET",
   "BILLING_CREDENTIAL_CONNECT",
   "BILLING_CREDENTIAL_REVOKE",
+  "REPO_IGNORE",
+  "REPO_UNIGNORE",
 ] as const satisfies readonly AuditAction[];
 
 export const AUDIT_STATUSES = [

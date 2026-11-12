@@ -168,23 +168,40 @@ model Installation {
 
 model Repository {
   /// GitHub repository id
-  id             BigInt       @id
-  installationId BigInt
-  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
-  ownerLogin     String
-  name           String
-  fullName       String
-  private        Boolean
-  archived       Boolean      @default(false)
-  defaultBranch  String       @default("main")
+  id                 BigInt       @id
+  installationId     BigInt
+  installation       Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  ownerLogin         String
+  name               String
+  fullName           String
+  private            Boolean
+  archived           Boolean      @default(false)
+  defaultBranch      String       @default("main")
   /// Set when a SELF_HOSTED job is seen (M1).
-  hasSelfHosted  Boolean      @default(false)
-  removedAt      DateTime?    @db.Timestamptz(3)
-  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+  hasSelfHosted      Boolean      @default(false)
+  /// GitHub's `fork` flag, from the inventory (REST lists and repository events).
+  fork               Boolean      @default(false)
+  /// Set by REPO_IGNORE; null = active. An ignored repo gets no sync, backfill,
+  /// runner sampling or webhook folds, and its stored data is purged. Kept
+  /// across removedAt and re-adds (the row keeps its id); the inventory never
+  /// writes it.
+  ignoredAt          DateTime?    @db.Timestamptz(3)
+  ignoredByUserId    String?
+  /// Set when the purge of the repo's stored data finished; cleared on un-ignore.
+  ignorePurgedAt     DateTime?    @db.Timestamptz(3)
+  /// Cached open pull request and Dependabot alert counts (null = not read yet).
+  openPrCount        Int?
+  openAlertCount     Int?
+  /// Open alerts with severity high or critical.
+  openAlertHighCount Int?
+  countsRefreshedAt  DateTime?    @db.Timestamptz(3)
+  removedAt          DateTime?    @db.Timestamptz(3)
+  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
 
   @@unique([installationId, fullName])
   @@index([installationId, removedAt])
+  @@index([installationId, ignoredAt])
 }
 
 model SyncState {
@@ -646,6 +663,8 @@ enum AuditAction {
   BILLING_CREDENTIAL_SET
   BILLING_CREDENTIAL_CONNECT
   BILLING_CREDENTIAL_REVOKE
+  REPO_IGNORE
+  REPO_UNIGNORE
 }
 
 enum AuditStatus {

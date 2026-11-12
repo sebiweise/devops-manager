@@ -1,19 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type {
-  Freshness,
-  JobBreakdown,
-  RepoStat,
-  RunSummary,
-  WorkflowStat,
-} from "@/server/data/insights";
+import type { Freshness, JobBreakdown } from "@/server/data/insights";
 import {
   decodeCursor,
   encodeCursor,
   hostedVsSelfHosted,
-  leaderboards,
   parseConclusion,
-  parseRepoSort,
-  sortRepoStats,
   staleReasons,
   textFilter,
   withParams,
@@ -57,128 +48,6 @@ describe("staleReasons", () => {
     expect(staleReasons(freshness({ lastReconciledAt: null }), NOW)).toEqual([
       "noReconcile",
     ]);
-  });
-});
-
-const repo = (fullName: string, r: Partial<RepoStat> = {}): RepoStat => ({
-  repositoryId: fullName,
-  fullName,
-  name: fullName.split("/")[1]!,
-  private: false,
-  archived: false,
-  lastRun: null,
-  runs7d: 0,
-  successRate7d: null,
-  p50Duration7d: null,
-  billableMinEst30d: 0,
-  sparkline: [],
-  ...r,
-});
-
-describe("sortRepoStats", () => {
-  const rows = [
-    repo("example-org/repo-b", { runs7d: 5, successRate7d: 0.5 }),
-    repo("example-org/repo-a", { runs7d: 9, successRate7d: null }),
-    repo("example-org/repo-c", { runs7d: 1, successRate7d: 0.9 }),
-  ];
-
-  it("sorts by name by default", () => {
-    expect(
-      sortRepoStats(rows, parseRepoSort(undefined), "asc").map((r) => r.name),
-    ).toEqual(["repo-a", "repo-b", "repo-c"]);
-  });
-
-  it("sorts numbers in both directions with nulls last", () => {
-    expect(sortRepoStats(rows, "success", "desc").map((r) => r.name)).toEqual([
-      "repo-c",
-      "repo-b",
-      "repo-a",
-    ]);
-    expect(sortRepoStats(rows, "success", "asc").map((r) => r.name)).toEqual([
-      "repo-b",
-      "repo-c",
-      "repo-a",
-    ]);
-    expect(sortRepoStats(rows, "runs", "desc").map((r) => r.name)).toEqual([
-      "repo-a",
-      "repo-b",
-      "repo-c",
-    ]);
-  });
-
-  it("filters case-insensitively and ignores unknown sort keys", () => {
-    expect(parseRepoSort("drop table")).toBe("name");
-    expect(
-      sortRepoStats(rows, "name", "asc", " REPO-B ").map((r) => r.name),
-    ).toEqual(["repo-b"]);
-  });
-});
-
-const summary = (s: Partial<RunSummary>): RunSummary => ({
-  runs: 20,
-  success: 18,
-  failure: 2,
-  cancelled: 0,
-  other: 0,
-  firstTrySuccess: 18,
-  flakyRecovered: 0,
-  successRate: 0.9,
-  firstTrySuccessRate: 0.9,
-  flakyRate: 0,
-  n: 20,
-  p50: 60,
-  p95: 120,
-  queueP95: 5,
-  approx: false,
-  ...s,
-});
-
-const wf = (
-  id: string,
-  s: Partial<RunSummary>,
-  w: Partial<WorkflowStat> = {},
-) =>
-  ({
-    workflowId: id,
-    workflowName: `wf-${id}`,
-    repositoryId: "1",
-    repoFullName: "example-org/repo-a",
-    summary: summary(s),
-    billableMinEst: 0,
-    regression: null,
-    successDrop: null,
-    sparkline: [],
-    ...w,
-  }) satisfies WorkflowStat;
-
-describe("leaderboards", () => {
-  const stats = [
-    wf(
-      "1",
-      { p95: 300, flakyRate: 0.1, successRate: 0.5 },
-      { billableMinEst: 10 },
-    ),
-    wf("2", { p95: 900, n: 5 }, { billableMinEst: 40 }),
-    wf(
-      "3",
-      { p95: 100, successRate: 0.95 },
-      { regression: { metric: "p95", recent: 100, baseline: 50, ratio: 2 } },
-    ),
-    wf("4", { successRate: 0.2, success: 1, failure: 4 }),
-  ];
-  const b = leaderboards(stats);
-
-  it("ranks slowest by p95 and skips small samples", () => {
-    expect(b.slowest.map((w) => w.workflowId)).toEqual(["1", "4", "3"]);
-  });
-
-  it("ranks flaky, minutes, success and regressions", () => {
-    expect(b.flakiest.map((w) => w.workflowId)).toEqual(["1"]);
-    expect(b.mostMinutes.map((w) => w.workflowId)).toEqual(["2", "1"]);
-    // Workflow 4 has only 5 runs in the denominator.
-    expect(b.lowestSuccess[0]!.workflowId).toBe("1");
-    expect(b.lowestSuccess.map((w) => w.workflowId)).not.toContain("4");
-    expect(b.regressions.map((w) => w.workflowId)).toEqual(["3"]);
   });
 });
 

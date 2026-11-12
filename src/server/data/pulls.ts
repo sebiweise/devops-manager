@@ -1,4 +1,5 @@
 import "server-only";
+import { storeRepoCounts } from "@/server/ingest/repo-counts";
 import { LRUCache } from "lru-cache";
 import { mapLimit } from "@/lib/concurrency";
 import type { TenantScope } from "@/server/authz/scope";
@@ -214,6 +215,13 @@ async function loadPulls(
   const results = await mapLimit(chunks, 2, (chunk) => queryChunk(api, chunk));
   const pulls = results.flatMap((r) => r.pulls);
   pulls.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  // The live read also refreshes the cached counts of the repositories table.
+  await storeRepoCounts(
+    inst.id,
+    results
+      .flatMap((r) => r.counts)
+      .map((c) => ({ repositoryId: c.repositoryId, openPrCount: c.open })),
+  ).catch(() => undefined);
   return {
     pulls,
     repos: results.flatMap((r) => r.repos),
@@ -236,7 +244,11 @@ export async function readRepoPulls(
 async function queryChunk(
   api: GitHubApi,
   chunk: RepoTarget[],
-): Promise<{ pulls: PullRow[]; repos: PullRepo[] }> {
+): Promise<{
+  pulls: PullRow[];
+  repos: PullRepo[];
+  counts: Array<{ repositoryId: bigint; open: number }>;
+}> {
   const variables: Record<string, string> = {};
   chunk.forEach((r, i) => {
     variables[`o${i}`] = r.ownerLogin;
@@ -253,8 +265,11 @@ async function queryChunk(
     data = {};
   }
   const pulls: PullRow[] = [];
+  const counts: Array<{ repositoryId: bigint; open: number }> = [];
   const repos: PullRepo[] = chunk.map((repo, i) => {
     const r = data[`r${i}`];
+    if (r)
+      counts.push({ repositoryId: repo.id, open: r.pullRequests.totalCount });
     if (!r)
       return {
         repositoryId: String(repo.id),
@@ -276,5 +291,5 @@ async function queryChunk(
       truncated: r.pullRequests.totalCount > r.pullRequests.nodes.length,
     };
   });
-  return { pulls, repos };
+  return { pulls, repos, counts };
 }

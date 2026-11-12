@@ -4,8 +4,9 @@ import { PullsSection } from "@/components/management/sections";
 import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
 import { hasRole } from "@/server/authz/roles";
 import { getManagementState } from "@/server/data/management";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Pull requests" };
+export const generateMetadata = accountMeta("pulls");
 
 /** Open PRs across the installation's repos; merge for admins (design §7). */
 export default async function PullsPage({

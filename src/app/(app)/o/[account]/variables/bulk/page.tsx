@@ -10,8 +10,9 @@ import {
   listRepoTargets,
   variablePresets,
 } from "@/server/data/management";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Bulk set variable" };
+export const generateMetadata = accountMeta("variablesBulk");
 
 /**
  * Bulk set with the runs-on presets (design §8.2 #6). Admin only: other
