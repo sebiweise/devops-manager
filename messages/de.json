@@ -113,8 +113,21 @@
     "verified": "Installation auf {account} geprüft und abgeglichen.",
     "refresh": "Von GitHub aktualisieren",
     "askAdmin": "Noch keine Installationen. Bitte einen Admin, die GitHub App zu installieren.",
-    "permissions": "Erteilte Berechtigungen",
-    "suspended": "gesperrt"
+    "suspended": "gesperrt",
+    "type": {
+      "ORGANIZATION": "Organisation",
+      "USER": "Persönliches Konto"
+    },
+    "selection": {
+      "ALL": "Alle Repositories",
+      "SELECTED": "Ausgewählte Repositories"
+    },
+    "import": "Verlaufsimport",
+    "importOf": "Verlaufsimport von {account}",
+    "missing": "{count, plural, one {# Berechtigung für die Auswertung fehlt} other {# Berechtigungen für die Auswertung fehlen}}",
+    "grantedCount": "Erteilte Berechtigungen ({count})",
+    "changeSelection": "Repository-Auswahl auf GitHub ändern",
+    "openOverview": "Übersicht öffnen"
   },
   "account": {
     "repos": "Repositories",
@@ -981,7 +994,7 @@
     "cores": "{n} Kerne"
   },
   "adminGithub": {
-    "title": "GitHub-Abrechnungszugänge",
+    "title": "Abrechnungszugriff",
     "intro": "Der Abrechnungsbericht von GitHub für ein persönliches Konto braucht ein Benutzer-Token. Ohne Zugang sind die Kosten eines persönlichen Kontos Schätzungen. Organisationen nutzen das Installations-Token (Organisationsberechtigung Administration: read) und brauchen hier nichts.",
     "none": "Keine Installation eines persönlichen Kontos sichtbar.",
     "status": "Status",

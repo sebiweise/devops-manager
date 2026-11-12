@@ -113,8 +113,21 @@
     "verified": "Installation on {account} verified and synced.",
     "refresh": "Refresh from GitHub",
     "askAdmin": "No installations yet. Ask an admin to install the GitHub App.",
-    "permissions": "Granted permissions",
-    "suspended": "suspended"
+    "suspended": "suspended",
+    "type": {
+      "ORGANIZATION": "Organisation",
+      "USER": "Personal account"
+    },
+    "selection": {
+      "ALL": "All repositories",
+      "SELECTED": "Selected repositories"
+    },
+    "import": "History import",
+    "importOf": "History import of {account}",
+    "missing": "{count, plural, one {# permission the insights need is missing} other {# permissions the insights need are missing}}",
+    "grantedCount": "Granted permissions ({count})",
+    "changeSelection": "Change repository selection on GitHub",
+    "openOverview": "Open overview"
   },
   "account": {
     "repos": "Repositories",
@@ -981,7 +994,7 @@
     "cores": "{n} cores"
   },
   "adminGithub": {
-    "title": "GitHub billing credentials",
+    "title": "Billing access",
     "intro": "GitHub's billing usage report of a personal account needs a user token. Without a credential, the costs of a personal account are estimates. Organisations use the installation token (organisation permission Administration: read) and need nothing here.",
     "none": "No personal-account installation is visible.",
     "status": "Status",
