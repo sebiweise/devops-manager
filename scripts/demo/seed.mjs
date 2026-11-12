@@ -167,6 +167,7 @@ await insert("Installation", [
   },
 ]);
 
+const alertsOf = new Map(repos.map((r) => [r[0], between(0, 4)]));
 await insert(
   "Repository",
   repos.map(([id, inst, owner, name, priv, fork, archived, ignored]) => ({
@@ -181,8 +182,10 @@ await insert(
     ignoredAt: ignored ? iso(NOW - 3 * DAY) : null,
     ignorePurgedAt: ignored ? iso(NOW - 3 * DAY + 10 * MIN) : null,
     openPrCount: ignored ? null : between(0, 6),
-    openAlertCount: ignored ? null : between(0, 4),
-    openAlertHighCount: ignored ? null : between(0, 1),
+    openAlertCount: ignored ? null : (alertsOf.get(id) ?? 0),
+    openAlertHighCount: ignored
+      ? null
+      : Math.min(alertsOf.get(id) ?? 0, between(0, 1)),
     countsRefreshedAt: ignored ? null : recent(20),
     hasSelfHosted: repos.find((r) => r[0] === id)?.[9] ?? false,
     updatedAt: recent(5),
@@ -462,7 +465,11 @@ const fill = (rows, cols) =>
 await insert("WorkflowRun", fill(runs, runCols));
 await insert(
   "WorkflowJob",
-  fill(jobs, jobCols).map((j) => ({ ...j, waitingS: j.waitingS ?? 0 })),
+  fill(jobs, jobCols).map((j) => ({
+    ...j,
+    waitingS: j.waitingS ?? 0,
+    runnerOs: j.runnerOs ?? "UNKNOWN",
+  })),
 );
 await insert(
   "RollupDirty",

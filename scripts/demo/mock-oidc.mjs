@@ -6,7 +6,8 @@
 // Starts the same mock issuer the integration tests use (oauth2-mock-server,
 // a dev dependency) on 127.0.0.1 and signs every user in as the given
 // example address, verified and in the "devops-users" group. Point the app
-// at it with OIDC_ISSUER=http://127.0.0.1:<port>. It refuses to start with
+// at it with OIDC_ISSUER=http://localhost:<port> (the issuer names itself
+// "localhost"; it listens on 127.0.0.1 only). It refuses to start with
 // NODE_ENV=production, binds to the loopback interface only, and is not part
 // of the production build or image, so it cannot be enabled there.
 

@@ -44,7 +44,7 @@ neither is part of the production build or the Docker image.
    export BETTER_AUTH_SECRET=demo-secret-demo-secret-demo-secret-0001
    export TOKEN_ENCRYPTION_KEY=$(node -e "console.log(Buffer.alloc(32, 7).toString('base64'))")
    export CRON_SECRET=demo-cron-secret-demo-cron-secret-0001 AUDIT_IP_SALT=demo-audit-salt-demo-audit-salt-01
-   export OIDC_ISSUER=http://127.0.0.1:3998 OIDC_CLIENT_ID=devops-manager OIDC_CLIENT_SECRET=demo
+   export OIDC_ISSUER=http://localhost:3998 OIDC_CLIENT_ID=devops-manager OIDC_CLIENT_SECRET=demo
    export ADMIN_EMAILS=admin@example.com ALLOWED_ACCOUNTS=example-org,example-user
    export GITHUB_APP_ID=1 GITHUB_APP_SLUG=example-devops-manager GITHUB_APP_PRIVATE_KEY=unused
    pnpm dev
