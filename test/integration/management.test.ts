@@ -1414,6 +1414,157 @@ describe.skipIf(!DATABASE_URL)("management", () => {
     });
   });
 
+  describe("dependabot bulk merge", () => {
+    const patch = (n: number) => `Bump example-lib from 1.0.0 to 1.0.${n}`;
+    const bulk = (
+      role: Role,
+      items: Array<{ repositoryId: bigint; number: number; sha?: string }>,
+      over: Partial<Pulls.BulkMergeInput> = {},
+      d: ActionModule.ActionDeps = deps(),
+    ) =>
+      pulls.bulkMergeDependabot(
+        actor(role),
+        {
+          installationId: A,
+          items: items.map((i) => ({ sha: "b".repeat(40), ...i })),
+          typed: String(items.length),
+          idempotencyKey: key(),
+          ...over,
+        },
+        d,
+      );
+
+    it("merges eligible PRs one by one, skips the rest and stops on an unexpected error", async () => {
+      gh.addPull({ repoId: 11, number: 21, title: patch(1) });
+      gh.addPull({
+        repoId: 11,
+        number: 22,
+        title: "Bump example-lib from 1.0.0 to 2.0.0",
+      });
+      gh.addPull({
+        repoId: 11,
+        number: 23,
+        title: patch(3),
+        checks: "FAILURE",
+      });
+      gh.addPull({
+        repoId: 11,
+        number: 24,
+        title: patch(4),
+        author: "example-user",
+      });
+      gh.addPull({
+        repoId: 11,
+        number: 25,
+        title: patch(5),
+        mergeableState: "blocked",
+      });
+      gh.addPull({ repoId: 101, number: 1, title: patch(6) });
+      gh.addPull({ repoId: 11, number: 26, title: patch(7) });
+
+      const res = await bulk("ADMIN", [
+        { repositoryId: 11n, number: 21 },
+        { repositoryId: 11n, number: 22 },
+        { repositoryId: 11n, number: 23 },
+        { repositoryId: 11n, number: 24 },
+        { repositoryId: 11n, number: 25 },
+        { repositoryId: 11n, number: 99 },
+        { repositoryId: 101n, number: 1 },
+        { repositoryId: 11n, number: 26 },
+      ]);
+      // A PR that does not exist is an unexpected error and stops the batch.
+      if (res.status !== "failed") throw new Error(res.status);
+      expect(
+        res.data!.rows.map((r) => [r.number, r.status, r.reason ?? null]),
+      ).toEqual([
+        [21, "merged", null],
+        [22, "skipped", "not_patch_or_minor"],
+        [23, "skipped", "checks_not_green"],
+        [24, "skipped", "not_dependabot"],
+        [25, "skipped", "branch_protection"],
+        [99, "failed", "pr_not_found"],
+        [1, "not_attempted", null],
+        [26, "not_attempted", null],
+      ]);
+      expect(gh.pulls.get("11#21")!.merged).toBe(true);
+      expect(gh.pulls.get("11#26")!.merged).toBe(false);
+      expect(gh.writes()).toHaveLength(1);
+
+      const rows = await auditRows();
+      expect(rows.map((r) => [r.action, r.status])).toEqual([
+        ["PR_BULK_MERGE", "FAILED"],
+        ["PR_MERGE", "SUCCEEDED"],
+      ]);
+      expect(new Set(rows.map((r) => r.batchId)).size).toBe(1);
+      expect(rows[1]!.params).toMatchObject({
+        number: 21,
+        method: "squash",
+        updateType: "patch",
+      });
+      expect(
+        gh.tokens
+          .filter((t) => t.purpose.startsWith("act."))
+          .map((t) => [t.purpose, t.repoIds]),
+      ).toEqual([["act.merge", [11]]]);
+      expect(
+        (await auditData.verifyAuditLog(actor("VIEWER").scope, A)).ok,
+      ).toBe(true);
+    });
+
+    it("stops after a failed merge and records it", async () => {
+      gh.addPull({ repoId: 101, number: 1, title: patch(1) });
+      gh.addPull({ repoId: 11, number: 2, title: patch(2) });
+      gh.failWrites.set(101, 502);
+      const res = await bulk("ADMIN", [
+        { repositoryId: 101n, number: 1 },
+        { repositoryId: 11n, number: 2 },
+      ]);
+      if (res.status !== "failed") throw new Error(res.status);
+      expect(res.data!.rows.map((r) => [r.number, r.status])).toEqual([
+        [1, "failed"],
+        [2, "not_attempted"],
+      ]);
+      expect(res.data!.rows[0]!.message).toBe("Server Error");
+      expect((await auditRows()).map((r) => [r.action, r.status])).toEqual([
+        ["PR_BULK_MERGE", "FAILED"],
+        ["PR_MERGE", "FAILED"],
+      ]);
+      expect(gh.pulls.get("11#2")!.merged).toBe(false);
+    });
+
+    it("skips a PR whose head moved since the dialog", async () => {
+      gh.addPull({
+        repoId: 11,
+        number: 3,
+        title: patch(1),
+        headSha: "e".repeat(40),
+      });
+      const res = await bulk("ADMIN", [{ repositoryId: 11n, number: 3 }]);
+      if (res.status !== "succeeded") throw new Error(res.status);
+      expect(res.data!.rows[0]).toMatchObject({
+        status: "skipped",
+        reason: "head_moved",
+      });
+      expect(gh.writes()).toHaveLength(0);
+    });
+
+    it("needs an admin, the typed count and the installation's repos", async () => {
+      gh.addPull({ repoId: 11, number: 4, title: patch(1) });
+      const items = [{ repositoryId: 11n, number: 4 }];
+      expect(await bulk("OPERATOR", items)).toEqual({ status: "forbidden" });
+      expect(await bulk("ADMIN", items, { typed: "2" })).toEqual({
+        status: "confirmation_mismatch",
+      });
+      await expect(
+        bulk("ADMIN", [{ repositoryId: 22n, number: 1 }]),
+      ).rejects.toBeInstanceOf(installations.NotFoundError);
+      expect(gh.writes()).toHaveLength(0);
+      expect((await auditRows()).map((r) => [r.action, r.status])).toEqual([
+        ["PR_BULK_MERGE", "DENIED"],
+      ]);
+    });
+  });
+
   describe("pull requests", () => {
     it("merges a PR without workflow changes with a token without workflows", async () => {
       gh.addPull({ repoId: 11, number: 1, files: ["package.json"] });

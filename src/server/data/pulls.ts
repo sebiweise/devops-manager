@@ -221,6 +221,18 @@ async function loadPulls(
   };
 }
 
+/**
+ * One repository's open PRs and allowed merge methods, read live (not
+ * cached): the re-check before each merge of the Dependabot bulk merge.
+ */
+export async function readRepoPulls(
+  api: GitHubApi,
+  repo: RepoTarget,
+): Promise<{ pulls: PullRow[]; repo: PullRepo }> {
+  const { pulls, repos } = await queryChunk(api, [repo]);
+  return { pulls, repo: repos[0]! };
+}
+
 async function queryChunk(
   api: GitHubApi,
   chunk: RepoTarget[],

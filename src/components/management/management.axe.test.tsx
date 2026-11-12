@@ -7,7 +7,10 @@ import en from "../../../messages/en.json";
 import { alert, auditEntry, pull, repoVars, run } from "./test-fixtures";
 
 vi.mock("@/server/actions/runs", () => ({ runOperationAction: vi.fn() }));
-vi.mock("@/server/actions/pulls", () => ({ mergePullRequestAction: vi.fn() }));
+vi.mock("@/server/actions/pulls", () => ({
+  mergePullRequestAction: vi.fn(),
+  bulkMergeDependabotAction: vi.fn(),
+}));
 vi.mock("@/server/actions/management", () => ({
   setManagementEnabledAction: vi.fn(),
   setVariableRedactionAction: vi.fn(),
@@ -30,6 +33,8 @@ vi.mock("next/navigation", () => ({
 const { RunActions, RunActionPanel } = await import("./run-actions");
 const { ManagementBanner } = await import("./management-banner");
 const { MergePanel, PullsTable } = await import("./pulls-table");
+const { BulkMergePanel, BulkMergeResultView, DependabotBulkMerge } =
+  await import("./dependabot-bulk-merge");
 const { DeleteVariablePanel, SetVariablePanel, VariablesMatrix } =
   await import("./variable-editors");
 const { OrgVariablePanel } = await import("./org-variables");
@@ -119,6 +124,40 @@ describe("management UI passes axe", () => {
             methods={["merge", "squash", "rebase"]}
             mergeAuditTrailer
             controls={controls}
+          />
+          <BulkMergePanel
+            installationId="42"
+            candidates={[
+              {
+                ...pull({ title: "Bump example-lib from 1.0.0 to 1.0.1" }),
+                updateType: "patch",
+              },
+            ]}
+            controls={controls}
+          />
+          <BulkMergeResultView
+            result={{
+              batchId: "b1",
+              merged: 0,
+              skipped: 1,
+              failed: 0,
+              notAttempted: 0,
+              rows: [
+                {
+                  repositoryId: "101",
+                  fullName: "example-org/repo-a",
+                  number: 7,
+                  status: "skipped",
+                  reason: "checks_not_green",
+                },
+              ],
+            }}
+          />
+          <DependabotBulkMerge
+            installationId="42"
+            pulls={[pull({ title: "Bump example-lib from 1.0.0 to 1.0.1" })]}
+            mergeMethods={{ "101": ["squash"] }}
+            workflowsGranted
           />
         </>,
       ),

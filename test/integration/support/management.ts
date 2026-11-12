@@ -462,6 +462,7 @@ export class FakeManagedGitHub {
         this.need(token, "pull_requests", "write");
         const pr = this.pulls.get(`${repo.id}#${Number(p.pull_number)}`);
         if (!pr) this.fail(404, "Not Found");
+        this.injected(repo.id);
         if (pr.files.some((f) => f.startsWith(".github/workflows/")))
           this.need(token, "workflows", "write");
         if (!pr.mergeable || pr.state !== "open")

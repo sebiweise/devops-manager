@@ -777,7 +777,8 @@
       "not_mergeable": "The pull request has conflicts and cannot be merged.",
       "mergeability_unknown": "GitHub is still checking whether the pull request can be merged. Try again shortly.",
       "needs_acknowledgement": "The merge state is {state}. Confirm the warning to merge anyway.",
-      "branch_protection": "Branch protection is not satisfied (required reviews, checks or rules). The merge is possible once they are met."
+      "branch_protection": "Branch protection is not satisfied (required reviews, checks or rules). The merge is possible once they are met.",
+      "too_many_pulls": "Select at most 50 pull requests."
     },
     "bulk": {
       "create": "create",
@@ -1050,7 +1051,50 @@
       },
       "workflowsNotGranted": "Some pull requests change workflow files. Merging them needs the App's Workflows: write permission, which is not granted.",
       "reposUnavailable": "Could not be read: {repos}.",
-      "truncated": "Not every open pull request is shown (at most 50 per repository and 200 repositories)."
+      "truncated": "Not every open pull request is shown (at most 50 per repository and 200 repositories).",
+      "bulkMerge": {
+        "open": "Merge Dependabot updates ({count})",
+        "title": "Merge Dependabot updates",
+        "intro": "These Dependabot pull requests are patch or minor updates, mergeable, CLEAN and with passing checks. They are merged one after another as the App, with each repository's preferred merge method.",
+        "listCaption": "Pull requests to merge",
+        "pull": "Pull request",
+        "update": "Update",
+        "headSha": "Head commit",
+        "updateType": {
+          "patch": "patch",
+          "minor": "minor"
+        },
+        "guards": "Each pull request is checked again right before its merge and skipped when it no longer qualifies (for example new commits, failing checks, branch protection or a major update in Dependabot's metadata). The first unexpected error stops the batch.",
+        "merge": "Merge {count, plural, one {# pull request} other {# pull requests}}",
+        "merging": "Merging…",
+        "results": "Bulk merge results",
+        "summary": "{merged} merged, {skipped} skipped, {failed} failed, {notAttempted} not attempted.",
+        "status": "Result",
+        "rowStatus": {
+          "merged": "merged",
+          "skipped": "skipped",
+          "failed": "failed",
+          "not_attempted": "not attempted (batch stopped)"
+        },
+        "reason": {
+          "not_dependabot": "not opened by Dependabot",
+          "already_merged": "already merged",
+          "not_open": "closed",
+          "draft": "draft",
+          "head_moved": "new commits since the dialog opened",
+          "not_mergeable": "not mergeable",
+          "branch_protection": "branch protection not satisfied",
+          "not_clean": "merge state is no longer CLEAN",
+          "checks_not_green": "checks are not passing",
+          "not_patch_or_minor": "not a patch or minor update",
+          "workflows_not_granted": "changes workflows; the App has no Workflows: write",
+          "no_method": "no merge method allowed",
+          "archived": "repository archived",
+          "not_selected": "repository not in the installation's selection",
+          "pr_not_found": "pull request not found",
+          "unreadable": "could not be read from GitHub"
+        }
+      }
     },
     "dependabot": {
       "title": "Dependabot alerts",

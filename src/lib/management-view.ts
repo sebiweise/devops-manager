@@ -1,3 +1,5 @@
+import { updateTypeFromTitle } from "./dependabot-update";
+
 /**
  * View logic of the management UI (design §7, §8.2): which run operations a
  * run offers, how an action result is put into words, and when a merge is
@@ -92,6 +94,7 @@ const KNOWN_REFUSALS = new Set([
   "mergeability_unknown",
   "needs_acknowledgement",
   "branch_protection",
+  "too_many_pulls",
 ]);
 
 /** The message key, its values and the tone of an action result. */
@@ -227,4 +230,47 @@ export function checksKey(checks: string | null): string {
     default:
       return "none";
   }
+}
+
+/** The Dependabot bulk merge takes at most this many PRs per batch. */
+export const BULK_MERGE_LIMIT = 50;
+
+/**
+ * The PRs the Dependabot bulk merge dialog offers (design §8.2 #10): opened
+ * by Dependabot, not a draft, mergeable with the merge state CLEAN, checks
+ * passing, a patch or minor update by the versions in the title, a merge
+ * method allowed and, for workflow changes, Workflows granted. The server
+ * re-checks every PR (including Dependabot's commit metadata) right before
+ * its merge.
+ */
+export function bulkMergeCandidates<
+  P extends {
+    repositoryId: string;
+    title: string;
+    isDependabot: boolean;
+    isDraft: boolean;
+    mergeable: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
+    mergeStateStatus: string | null;
+    checks: string | null;
+    changesWorkflows: boolean | null;
+  },
+>(
+  pulls: readonly P[],
+  options: {
+    workflowsGranted: boolean;
+    mergeMethods: Record<string, readonly MergeMethod[]>;
+  },
+): Array<P & { updateType: "patch" | "minor" }> {
+  const out: Array<P & { updateType: "patch" | "minor" }> = [];
+  for (const p of pulls) {
+    if (!p.isDependabot || p.isDraft || p.mergeable !== "MERGEABLE") continue;
+    if ((p.mergeStateStatus ?? "").toUpperCase() !== "CLEAN") continue;
+    if (p.checks !== "SUCCESS") continue;
+    if (p.changesWorkflows === true && !options.workflowsGranted) continue;
+    if ((options.mergeMethods[p.repositoryId] ?? []).length === 0) continue;
+    const updateType = updateTypeFromTitle(p.title);
+    if (updateType !== "patch" && updateType !== "minor") continue;
+    out.push({ ...p, updateType });
+  }
+  return out.slice(0, BULK_MERGE_LIMIT);
 }

@@ -1,4 +1,7 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
+import { dependabotUpdateType, isPatchOrMinor } from "@/lib/dependabot-update";
+import { BULK_MERGE_LIMIT } from "@/lib/management-view";
 import {
   beginAction,
   defaultActionDeps,
@@ -6,9 +9,15 @@ import {
   type ActionActor,
   type ActionDeps,
   type ActionResult,
+  type ActionSession,
+  type Done,
 } from "@/server/authz/action";
-import { findRepoTarget } from "@/server/data/management";
-import { forgetPulls } from "@/server/data/pulls";
+import {
+  findRepoTarget,
+  findRepoTargets,
+  type RepoTarget,
+} from "@/server/data/management";
+import { forgetPulls, readRepoPulls } from "@/server/data/pulls";
 import { githubErrorInfo } from "@/server/github/errors";
 import { mergePurposeFor } from "@/server/github/purposes";
 import {
@@ -20,6 +29,7 @@ import {
   type GhPullCommit,
   type MergeMethod,
 } from "@/server/github/rest";
+import type { GitHubApi } from "@/server/ingest/github-client";
 
 /**
  * Merge a pull request as the App (design §8.2 #9, D4), admin only.
@@ -123,6 +133,51 @@ export type MergeData = {
   mergeCommitSha: string | null;
   workflowsTouched: boolean;
 };
+
+/** The merge call and the re-read of the result, shared by single and bulk merges. */
+async function performMerge(
+  api: GitHubApi,
+  repo: RepoTarget,
+  m: {
+    number: number;
+    sha: string;
+    method: MergeMethod;
+    pull: GhPull;
+    commits: readonly GhPullCommit[];
+    trailer: boolean;
+    auditId: string;
+    workflowsTouched: boolean;
+  },
+): Promise<Done<MergeData>> {
+  const message = m.trailer
+    ? trailerMessage(
+        m.method,
+        m.pull,
+        m.commits,
+        `${AUDIT_TRAILER}: ${m.auditId}`,
+      )
+    : null;
+  const res = await mergePull(api, repo, m.number, {
+    sha: m.sha,
+    method: m.method,
+    ...(message ? { commitMessage: message } : {}),
+  });
+  let after: GhPull | null = null;
+  try {
+    after = await getPull(api, repo, m.number);
+  } catch {
+    after = null;
+  }
+  return {
+    data: {
+      merged: after?.merged ?? true,
+      mergeCommitSha: after?.merge_commit_sha ?? res.sha,
+      workflowsTouched: m.workflowsTouched,
+    },
+    httpStatus: res.httpStatus,
+    requestId: res.requestId,
+  };
+}
 
 export async function mergePullRequest(
   actor: ActionActor,
@@ -234,39 +289,335 @@ export async function mergePullRequest(
     },
     purpose,
     [repo.id],
-    async (api, auditId) => {
-      const res = await mergePull(api, repo, input.number, {
+    (api, auditId) =>
+      performMerge(api, repo, {
+        number: input.number,
         sha: input.sha,
         method: input.method,
-        ...(trailer
-          ? {
-              commitMessage:
-                trailerMessage(
-                  input.method,
-                  pull,
-                  commits,
-                  `${AUDIT_TRAILER}: ${auditId}`,
-                ) ?? undefined,
-            }
-          : {}),
-      });
-      let after: GhPull | null = null;
-      try {
-        after = await getPull(api, repo, input.number);
-      } catch {
-        after = null;
-      }
-      return {
-        data: {
-          merged: after?.merged ?? true,
-          mergeCommitSha: after?.merge_commit_sha ?? res.sha,
-          workflowsTouched,
-        },
-        httpStatus: res.httpStatus,
-        requestId: res.requestId,
-      };
-    },
+        pull,
+        commits,
+        trailer,
+        auditId,
+        workflowsTouched,
+      }),
   );
   forgetPulls(input.installationId);
   return result;
+}
+
+// ---------- guarded Dependabot bulk merge ----------
+
+export const MAX_BULK_MERGE = BULK_MERGE_LIMIT;
+
+const isDependabot = (login: string | null | undefined) =>
+  !!login && /^dependabot(\[bot\])?$/i.test(login);
+
+export type BulkMergeItem = {
+  repositoryId: bigint;
+  number: number;
+  /** The head SHA shown in the dialog. */
+  sha: string;
+};
+
+export type BulkMergeInput = {
+  installationId: bigint;
+  items: BulkMergeItem[];
+  /** Must equal the number of items. */
+  typed: string;
+  idempotencyKey: string;
+};
+
+export type BulkMergeRow = {
+  repositoryId: string;
+  fullName: string | null;
+  number: number;
+  /**
+   * merged; skipped: not eligible at the re-check (reason); failed: the
+   * merge or the re-check failed unexpectedly, which stops the batch;
+   * not_attempted: after a stop.
+   */
+  status: "merged" | "skipped" | "failed" | "not_attempted";
+  reason?: string;
+  message?: string;
+  method?: MergeMethod;
+  updateType?: string;
+  auditId?: string;
+};
+
+export type BulkMergeResult = {
+  batchId: string;
+  rows: BulkMergeRow[];
+  merged: number;
+  skipped: number;
+  failed: number;
+  notAttempted: number;
+};
+
+type Eligible = {
+  pull: GhPull;
+  commits: GhPullCommit[];
+  method: MergeMethod;
+  purpose: "act.merge" | "act.merge.workflows";
+  updateType: string;
+};
+
+function defaultMethod(allowed: readonly MergeMethod[]): MergeMethod | null {
+  for (const m of ["squash", "merge", "rebase"] as const)
+    if (allowed.includes(m)) return m;
+  return null;
+}
+
+/**
+ * Re-reads one PR right before its merge and decides whether the bulk merge
+ * may merge it: opened by Dependabot, open, not a draft, head still at the
+ * SHA shown, mergeable with the merge state "clean" (no acknowledgement in
+ * bulk), checks green, a patch or minor update, the token's permissions
+ * granted and a merge method allowed. Throws on read errors.
+ */
+async function recheck(
+  session: ActionSession,
+  read: GitHubApi,
+  repo: RepoTarget,
+  item: BulkMergeItem,
+): Promise<{ ok: true; eligible: Eligible } | { ok: false; reason: string }> {
+  const pull = await getPull(read, repo, item.number);
+  if (!isDependabot(pull.user?.login))
+    return { ok: false, reason: "not_dependabot" };
+  if (pull.merged) return { ok: false, reason: "already_merged" };
+  if (pull.state !== "open") return { ok: false, reason: "not_open" };
+  if (pull.draft) return { ok: false, reason: "draft" };
+  if (pull.head.sha !== item.sha) return { ok: false, reason: "head_moved" };
+  if (pull.mergeable !== true) return { ok: false, reason: "not_mergeable" };
+  const state = (pull.mergeable_state ?? "unknown").toLowerCase();
+  if (state === "blocked") return { ok: false, reason: "branch_protection" };
+  if (state !== "clean") return { ok: false, reason: "not_clean" };
+  const live = await readRepoPulls(read, repo);
+  if (live.repo.status !== "ok") throw new Error("pull requests unreadable");
+  const row = live.pulls.find((p) => p.number === item.number);
+  if (row?.checks !== "SUCCESS")
+    return { ok: false, reason: "checks_not_green" };
+  const commits = await listPullCommits(read, repo, item.number);
+  const updateType = dependabotUpdateType(
+    pull.title ?? "",
+    commits.map((c) => c.commit.message),
+  );
+  if (!updateType || !isPatchOrMinor(updateType))
+    return { ok: false, reason: "not_patch_or_minor" };
+  const purpose = mergePurposeFor(await listPullFiles(read, repo, item.number));
+  if (session.missing(purpose))
+    return { ok: false, reason: "workflows_not_granted" };
+  const method = defaultMethod(live.repo.mergeMethods);
+  if (!method) return { ok: false, reason: "no_method" };
+  return {
+    ok: true,
+    eligible: {
+      pull,
+      commits,
+      method,
+      purpose: purpose as Eligible["purpose"],
+      updateType,
+    },
+  };
+}
+
+/**
+ * Guarded Dependabot bulk merge (design §8.2 #10), admin only: one
+ * PR_BULK_MERGE parent row and one PR_MERGE child per merged PR (same
+ * batch), merged one after another through the single-merge path. Each PR
+ * is re-checked right before its merge; one that no longer qualifies is
+ * skipped with its reason. The first unexpected error (a failed merge or
+ * re-check) stops the batch, and the rest is reported as not attempted.
+ * The typed confirmation is the number of PRs listed in the dialog.
+ */
+export async function bulkMergeDependabot(
+  actor: ActionActor,
+  input: BulkMergeInput,
+  deps: ActionDeps = defaultActionDeps(),
+): Promise<ActionResult<BulkMergeResult>> {
+  const seen = new Set<string>();
+  const items = input.items.filter((i) => {
+    const k = `${i.repositoryId}#${i.number}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  if (items.length === 0) return { status: "refused", reason: "unchanged" };
+  if (items.length > MAX_BULK_MERGE)
+    return { status: "refused", reason: "too_many_pulls" };
+  const repos = await findRepoTargets(
+    actor.scope,
+    input.installationId,
+    items.map((i) => i.repositoryId),
+  );
+  const byId = new Map(repos.map((r) => [r.id, r]));
+  const batchId = randomUUID();
+  const begun = await beginAction(
+    actor,
+    {
+      installationId: input.installationId,
+      action: "PR_BULK_MERGE",
+      role: "ADMIN",
+      idempotencyKey: input.idempotencyKey,
+      target: { type: "batch", id: batchId },
+      confirmation: "TYPED",
+      purpose: "act.merge",
+      cost: items.length,
+    },
+    deps,
+  );
+  if (!begun.ok) return begun.result;
+  const { session } = begun;
+  if (
+    !session.confirm({
+      kind: "TYPED",
+      typed: input.typed,
+      expected: String(items.length),
+    })
+  )
+    return { status: "confirmation_mismatch" };
+
+  const parent = await session.record({
+    batchId,
+    params: {
+      items: items.map((i) => ({
+        repositoryId: String(i.repositoryId),
+        number: i.number,
+        sha: i.sha,
+      })),
+      auditTrailer: deps.mergeAuditTrailer,
+    },
+  });
+  if (!parent.created)
+    return { status: "pending", auditId: parent.id, replayed: true };
+
+  const rows: BulkMergeRow[] = [];
+  let stopped = false;
+  let read: GitHubApi | null = null;
+  for (const item of items) {
+    const repo = byId.get(item.repositoryId);
+    const base = {
+      repositoryId: String(item.repositoryId),
+      fullName: repo?.fullName ?? null,
+      number: item.number,
+    };
+    if (stopped) {
+      rows.push({ ...base, status: "not_attempted" });
+      continue;
+    }
+    if (!repo || !repo.selected || repo.archived) {
+      rows.push({
+        ...base,
+        status: "skipped",
+        reason: repo?.archived ? "archived" : "not_selected",
+      });
+      continue;
+    }
+    let check: Awaited<ReturnType<typeof recheck>>;
+    try {
+      read ??= await session.api(
+        "read.pulls",
+        repos.map((r) => r.id),
+      );
+      check = await recheck(session, read, repo, item);
+    } catch (error) {
+      const info = githubErrorInfo(error);
+      rows.push({
+        ...base,
+        status: "failed",
+        reason: info.status === 404 ? "pr_not_found" : "unreadable",
+        message: info.message,
+      });
+      stopped = true;
+      continue;
+    }
+    if (!check.ok) {
+      rows.push({ ...base, status: "skipped", reason: check.reason });
+      continue;
+    }
+    const { pull, commits, method, purpose, updateType } = check.eligible;
+    const trailer = deps.mergeAuditTrailer && method !== "rebase";
+    const workflowsTouched = purpose === "act.merge.workflows";
+    const child = await session.record({
+      action: "PR_MERGE",
+      target: {
+        type: "pr",
+        id: `${repo.fullName}#${item.number}`,
+        repositoryId: repo.id,
+        repoFullName: repo.fullName,
+      },
+      batchId,
+      idempotencyKey: `${input.idempotencyKey}:${repo.id}#${item.number}`,
+      params: {
+        number: item.number,
+        method,
+        sha: item.sha,
+        workflowsTouched,
+        mergeableState: "clean",
+        acknowledgedNotClean: false,
+        updateType,
+        auditTrailer: trailer,
+      },
+    });
+    const outcome = await session.execute(child.id, purpose, [repo.id], (api) =>
+      performMerge(api, repo, {
+        number: item.number,
+        sha: item.sha,
+        method,
+        pull,
+        commits,
+        trailer,
+        auditId: child.id,
+        workflowsTouched,
+      }),
+    );
+    if (outcome.status === "succeeded") {
+      rows.push({
+        ...base,
+        status: "merged",
+        method,
+        updateType,
+        auditId: child.id,
+      });
+    } else {
+      rows.push({
+        ...base,
+        status: "failed",
+        method,
+        updateType,
+        message: outcome.status === "failed" ? outcome.message : "",
+        auditId: child.id,
+      });
+      stopped = true;
+    }
+  }
+
+  const count = (s: BulkMergeRow["status"]) =>
+    rows.filter((r) => r.status === s).length;
+  const data: BulkMergeResult = {
+    batchId,
+    rows,
+    merged: count("merged"),
+    skipped: count("skipped"),
+    failed: count("failed"),
+    notAttempted: count("not_attempted"),
+  };
+  const message = `${data.failed} of ${rows.length} pull requests failed, ${data.notAttempted} not attempted`;
+  await session.finish(
+    parent.id,
+    data.failed === 0
+      ? { status: "SUCCEEDED" }
+      : { status: "FAILED", error: message },
+  );
+  forgetPulls(input.installationId);
+  session.revalidate();
+  return data.failed === 0
+    ? { status: "succeeded", auditId: parent.id, replayed: false, data }
+    : {
+        status: "failed",
+        auditId: parent.id,
+        replayed: false,
+        httpStatus: null,
+        message,
+        data,
+      };
 }

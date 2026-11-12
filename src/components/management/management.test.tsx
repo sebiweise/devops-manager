@@ -7,7 +7,10 @@ import { alert, auditEntry, pull, repoVars, run } from "./test-fixtures";
 
 // The Server Actions and the router are not needed to render the UI.
 vi.mock("@/server/actions/runs", () => ({ runOperationAction: vi.fn() }));
-vi.mock("@/server/actions/pulls", () => ({ mergePullRequestAction: vi.fn() }));
+vi.mock("@/server/actions/pulls", () => ({
+  mergePullRequestAction: vi.fn(),
+  bulkMergeDependabotAction: vi.fn(),
+}));
 vi.mock("@/server/actions/management", () => ({
   setManagementEnabledAction: vi.fn(),
   setVariableRedactionAction: vi.fn(),
@@ -30,6 +33,8 @@ vi.mock("next/navigation", () => ({
 const { RunActions, RunActionPanel } = await import("./run-actions");
 const { ManagementBanner } = await import("./management-banner");
 const { MergePanel, PullsTable } = await import("./pulls-table");
+const { BulkMergePanel, BulkMergeResultView, DependabotBulkMerge } =
+  await import("./dependabot-bulk-merge");
 const { DeleteVariablePanel, RepoVariablesList, VariablesMatrix } =
   await import("./variable-editors");
 const { OrgVariablesTable } = await import("./org-variables");
@@ -216,6 +221,116 @@ describe("PullsTable and MergePanel", () => {
     expect(html).toContain("branch protection not satisfied");
     expect(html).not.toContain("Merge pull request #8");
     expect(html).not.toContain("Merge pull request #11");
+  });
+
+  it("offers the Dependabot bulk merge only for patch and minor updates", () => {
+    const methods = { "101": ["squash" as const] };
+    const none = render(
+      <DependabotBulkMerge
+        installationId="42"
+        pulls={[pull()]}
+        mergeMethods={methods}
+        workflowsGranted
+      />,
+    );
+    expect(none).toBe("");
+    const html = render(
+      <DependabotBulkMerge
+        installationId="42"
+        pulls={[
+          pull({ title: "Bump example-lib from 1.0.0 to 1.0.1" }),
+          pull({ number: 8, title: "Bump example-lib from 1.0.0 to 1.1.0" }),
+          pull({
+            number: 9,
+            title: "Bump example-lib from 1.0.0 to 1.0.2",
+            checks: "FAILURE",
+          }),
+        ]}
+        mergeMethods={methods}
+        workflowsGranted
+      />,
+    );
+    expect(html).toContain("Merge Dependabot updates (2)");
+  });
+
+  it("lists every PR of the bulk merge and needs the count typed", () => {
+    const candidates = [
+      {
+        ...pull({ title: "Bump example-lib from 1.0.0 to 1.0.1" }),
+        updateType: "patch" as const,
+      },
+      {
+        ...pull({ number: 8, title: "Bump example-lib from 1.0.0 to 1.1.0" }),
+        updateType: "minor" as const,
+      },
+    ];
+    const html = render(
+      <BulkMergePanel
+        installationId="42"
+        candidates={candidates}
+        controls={controls}
+      />,
+    );
+    expect(html).toContain("#7 Bump example-lib from 1.0.0 to 1.0.1");
+    expect(html).toContain(">minor<");
+    expect(html).toContain("Type 2 to confirm");
+    expect(html).toMatch(/<button[^>]*type="submit"[^>]*disabled=""/);
+    expect(html).toContain("Merge 2 pull requests");
+    const de = render(
+      <BulkMergePanel
+        installationId="42"
+        candidates={candidates}
+        controls={controls}
+      />,
+      "de",
+    );
+    expect(de).toContain("2 Pull Requests mergen");
+  });
+
+  it("shows the bulk merge result per PR", () => {
+    const html = render(
+      <BulkMergeResultView
+        result={{
+          batchId: "b1",
+          merged: 1,
+          skipped: 1,
+          failed: 1,
+          notAttempted: 1,
+          rows: [
+            {
+              repositoryId: "101",
+              fullName: "example-org/repo-a",
+              number: 7,
+              status: "merged",
+            },
+            {
+              repositoryId: "101",
+              fullName: "example-org/repo-a",
+              number: 8,
+              status: "skipped",
+              reason: "head_moved",
+            },
+            {
+              repositoryId: "101",
+              fullName: "example-org/repo-a",
+              number: 9,
+              status: "failed",
+              message: "Server Error",
+            },
+            {
+              repositoryId: "101",
+              fullName: "example-org/repo-a",
+              number: 10,
+              status: "not_attempted",
+            },
+          ],
+        }}
+      />,
+    );
+    expect(html).toContain("1 merged, 1 skipped, 1 failed, 1 not attempted.");
+    expect(html).toContain("new commits since the dialog opened");
+    expect(html).toContain("Server Error");
+    expect(html).toContain("not attempted (batch stopped)");
   });
 
   it("shows an empty state", () => {

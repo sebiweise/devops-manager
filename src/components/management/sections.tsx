@@ -6,6 +6,7 @@ import { listDependabotAlerts } from "@/server/data/dependabot";
 import type { ManagementState } from "@/server/data/management";
 import { listOpenPulls, type PullRow } from "@/server/data/pulls";
 import { listVariableMatrix } from "@/server/data/variables";
+import { DependabotBulkMerge } from "./dependabot-bulk-merge";
 import { AlertsTable, SeverityMatrix } from "./dependabot-table";
 import { OrgVariablesTable } from "./org-variables";
 import { PullsTable } from "./pulls-table";
@@ -69,8 +70,21 @@ export async function PullsSection({
     ? overview.repos.filter((r) => r.repositoryId === repositoryId)
     : overview.repos;
   const unavailable = repos.filter((r) => r.status === "unavailable");
+  const mergeMethods = Object.fromEntries(
+    repos.map((r) => [r.repositoryId, r.mergeMethods]),
+  );
   return (
     <div className="flex flex-col gap-3">
+      {state.canAdmin ? (
+        <div className="flex justify-end">
+          <DependabotBulkMerge
+            installationId={String(installationId)}
+            pulls={pulls}
+            mergeMethods={mergeMethods}
+            workflowsGranted={overview.workflowsGranted}
+          />
+        </div>
+      ) : null}
       {!overview.workflowsGranted &&
       pulls.some((p) => p.changesWorkflows !== false) ? (
         <p className="text-sm text-muted-foreground">
@@ -80,9 +94,7 @@ export async function PullsSection({
       <PullsTable
         installationId={String(installationId)}
         pulls={pulls}
-        mergeMethods={Object.fromEntries(
-          repos.map((r) => [r.repositoryId, r.mergeMethods]),
-        )}
+        mergeMethods={mergeMethods}
         workflowsGranted={overview.workflowsGranted}
         canMerge={state.canAdmin}
         mergeAuditTrailer={state.mergeAuditTrailer}

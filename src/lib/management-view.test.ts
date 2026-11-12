@@ -4,6 +4,7 @@ import { parseAuditQuery } from "./audit-view";
 import {
   checksKey,
   defaultMergeMethod,
+  bulkMergeCandidates,
   mergeBlock,
   needsAcknowledgement,
   resultText,
@@ -210,5 +211,49 @@ describe("parseAuditQuery", () => {
     expect(q.values).toEqual({});
     expect(q.chain).toBe("installation");
     expect(q.before).toBeUndefined();
+  });
+});
+
+describe("Dependabot bulk merge candidates", () => {
+  const base = {
+    repositoryId: "11",
+    title: "Bump example-lib from 1.0.0 to 1.0.1",
+    isDependabot: true,
+    isDraft: false,
+    mergeable: "MERGEABLE" as const,
+    mergeStateStatus: "CLEAN",
+    checks: "SUCCESS",
+    changesWorkflows: false,
+  };
+  const opts = {
+    workflowsGranted: false,
+    mergeMethods: { "11": ["squash" as const] },
+  };
+
+  it("offers clean, green Dependabot patch and minor updates only", () => {
+    const pulls = [
+      base,
+      { ...base, title: "Bump example-lib from 1.0.0 to 1.1.0" },
+      { ...base, title: "Bump example-lib from 1.0.0 to 2.0.0" },
+      { ...base, title: "Bump the npm group with 2 updates" },
+      { ...base, isDependabot: false },
+      { ...base, isDraft: true },
+      { ...base, mergeable: "CONFLICTING" as const },
+      { ...base, mergeStateStatus: "BLOCKED" },
+      { ...base, mergeStateStatus: "UNSTABLE" },
+      { ...base, checks: "PENDING" },
+      { ...base, changesWorkflows: true },
+      { ...base, repositoryId: "12" },
+    ];
+    expect(bulkMergeCandidates(pulls, opts).map((p) => p.updateType)).toEqual([
+      "patch",
+      "minor",
+    ]);
+    expect(
+      bulkMergeCandidates([{ ...base, changesWorkflows: true }], {
+        ...opts,
+        workflowsGranted: true,
+      }),
+    ).toHaveLength(1);
   });
 });

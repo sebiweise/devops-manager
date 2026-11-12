@@ -777,7 +777,8 @@
       "not_mergeable": "Der Pull Request hat Konflikte und kann nicht gemergt werden.",
       "mergeability_unknown": "GitHub prüft noch, ob der Pull Request gemergt werden kann. Versuche es gleich erneut.",
       "needs_acknowledgement": "Der Merge-Status ist {state}. Bestätige die Warnung, um trotzdem zu mergen.",
-      "branch_protection": "Der Branch-Schutz ist nicht erfüllt (erforderliche Reviews, Checks oder Regeln). Der Merge ist möglich, sobald sie erfüllt sind."
+      "branch_protection": "Der Branch-Schutz ist nicht erfüllt (erforderliche Reviews, Checks oder Regeln). Der Merge ist möglich, sobald sie erfüllt sind.",
+      "too_many_pulls": "Wähle höchstens 50 Pull Requests aus."
     },
     "bulk": {
       "create": "anlegen",
@@ -1050,7 +1051,50 @@
       },
       "workflowsNotGranted": "Einige Pull Requests ändern Workflow-Dateien. Zum Mergen braucht die App die Berechtigung Workflows: write, die nicht erteilt ist.",
       "reposUnavailable": "Konnten nicht gelesen werden: {repos}.",
-      "truncated": "Nicht alle offenen Pull Requests werden angezeigt (höchstens 50 pro Repository und 200 Repositories)."
+      "truncated": "Nicht alle offenen Pull Requests werden angezeigt (höchstens 50 pro Repository und 200 Repositories).",
+      "bulkMerge": {
+        "open": "Dependabot-Updates mergen ({count})",
+        "title": "Dependabot-Updates mergen",
+        "intro": "Diese Dependabot-Pull-Requests sind Patch- oder Minor-Updates, mergebar, CLEAN und mit erfolgreichen Checks. Sie werden nacheinander als App gemergt, mit der bevorzugten Merge-Methode des jeweiligen Repositorys.",
+        "listCaption": "Zu mergende Pull Requests",
+        "pull": "Pull Request",
+        "update": "Update",
+        "headSha": "Head-Commit",
+        "updateType": {
+          "patch": "Patch",
+          "minor": "Minor"
+        },
+        "guards": "Jeder Pull Request wird direkt vor seinem Merge erneut geprüft und übersprungen, wenn er nicht mehr passt (zum Beispiel neue Commits, fehlschlagende Checks, Branch-Schutz oder ein Major-Update laut Dependabot-Metadaten). Der erste unerwartete Fehler stoppt den Batch.",
+        "merge": "{count, plural, one {# Pull Request} other {# Pull Requests}} mergen",
+        "merging": "Wird gemergt…",
+        "results": "Ergebnisse des Bulk-Merges",
+        "summary": "{merged} gemergt, {skipped} übersprungen, {failed} fehlgeschlagen, {notAttempted} nicht versucht.",
+        "status": "Ergebnis",
+        "rowStatus": {
+          "merged": "gemergt",
+          "skipped": "übersprungen",
+          "failed": "fehlgeschlagen",
+          "not_attempted": "nicht versucht (Batch gestoppt)"
+        },
+        "reason": {
+          "not_dependabot": "nicht von Dependabot eröffnet",
+          "already_merged": "bereits gemergt",
+          "not_open": "geschlossen",
+          "draft": "Entwurf",
+          "head_moved": "neue Commits seit dem Öffnen des Dialogs",
+          "not_mergeable": "nicht mergebar",
+          "branch_protection": "Branch-Schutz nicht erfüllt",
+          "not_clean": "Merge-Status ist nicht mehr CLEAN",
+          "checks_not_green": "Checks sind nicht erfolgreich",
+          "not_patch_or_minor": "kein Patch- oder Minor-Update",
+          "workflows_not_granted": "ändert Workflows; der App fehlt Workflows: write",
+          "no_method": "keine Merge-Methode erlaubt",
+          "archived": "Repository archiviert",
+          "not_selected": "Repository nicht in der Auswahl der Installation",
+          "pr_not_found": "Pull Request nicht gefunden",
+          "unreadable": "konnte nicht von GitHub gelesen werden"
+        }
+      }
     },
     "dependabot": {
       "title": "Dependabot-Warnungen",
