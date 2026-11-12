@@ -7,8 +7,9 @@ import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
 import { hasRole } from "@/server/authz/roles";
 import { findBatch } from "@/server/data/audit";
 import { getManagementState } from "@/server/data/management";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Revert batch" };
+export const generateMetadata = accountMeta("batch");
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

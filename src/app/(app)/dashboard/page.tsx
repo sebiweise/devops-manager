@@ -12,8 +12,11 @@ import {
 import { hasRole } from "@/server/authz/roles";
 import { requireScope } from "@/server/better-auth/session";
 import { dashboardRepositories } from "@/server/data/live-repositories";
+import { pageTitle } from "@/lib/page-meta";
 
-export const metadata = { title: "Dashboard" };
+export async function generateMetadata() {
+  return pageTitle("dashboard");
+}
 
 export default async function DashboardPage() {
   const { scope } = await requireScope();

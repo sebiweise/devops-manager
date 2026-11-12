@@ -44,8 +44,9 @@ import {
   listRunnerPools,
   listRunners,
 } from "@/server/data/runners";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Runners" };
+export const generateMetadata = accountMeta("runners");
 
 /**
  * Live runners (org and repo level) with 7-day utilisation, speed index and

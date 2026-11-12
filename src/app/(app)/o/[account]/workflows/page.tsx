@@ -12,8 +12,9 @@ import {
 import { leaderboards, param, type SearchParams } from "@/lib/insights-view";
 import { listWorkflowStats, parseRange } from "@/server/data/insights";
 import type { WorkflowStat } from "@/server/data/insights";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Workflows" };
+export const generateMetadata = accountMeta("workflows");
 
 export default async function WorkflowsPage({
   params,

@@ -9,8 +9,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { requireScope } from "@/server/better-auth/session";
+import { pageTitle } from "@/lib/page-meta";
 
-export const metadata = { title: "Settings" };
+export async function generateMetadata() {
+  return pageTitle("userSettings");
+}
 
 export default async function SettingsPage() {
   const { user, scope } = await requireScope();

@@ -30,8 +30,9 @@ import { lastRunCancelAt } from "@/server/data/audit";
 import { getRunDetail } from "@/server/data/insights";
 import { getManagementState } from "@/server/data/management";
 import { getRunSteps } from "@/server/data/steps";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Run" };
+export const generateMetadata = accountMeta("run");
 
 export default async function RunPage({
   params,

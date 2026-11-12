@@ -35,8 +35,9 @@ import { param, type SearchParams } from "@/lib/insights-view";
 import { parseRunnerKey, runnerState } from "@/lib/runners-view";
 import { parseRange, rangeStart } from "@/server/data/insights";
 import { getRunnerDetail } from "@/server/data/runners";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Runner" };
+export const generateMetadata = accountMeta("runner");
 
 /**
  * One self-hosted runner (design §7 /runners/[runnerKey]): utilisation with

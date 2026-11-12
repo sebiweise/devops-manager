@@ -16,8 +16,11 @@ import { orNotFound } from "@/lib/account-page";
 import { param, type SearchParams } from "@/lib/insights-view";
 import { requireScope } from "@/server/better-auth/session";
 import { listBillingCredentials } from "@/server/data/personal-billing";
+import { pageTitle } from "@/lib/page-meta";
 
-export const metadata = { title: "GitHub billing" };
+export async function generateMetadata() {
+  return pageTitle("billingAccess");
+}
 
 /** Statuses the Connect callback may report in `?connect=`. */
 const CONNECT_STATUSES = [

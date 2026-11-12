@@ -24,8 +24,9 @@ import {
   listFlakyJobs,
   parseRange,
 } from "@/server/data/insights";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Overview" };
+export const generateMetadata = accountMeta("overview");
 
 export default async function AccountPage({
   params,

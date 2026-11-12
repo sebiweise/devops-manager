@@ -15,8 +15,9 @@ import { loadAccount, orNotFound } from "@/lib/account-page";
 import { formatDuration, formatNumber } from "@/lib/format";
 import { lazyRunnerSample } from "@/lib/runner-sample";
 import { getLiveQueue } from "@/server/data/runners";
+import { accountMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Queue" };
+export const generateMetadata = accountMeta("queue");
 
 /**
  * Live queue (design §7 /queue): queued jobs grouped by labels and

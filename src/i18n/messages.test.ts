@@ -55,6 +55,74 @@ describe("messages", () => {
   });
 });
 
+describe("glossary (UI overhaul §5)", () => {
+  const value = (messages: unknown, key: string) =>
+    key
+      .split(".")
+      .reduce<unknown>(
+        (o, p) => (o as Record<string, unknown>)[p],
+        messages,
+      ) as string;
+
+  // Internal terms the UI no longer shows, in either language.
+  const internal =
+    /\b(reconcile[ds]?|backfill|rollups?|dirty|SKUs?|pools?|wall clock|critical path|speed index|ingestion lag)\b/i;
+  const glossaryKeys = [
+    "account.lastReconciled",
+    "freshness.pill",
+    "freshness.reasons.noReconcile",
+    "overview.noRuns",
+    "run.wall",
+    "run.critical",
+    "run.placeholder",
+    "syncHealth.lastReconcile",
+    "syncHealth.lagP50",
+    "syncHealth.dirty",
+    "syncHealth.backfillDays",
+    "syncHealth.cursor",
+    "syncHealth.backfill",
+    "syncHealth.needsResync",
+    "runnerData.speedIndex",
+    "runners.pools.title",
+    "runners.pools.pool",
+    "workflow.pool",
+    "costs.bySku.title",
+    "costs.bySku.sku",
+    "costs.unmatched",
+  ];
+
+  it("uses the plain wording for internal terms in both languages", () => {
+    for (const key of glossaryKeys) {
+      // Placeholders such as {reconcile} are not shown text.
+      const text = (m: unknown) => value(m, key).replace(/\{\w+\}/g, "");
+      expect(text(en), `en:${key}`).not.toMatch(internal);
+      expect(text(de), `de:${key}`).not.toMatch(internal);
+    }
+  });
+
+  it("German glossary entries are not left in English", () => {
+    const spot: Record<string, string> = {
+      "syncHealth.backfill": "Verlaufsimport",
+      "syncHealth.cursor": "Neuester importierter Lauf",
+      "syncHealth.dirty": "Tagesauswertungen, die neu berechnet werden",
+      "run.wall": "Gesamtdauer",
+      "run.critical": "längste Kette abhängiger Jobs",
+      "costs.bySku.sku": "Runner-Typ",
+      "runners.pools.pool": "Runner-Gruppe (Labels)",
+      "charts.p50": "typisch (Median)",
+      "charts.p95": "95 % fertig innerhalb",
+      "ignore.badge.ignored": "Ignoriert",
+      "table.range": "{from}-{to} von {total}",
+      "repos.chips.ignored": "Ignorierte anzeigen",
+      "management.audit.actionLabel.REPO_IGNORE": "Repository ignoriert",
+    };
+    for (const [key, text] of Object.entries(spot)) {
+      expect(value(de, key), key).toBe(text);
+      expect(value(de, key), key).not.toBe(value(en, key));
+    }
+  });
+});
+
 describe("messages format", () => {
   it("every message parses and formats in both languages", async () => {
     const { createTranslator } = await import("next-intl");

@@ -16,8 +16,11 @@ import { listInstallations } from "@/server/data/installations";
 import { installUrl } from "@/server/github/app";
 import { verifyAndStoreInstallation } from "@/server/ingest/discovery";
 import { refreshInstallations } from "./actions";
+import { pageTitle } from "@/lib/page-meta";
 
-export const metadata = { title: "Installations" };
+export async function generateMetadata() {
+  return pageTitle("onboarding");
+}
 
 /**
  * Admin page for installations, and the GitHub App's Setup URL. GitHub sends
