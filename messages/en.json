@@ -823,7 +823,9 @@
       "breakReason": {
         "prev_hash": "An entry was removed, inserted or reordered.",
         "hash": "The entry's content was changed.",
-        "result_hash": "The entry's recorded outcome was changed."
+        "result_hash": "The entry's recorded outcome was changed.",
+        "pending": "The entry has had no outcome for over an hour: the action was interrupted or its outcome was removed.",
+        "truncated": "The chain does not reach its recorded head: the newest entries were removed or rewritten."
       },
       "exportCsv": "Export CSV",
       "chains": "Audit chains",

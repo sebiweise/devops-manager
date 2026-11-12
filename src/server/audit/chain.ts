@@ -11,7 +11,10 @@ import { createHash } from "node:crypto";
  * - `resultHash` = sha256(canonical(final status fields) || hash), written
  *   with the final status, so a changed outcome (for example FAILED edited
  *   to SUCCEEDED) is detected as well. Rows written before M3 have no
- *   result hash; Verify reports them as "unsealed" instead of failing.
+ *   result hash; Verify reports them as "unsealed" instead of failing. The
+ *   cutoff is the chain head's `sealedAfterSeq`, not the rows themselves.
+ * - The chain head (seq and hash of the newest row) is kept outside the
+ *   chain, so removing the newest rows is detected as "truncated".
  */
 
 export const GENESIS_HASH = "0".repeat(64);
@@ -114,15 +117,32 @@ export type ChainRow = ImmutableAuditFields &
     resultHash: string | null;
   };
 
+/** The newest row of a chain, kept outside AuditLog (AuditChainHead). */
+export type ChainHead = {
+  seq: bigint;
+  hash: string;
+  /** Final rows with a higher seq must carry a result hash. */
+  sealedAfterSeq: bigint;
+};
+
+/**
+ * A PENDING row older than this was not completed by the action that wrote
+ * it: no management action runs that long (Server Actions end after a few
+ * minutes at most), so its outcome is missing.
+ */
+export const STALE_PENDING_MS = 60 * 60 * 1000;
+
 export type ChainBreak = {
   seq: string;
-  id: string;
+  id: string | null;
   /**
    * prev_hash: the link to the previous row is wrong (a row was removed,
    * inserted or reordered); hash: an immutable field was changed;
-   * result_hash: the recorded outcome was changed.
+   * result_hash: the recorded outcome was changed or removed; pending: a row
+   * has no outcome long after its action ended; truncated: the chain does not
+   * reach its recorded head (rows at the end were removed or rewritten).
    */
-  reason: "prev_hash" | "hash" | "result_hash";
+  reason: "prev_hash" | "hash" | "result_hash" | "pending" | "truncated";
 };
 
 export type ChainVerification = {
@@ -135,59 +155,103 @@ export type ChainVerification = {
   firstBreak: ChainBreak | null;
 };
 
+function hasFinalFields(row: ChainRow): boolean {
+  return (
+    row.resultHash !== null ||
+    row.completedAt !== null ||
+    row.httpStatus !== null ||
+    row.githubRequestId !== null ||
+    row.error !== null
+  );
+}
+
 /**
  * Incremental verifier: feed rows in ascending `seq` order (in pages, for
- * long chains), then read `result()`.
+ * long chains), then read `result()`. `head` is read before the rows; rows
+ * appended after it (concurrent actions) are checked as well.
+ *
+ * Which rows must be sealed is fixed by the head's cutoff, not by the rows
+ * seen, so stripping every result hash does not turn sealed rows into
+ * "unsealed" ones. Without a head, a non-empty chain is broken.
  */
 export class ChainVerifier {
   private prev = GENESIS_HASH;
   private checked = 0;
   private unsealed = 0;
   private firstBreak: ChainBreak | null = null;
-  private sawSealed = false;
+  private headReached = false;
+  private last: { seq: bigint; id: string } | null = null;
+
+  constructor(
+    private readonly head: ChainHead | null,
+    private readonly now: Date = new Date(),
+  ) {}
 
   add(row: ChainRow): void {
     this.checked++;
+    this.last = { seq: row.seq, id: row.id };
     if (this.firstBreak) return;
     const at = { seq: row.seq.toString(), id: row.id };
-    if (row.prevHash !== this.prev) {
-      this.firstBreak = { ...at, reason: "prev_hash" };
-      return;
+    const fail = (reason: ChainBreak["reason"]) => {
+      this.firstBreak = { ...at, reason };
+    };
+    if (row.prevHash !== this.prev) return fail("prev_hash");
+    if (auditHash(immutableFields(row), row.prevHash) !== row.hash)
+      return fail("hash");
+    if (this.head && row.seq === this.head.seq) {
+      if (row.hash !== this.head.hash) return fail("truncated");
+      this.headReached = true;
     }
-    if (auditHash(immutableFields(row), row.prevHash) !== row.hash) {
-      this.firstBreak = { ...at, reason: "hash" };
-      return;
-    }
-    if (row.resultHash) {
-      if (resultHash(row, row.hash) !== row.resultHash) {
-        this.firstBreak = { ...at, reason: "result_hash" };
-        return;
-      }
-      this.sawSealed = true;
-    } else if (row.status !== "PENDING") {
-      // Since M3 every final row is sealed: an unsealed one after a sealed
-      // row means its result hash was removed.
-      if (this.sawSealed) {
-        this.firstBreak = { ...at, reason: "result_hash" };
-        return;
-      }
+    const sealedEra = this.head !== null && row.seq > this.head.sealedAfterSeq;
+    if (row.status === "PENDING") {
+      // completeAudit writes every final field at once, together with the
+      // result hash; a PENDING row with any of them was edited back.
+      if (hasFinalFields(row)) return fail("result_hash");
+      if (
+        sealedEra &&
+        this.now.getTime() - row.createdAt.getTime() > STALE_PENDING_MS
+      )
+        return fail("pending");
+    } else if (row.resultHash) {
+      if (resultHash(row, row.hash) !== row.resultHash)
+        return fail("result_hash");
+    } else if (sealedEra) {
+      return fail("result_hash");
+    } else {
       this.unsealed++;
     }
     this.prev = row.hash;
   }
 
   result(): ChainVerification {
+    let firstBreak = this.firstBreak;
+    if (!firstBreak && this.last && (!this.head || !this.headReached))
+      firstBreak = {
+        seq: (this.head?.seq ?? this.last.seq).toString(),
+        id: null,
+        reason: "truncated",
+      };
+    if (!firstBreak && !this.last && this.head)
+      firstBreak = {
+        seq: this.head.seq.toString(),
+        id: null,
+        reason: "truncated",
+      };
     return {
-      ok: this.firstBreak === null,
+      ok: firstBreak === null,
       checked: this.checked,
       unsealed: this.unsealed,
-      firstBreak: this.firstBreak,
+      firstBreak,
     };
   }
 }
 
-export function verifyChain(rows: readonly ChainRow[]): ChainVerification {
-  const verifier = new ChainVerifier();
+export function verifyChain(
+  rows: readonly ChainRow[],
+  head: ChainHead | null,
+  now: Date = new Date(),
+): ChainVerification {
+  const verifier = new ChainVerifier(head, now);
   for (const row of rows) verifier.add(row);
   return verifier.result();
 }

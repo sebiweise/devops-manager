@@ -349,7 +349,10 @@ app user triggered the action, their role and sign-in provider.
   visible installation; admins also see the instance chain. Filters (app
   user, action, repository, status, dates) live in the URL; **Verify chain**
   recomputes the hash chain and names the first changed, removed or inserted
-  entry; **Export CSV** downloads the filtered log.
+  entry, an outcome that was changed or removed, and newest entries that were
+  removed (compared with the chain head, which is kept in a separate,
+  forward-only table and written to the application log); **Export CSV**
+  downloads the filtered log.
 
 ## Roles
 

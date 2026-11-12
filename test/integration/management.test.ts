@@ -1632,6 +1632,75 @@ describe.skipIf(!DATABASE_URL)("management", () => {
       });
     });
 
+    it("detects removed newest rows and outcomes hidden as PENDING or unsealed", async () => {
+      await rerun("OPERATOR");
+      await setVar("ADMIN", "self-hosted");
+      await setVar("ADMIN", "ubuntu-latest");
+      const viewer = actor("VIEWER").scope;
+      const [first, second, third] = await auditRows();
+      expect(await auditData.verifyAuditLog(viewer, A)).toMatchObject({
+        ok: true,
+      });
+
+      // An outcome edited back to PENDING.
+      await db.$executeRawUnsafe(
+        `UPDATE "AuditLog" SET "status" = 'PENDING', "resultHash" = NULL WHERE "id" = $1`,
+        second!.id,
+      );
+      expect(
+        (await auditData.verifyAuditLog(viewer, A)).firstBreak,
+      ).toMatchObject({ id: second!.id, reason: "result_hash" });
+      // Every result hash removed: still sealed rows, not legacy ones.
+      await db.$executeRawUnsafe(
+        `UPDATE "AuditLog" SET "status" = 'SUCCEEDED', "resultHash" = NULL`,
+      );
+      expect(
+        (await auditData.verifyAuditLog(viewer, A)).firstBreak,
+      ).toMatchObject({ id: first!.id, reason: "result_hash" });
+      await db.$executeRawUnsafe(
+        `UPDATE "AuditLog" SET "resultHash" = $2 WHERE "id" = $1`,
+        first!.id,
+        first!.resultHash,
+      );
+      for (const row of [second!, third!])
+        await db.$executeRawUnsafe(
+          `UPDATE "AuditLog" SET "resultHash" = $2 WHERE "id" = $1`,
+          row.id,
+          row.resultHash,
+        );
+      expect((await auditData.verifyAuditLog(viewer, A)).ok).toBe(true);
+
+      // The newest row removed: the chain no longer reaches its head ...
+      await db.$executeRawUnsafe(
+        `DELETE FROM "AuditLog" WHERE "id" = $1`,
+        third!.id,
+      );
+      expect(
+        (await auditData.verifyAuditLog(viewer, A)).firstBreak,
+      ).toMatchObject({ seq: third!.seq.toString(), reason: "truncated" });
+      // ... and the next row still links to the removed one.
+      await rerun("OPERATOR");
+      const next = (await auditRows()).at(-1)!;
+      expect(next.prevHash).toBe(third!.hash);
+      expect(
+        (await auditData.verifyAuditLog(viewer, A)).firstBreak,
+      ).toMatchObject({ id: next.id, reason: "prev_hash" });
+
+      // The head only moves forward and cannot be removed.
+      await expect(
+        db.$executeRawUnsafe(
+          `DELETE FROM "AuditChainHead" WHERE "installationId" = $1`,
+          A,
+        ),
+      ).rejects.toThrow();
+      await expect(
+        db.$executeRawUnsafe(
+          `UPDATE "AuditChainHead" SET "seq" = "seq" - 1 WHERE "installationId" = $1`,
+          A,
+        ),
+      ).rejects.toThrow();
+    });
+
     it("chains per installation and keeps the instance chain admin-only", async () => {
       await rerun("OPERATOR");
       await runs.performRunAction(

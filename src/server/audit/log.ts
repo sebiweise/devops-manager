@@ -20,7 +20,8 @@ import {
  * written by a single update of a PENDING row (`completeAudit`), sealed with
  * a result hash, and the row is frozen after that. The chain is serialised
  * per installation with a transaction-scoped advisory lock (PgBouncer-safe,
- * released at commit).
+ * released at commit). Every append also moves the chain head
+ * (AuditChainHead, forward only), which Verify compares with the newest row.
  *
  * This module is the only writer of AuditLog; nothing in the app updates or
  * deletes audit rows otherwise.
@@ -65,19 +66,21 @@ function cleanError(error: string | null | undefined): string | null {
 }
 
 export async function appendAudit(entry: AuditEntry): Promise<AppendResult> {
-  return db.$transaction(async (tx) => {
+  const result = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('audit'), hashtext(${String(entry.installationId)}))`;
     const existing = await tx.auditLog.findUnique({
       where: { idempotencyKey: entry.idempotencyKey },
       select: { id: true },
     });
-    if (existing) return { id: existing.id, created: false };
-    const prev = await tx.auditLog.findFirst({
+    if (existing) return { id: existing.id, created: false as const };
+    // The previous hash comes from the chain head, not from the newest row
+    // left in the table: after rows at the end were removed, the next row
+    // still links to the removed one and Verify reports the gap.
+    const head = await tx.auditChainHead.findUnique({
       where: { installationId: entry.installationId },
-      orderBy: { seq: "desc" },
       select: { hash: true },
     });
-    const prevHash = prev?.hash ?? GENESIS_HASH;
+    const prevHash = head?.hash ?? GENESIS_HASH;
     const immutable = {
       id: randomUUID(),
       installationId: entry.installationId,
@@ -116,10 +119,31 @@ export async function appendAudit(entry: AuditEntry): Promise<AppendResult> {
         hash,
         resultHash: entry.status === "PENDING" ? null : resultHash(final, hash),
       },
-      select: { id: true },
+      select: { id: true, seq: true },
     });
-    return { id: row.id, created: true };
+    const updatedAt = immutable.createdAt;
+    await tx.auditChainHead.upsert({
+      where: { installationId: entry.installationId },
+      create: {
+        installationId: entry.installationId,
+        seq: row.seq,
+        hash,
+        sealedAfterSeq: 0n,
+        updatedAt,
+      },
+      update: { seq: row.seq, hash, updatedAt },
+    });
+    return { id: row.id, created: true as const, seq: row.seq, hash };
   });
+  if ("hash" in result)
+    // The head in the application log as well (after the commit): an anchor
+    // outside the database for the case that the head table is rewritten.
+    console.info("audit chain head", {
+      chain: String(entry.installationId),
+      seq: String(result.seq),
+      hash: result.hash,
+    });
+  return { id: result.id, created: result.created };
 }
 
 export type AuditCompletion = {
@@ -174,8 +198,14 @@ const VERIFY_PAGE = 500;
  */
 export async function verifyAuditChain(
   installationId: bigint,
+  now: Date = new Date(),
 ): Promise<ChainVerification> {
-  const verifier = new ChainVerifier();
+  // The head is read first; rows appended while Verify runs are checked too.
+  const head = await db.auditChainHead.findUnique({
+    where: { installationId },
+    select: { seq: true, hash: true, sealedAfterSeq: true },
+  });
+  const verifier = new ChainVerifier(head, now);
   let after: bigint | null = null;
   for (;;) {
     const rows: ChainRow[] = await db.auditLog.findMany({

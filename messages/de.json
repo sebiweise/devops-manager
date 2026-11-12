@@ -823,7 +823,9 @@
       "breakReason": {
         "prev_hash": "Ein Eintrag wurde entfernt, eingefügt oder umsortiert.",
         "hash": "Der Inhalt des Eintrags wurde geändert.",
-        "result_hash": "Das gespeicherte Ergebnis des Eintrags wurde geändert."
+        "result_hash": "Das gespeicherte Ergebnis des Eintrags wurde geändert.",
+        "pending": "Der Eintrag hat seit über einer Stunde kein Ergebnis: Die Aktion wurde unterbrochen oder ihr Ergebnis entfernt.",
+        "truncated": "Die Kette erreicht ihren gespeicherten Kopf nicht: Die neuesten Einträge wurden entfernt oder neu geschrieben."
       },
       "exportCsv": "CSV exportieren",
       "chains": "Audit-Ketten",

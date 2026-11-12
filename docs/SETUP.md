@@ -136,4 +136,10 @@ repositories. Every action is audited with the app user who triggered it.
   older key can no longer be reverted.
 - The audit log is hash-chained per installation. **Verify** recomputes the
   chain and reports the first entry that was changed, removed or inserted
-  outside the app.
+  outside the app. Final outcomes are sealed with a result hash; an outcome
+  edited back to `PENDING`, a removed result hash or an entry without an
+  outcome for over an hour is reported as well. The newest entry of each
+  chain is also kept in `AuditChainHead` (a trigger lets it only move
+  forward) and logged as `audit chain head`, so removing the newest entries
+  is detected. Keep the application logs in an external sink if the head
+  should survive a full database rewrite.
