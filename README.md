@@ -237,7 +237,9 @@ shows estimates and says why. Configure one per personal installation:
   has exactly one personal installation; never written to the database), or
   store it under **GitHub billing** (`/admin/github`, admin only): the token
   is checked with GitHub, its login must match the account, and it is stored
-  encrypted. The page warns 14 days before it expires.
+  encrypted. The page warns 14 days before it expires. Classic tokens
+  (`ghp_`) and tokens with OAuth scopes are refused, also in
+  `GITHUB_BILLING_TOKEN`: they carry more access than billing needs.
 - **Option B, "Connect GitHub".** Set `GITHUB_CONNECT_ENABLED=true`,
   `GITHUB_APP_CLIENT_ID` and `GITHUB_APP_CLIENT_SECRET`, add the callback
   URL `https://<host>/api/github/connect/callback` to the App, keep "Expire
@@ -245,7 +247,9 @@ shows estimates and says why. Configure one per personal installation:
   **Plan: read**. Then click **Connect GitHub** on `/admin/github` while you
   are signed in on GitHub as that account. Tokens are refreshed
   automatically; if the authorisation is revoked, admins see a reconnect
-  notice and costs fall back to estimates.
+  notice and costs fall back to estimates. **Remove credential** revokes the
+  whole authorisation at GitHub (refresh token included); if GitHub does not
+  confirm, nothing is removed and you can retry.
 
 Details, the verified endpoints and the refresh rules are in
 [docs/BILLING.md](docs/BILLING.md).

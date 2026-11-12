@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { csv, resolveFileSecrets } from "./env";
+import { billingTokenSchema, csv, resolveFileSecrets } from "./env";
 
 describe("resolveFileSecrets", () => {
   const files: Record<string, string> = {
@@ -45,5 +45,23 @@ describe("csv", () => {
       "b@example.com",
     ]);
     expect(csv(undefined)).toEqual([]);
+  });
+});
+
+describe("billingTokenSchema", () => {
+  it("accepts fine-grained PATs and an empty value", () => {
+    const pat = "github_pat_" + "a".repeat(40);
+    expect(billingTokenSchema.parse(pat)).toBe(pat);
+    expect(billingTokenSchema.parse("")).toBeUndefined();
+    expect(billingTokenSchema.parse(undefined)).toBeUndefined();
+  });
+
+  it("refuses classic and OAuth tokens", () => {
+    expect(billingTokenSchema.safeParse("ghp_" + "a".repeat(36)).success).toBe(
+      false,
+    );
+    expect(billingTokenSchema.safeParse("gho_" + "a".repeat(36)).success).toBe(
+      false,
+    );
   });
 });

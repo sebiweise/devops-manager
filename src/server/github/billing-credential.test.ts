@@ -6,10 +6,13 @@ import {
   exchangeCode,
   fetchTokenOwner,
   GitHubHttpError,
+  isFineGrainedPat,
   OAuthError,
+  parseOAuthScopes,
   parseTokenExpiry,
   parseTokenResponse,
   refreshUserToken,
+  revokeUserGrant,
   revokeUserToken,
   sameLogin,
   type Fetch,
@@ -144,13 +147,28 @@ describe("token endpoint", () => {
     });
   });
 
-  it("treats 404 on revoke as already revoked, other errors as failures", async () => {
+  it('reports 404 on revoke as "gone", other errors as failures', async () => {
+    await expect(
+      revokeUserToken(APP, "ghu_x", fakeFetch(() => ({ status: 204 })).fetch),
+    ).resolves.toBe("revoked");
     await expect(
       revokeUserToken(APP, "ghu_x", fakeFetch(() => ({ status: 404 })).fetch),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe("gone");
     await expect(
       revokeUserToken(APP, "ghu_x", fakeFetch(() => ({ status: 500 })).fetch),
     ).rejects.toBeInstanceOf(GitHubHttpError);
+  });
+
+  it("revokes the whole grant at the grant endpoint", async () => {
+    const { fetch, calls } = fakeFetch(() => ({ status: 204 }));
+    await expect(revokeUserGrant(APP, "ghu_x", fetch)).resolves.toBe("revoked");
+    expect(calls[0]!.url).toBe(
+      "https://api.github.com/applications/Iv1.example/grant",
+    );
+    expect(calls[0]!.init!.method).toBe("DELETE");
+    expect(JSON.parse(String(calls[0]!.init!.body))).toEqual({
+      access_token: "ghu_x",
+    });
   });
 });
 
@@ -167,10 +185,31 @@ describe("token owner", () => {
       id: 42n,
       login: "example-user",
       tokenExpiresAt: new Date("2026-12-01T10:00:00Z"),
+      oauthScopes: [],
     });
     expect(
       (calls[0]!.init!.headers as Record<string, string>).authorization,
     ).toBe("Bearer github_pat_example");
+  });
+
+  it("reports the scopes of a classic token", async () => {
+    const { fetch } = fakeFetch(() => ({
+      body: { id: 42, login: "example-user" },
+      headers: { "x-oauth-scopes": "repo, admin:org" },
+    }));
+    expect((await fetchTokenOwner("token-1", fetch)).oauthScopes).toEqual([
+      "repo",
+      "admin:org",
+    ]);
+    expect(parseOAuthScopes("")).toEqual([]);
+    expect(parseOAuthScopes(null)).toEqual([]);
+  });
+
+  it("recognises fine-grained PATs only", () => {
+    expect(isFineGrainedPat("github_pat_" + "a".repeat(40))).toBe(true);
+    expect(isFineGrainedPat("ghp_" + "a".repeat(36))).toBe(false);
+    expect(isFineGrainedPat("gho_" + "a".repeat(36))).toBe(false);
+    expect(isFineGrainedPat("github_pat_short")).toBe(false);
   });
 
   it("rejects a bad token with its status", async () => {

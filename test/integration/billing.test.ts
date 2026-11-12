@@ -84,8 +84,17 @@ class FakeOAuth {
   /** Valid refresh token -> next generation number. */
   refreshTokens = new Map<string, number>();
   users = new Map<string, { id: number; login: string }>();
+  /** `x-oauth-scopes` GET /user answers with for a token (classic tokens). */
+  scopes = new Map<string, string>();
   codes = new Map<string, { challenge: string; login: string }>();
+  /** Login of every issued refresh token. */
+  refreshOwner = new Map<string, string>();
+  /** Access tokens passed to DELETE .../token. */
   revoked: string[] = [];
+  /** Access tokens passed to DELETE .../grant. */
+  grantsRevoked: string[] = [];
+  /** Status the revocation endpoints answer with instead of 204. */
+  revokeStatus: number | null = null;
   delayMs = 0;
   generation = 0;
 
@@ -115,7 +124,7 @@ class FakeOAuth {
           return json(200, { error: "bad_refresh_token" });
         // Rotation: the used refresh token stops working.
         this.refreshTokens.delete(old);
-        login = "example-user";
+        login = this.refreshOwner.get(old) ?? "example-user";
       } else {
         const code = this.codes.get(p.get("code") ?? "");
         const { createHash } = await import("node:crypto");
@@ -130,6 +139,7 @@ class FakeOAuth {
       const access = `ghu_gen${n}`;
       const refresh = `ghr_gen${n}`;
       this.refreshTokens.set(refresh, n);
+      this.refreshOwner.set(refresh, login);
       this.gh.userTokens.set(access, login);
       this.users.set(access, {
         id: login === "example-user" ? 4242 : 5151,
@@ -149,13 +159,41 @@ class FakeOAuth {
         (init?.headers as Record<string, string>).authorization ?? "";
       const token = auth.replace(/^Bearer /, "");
       const user = this.users.get(token);
-      return user ? json(200, user) : json(401, { message: "Bad credentials" });
+      if (!user) return json(401, { message: "Bad credentials" });
+      const scopes = this.scopes.get(token);
+      return new Response(JSON.stringify(user), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          ...(scopes != null ? { "x-oauth-scopes": scopes } : {}),
+        },
+      });
     }
     if (
       url === `https://api.github.com/applications/${CLIENT_ID}/token` &&
       method === "DELETE"
     ) {
-      this.revoked.push(JSON.parse(body).access_token);
+      if (this.revokeStatus) return json(this.revokeStatus, {});
+      const token = JSON.parse(body).access_token as string;
+      if (!this.users.has(token)) return json(404, {});
+      this.revoked.push(token);
+      this.users.delete(token);
+      return json(204, null);
+    }
+    if (
+      url === `https://api.github.com/applications/${CLIENT_ID}/grant` &&
+      method === "DELETE"
+    ) {
+      if (this.revokeStatus) return json(this.revokeStatus, {});
+      const token = JSON.parse(body).access_token as string;
+      const user = this.users.get(token);
+      if (!user) return json(404, {});
+      this.grantsRevoked.push(token);
+      // The whole authorisation ends: every token of that user.
+      for (const [t, u] of [...this.users])
+        if (u.login === user.login) this.users.delete(t);
+      for (const [r, login] of this.refreshOwner)
+        if (login === user.login) this.refreshTokens.delete(r);
       return json(204, null);
     }
     return json(404, {});
@@ -651,14 +689,15 @@ describe.skipIf(!DATABASE_URL)("billing", () => {
         deps,
       ),
     ).toEqual({ status: "login_mismatch", login: "example-other" });
-    expect(oauth.revoked).toHaveLength(1);
+    // The other account's authorisation is given back as a whole.
+    expect(oauth.grantsRevoked).toHaveLength(1);
     // The stored credential is untouched.
     const kept = await db.gitHubCredential.findUniqueOrThrow({
       where: { installationId: A },
     });
     expect(kept.githubLogin).toBe("example-user");
 
-    // Revoke: the token is revoked at GitHub and the row deleted.
+    // Revoke: the grant is revoked at GitHub and the row deleted.
     expect(
       await personal.revokeBillingCredential(
         actor(),
@@ -666,7 +705,8 @@ describe.skipIf(!DATABASE_URL)("billing", () => {
         deps,
       ),
     ).toEqual({ status: "revoked" });
-    expect(oauth.revoked).toHaveLength(2);
+    expect(oauth.grantsRevoked).toHaveLength(2);
+    expect(oauth.refreshTokens.size).toBe(0);
     expect(await db.gitHubCredential.count()).toBe(0);
     const audit = await db.auditLog.findMany({
       where: { installationId: 0n },
@@ -677,8 +717,165 @@ describe.skipIf(!DATABASE_URL)("billing", () => {
       "BILLING_CREDENTIAL_CONNECT",
       "BILLING_CREDENTIAL_REVOKE",
     ]);
+    expect(audit[2]!.params).toMatchObject({ remoteRevocation: "revoked" });
     for (const a of audit)
       expect(JSON.stringify(a.params)).not.toMatch(/gh[ur]_/);
+  });
+
+  it("revoke ends the whole grant even after the access token expired, and keeps the row when GitHub fails", async () => {
+    await seedInstallations(db);
+    const gh = new FakeGitHub();
+    const oauth = new FakeOAuth(gh);
+    const deps = { fetch: oauth.fetch, now: () => new Date(gh.now) };
+    oauth.refreshTokens.set("ghr_initial", 0);
+    oauth.refreshOwner.set("ghr_initial", "example-user");
+    await credential.saveCredential({
+      installationId: A,
+      kind: "USER_TO_SERVER",
+      owner: { id: 4242n, login: "example-user" },
+      tokens: {
+        accessToken: "ghu_initial",
+        accessTokenExpiresAt: new Date(gh.now - 3_600_000), // the usual case
+        refreshToken: "ghr_initial",
+        refreshTokenExpiresAt: new Date(gh.now + 30 * 86_400_000),
+      },
+      createdByUserId: "user-admin",
+    });
+
+    // GitHub fails: nothing is deleted, the rotated token is kept for a retry.
+    oauth.revokeStatus = 500;
+    expect(
+      await personal.revokeBillingCredential(
+        actor(),
+        { installationId: A, confirmation: "example-user" },
+        deps,
+      ),
+    ).toEqual({ status: "revoke_failed" });
+    const kept = await db.gitHubCredential.findUniqueOrThrow({
+      where: { installationId: A },
+    });
+    expect(
+      crypto.decryptToken(
+        kept.refreshToken!,
+        credential.credentialAad(A, "refreshToken"),
+      ),
+    ).toBe("ghr_gen1");
+
+    // Retry: the fresh access token identifies the grant, which is revoked.
+    oauth.revokeStatus = null;
+    expect(
+      await personal.revokeBillingCredential(
+        actor(),
+        { installationId: A, confirmation: "example-user" },
+        deps,
+      ),
+    ).toEqual({ status: "revoked" });
+    expect(oauth.grantsRevoked).toEqual(["ghu_gen1"]);
+    // No refresh token of that user is left at GitHub.
+    expect(oauth.refreshTokens.size).toBe(0);
+    expect(await db.gitHubCredential.count()).toBe(0);
+    const audit = await db.auditLog.findMany({
+      where: { installationId: 0n },
+      orderBy: { seq: "asc" },
+    });
+    expect(
+      audit.map((a) => [
+        a.status,
+        (a.params as { remoteRevocation?: string }).remoteRevocation,
+      ]),
+    ).toEqual([
+      ["FAILED", "failed"],
+      ["SUCCEEDED", "revoked"],
+    ]);
+    for (const a of audit)
+      expect(JSON.stringify(a.params)).not.toMatch(/gh[ur]_/);
+  });
+
+  it("replacing a connected credential revokes the old one at GitHub", async () => {
+    await seedInstallations(db);
+    const gh = new FakeGitHub();
+    const oauth = new FakeOAuth(gh);
+    const deps = { fetch: oauth.fetch, now: () => new Date(gh.now) };
+    const connect = async (code: string) => {
+      const started = await personal.startConnect(
+        actor(),
+        { installationId: A },
+        deps,
+      );
+      const url = new URL(started.url!);
+      oauth.codes.set(code, {
+        challenge: url.searchParams.get("code_challenge")!,
+        login: "example-user",
+      });
+      return personal.completeConnect(
+        actor(),
+        { code, state: url.searchParams.get("state")! },
+        deps,
+      );
+    };
+
+    // Reconnect as the same user: only the old token pair is revoked, never
+    // the grant the new token belongs to.
+    expect(await connect("code-1")).toMatchObject({ status: "connected" });
+    expect(await connect("code-2")).toMatchObject({ status: "connected" });
+    expect(oauth.revoked).toEqual(["ghu_gen1"]);
+    expect(oauth.grantsRevoked).toEqual([]);
+    expect(oauth.users.has("ghu_gen2")).toBe(true);
+
+    // Switching to a PAT revokes the connected grant first.
+    oauth.users.set(PAT, { id: 4242, login: "example-user" });
+    expect(
+      await personal.storeBillingToken(
+        actor(),
+        { installationId: A, token: PAT, confirmation: "example-user" },
+        deps,
+      ),
+    ).toEqual({ status: "saved", login: "example-user" });
+    expect(oauth.grantsRevoked).toEqual(["ghu_gen2"]);
+    expect(oauth.refreshTokens.size).toBe(0);
+    const audit = await db.auditLog.findMany({
+      where: { installationId: 0n },
+      orderBy: { seq: "asc" },
+    });
+    expect(
+      audit.map((a) => [
+        a.action,
+        (a.params as { previousRevocation?: string }).previousRevocation,
+      ]),
+    ).toEqual([
+      ["BILLING_CREDENTIAL_CONNECT", "not_needed"],
+      ["BILLING_CREDENTIAL_CONNECT", "revoked"],
+      ["BILLING_CREDENTIAL_SET", "revoked"],
+    ]);
+  });
+
+  it("option A refuses classic and scoped tokens as too broad", async () => {
+    await seedInstallations(db);
+    const gh = new FakeGitHub();
+    const oauth = new FakeOAuth(gh);
+    const deps = { fetch: oauth.fetch, now: () => new Date(gh.now) };
+    const classic = "ghp_" + "y".repeat(36); // gitleaks:allow (synthetic)
+    oauth.users.set(classic, { id: 4242, login: "example-user" });
+    expect(
+      await personal.storeBillingToken(
+        actor(),
+        { installationId: A, token: classic, confirmation: "example-user" },
+        deps,
+      ),
+    ).toEqual({ status: "token_too_broad" });
+    // Never sent to GitHub.
+    expect(oauth.calls).toHaveLength(0);
+
+    oauth.users.set(PAT, { id: 4242, login: "example-user" });
+    oauth.scopes.set(PAT, "repo, admin:org");
+    expect(
+      await personal.storeBillingToken(
+        actor(),
+        { installationId: A, token: PAT, confirmation: "example-user" },
+        deps,
+      ),
+    ).toEqual({ status: "token_too_broad" });
+    expect(await db.gitHubCredential.count()).toBe(0);
   });
 
   it("keeps installations and roles apart", async () => {

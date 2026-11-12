@@ -14,9 +14,10 @@ import {
   exchangeCode,
   fetchTokenOwner,
   GitHubHttpError,
+  isFineGrainedPat,
   OAuthError,
   randomState,
-  revokeUserToken,
+  revokeUserGrant,
   sameLogin,
   type AppClient,
   type Fetch,
@@ -24,9 +25,12 @@ import {
 import {
   consumeConnectState,
   deleteCredential,
+  revokeStoredCredentialAtGitHub,
   saveConnectState,
   saveCredential,
-  storedAccessToken,
+  storedCredentialOwner,
+  type CredentialDeps,
+  type RemoteRevocation,
 } from "@/server/ingest/billing-credential";
 
 /**
@@ -40,6 +44,12 @@ import {
  * GitHub login must equal the installation's account; store and revoke need
  * the account login typed as confirmation. Audit rows go to the
  * instance-level chain (installation 0) and never contain a token.
+ *
+ * Option A accepts fine-grained PATs only (`github_pat_`, no OAuth scopes),
+ * so the stored secret cannot do more than billing needs. A connected
+ * credential that is removed or replaced is revoked at GitHub first (the
+ * whole grant, see revokeStoredCredentialAtGitHub), so no refresh token is
+ * left behind that this instance can no longer see or revoke.
  */
 
 export type Actor = {
@@ -51,10 +61,13 @@ export type CredentialActionStatus =
   | "saved"
   | "connected"
   | "revoked"
+  | "revoked_locally"
+  | "revoke_failed"
   | "redirect"
   | "forbidden"
   | "confirmation_mismatch"
   | "invalid_token"
+  | "token_too_broad"
   | "login_mismatch"
   | "not_configured"
   | "invalid_state"
@@ -82,6 +95,15 @@ function appClient(): AppClient | null {
         clientSecret: env.GITHUB_APP_CLIENT_SECRET,
       }
     : null;
+}
+
+function credentialDeps(deps: FlowDeps): CredentialDeps {
+  return {
+    app: appClient(),
+    fetch: deps.fetch,
+    now: deps.now,
+    envToken: null,
+  };
 }
 
 export function connectRedirectUri(): string {
@@ -124,9 +146,14 @@ async function audit(
   });
 }
 
-const TOKEN_SHAPE = /^[A-Za-z0-9_-]{20,255}$/;
+/** Classic PATs, OAuth and other GitHub tokens: real tokens, but broader than billing needs. */
+const OTHER_GITHUB_TOKEN = /^gh[a-z]_[A-Za-z0-9_]{20,255}$/;
 
-/** Option A: validate a PAT with `GET /user` and store it encrypted. */
+/**
+ * Option A: validate a fine-grained PAT with `GET /user` and store it
+ * encrypted. Classic tokens (`ghp_`, or any token with `x-oauth-scopes`)
+ * are refused with "token_too_broad".
+ */
 export async function storeBillingToken(
   actor: Actor,
   input: {
@@ -153,7 +180,12 @@ export async function storeBillingToken(
   if (input.confirmation.trim() !== inst.accountLogin)
     return { status: "confirmation_mismatch" };
   const token = input.token.trim();
-  if (!TOKEN_SHAPE.test(token)) return { status: "invalid_token" };
+  if (!isFineGrainedPat(token))
+    return {
+      status: OTHER_GITHUB_TOKEN.test(token)
+        ? "token_too_broad"
+        : "invalid_token",
+    };
 
   let owner;
   try {
@@ -162,6 +194,7 @@ export async function storeBillingToken(
     const status = error instanceof GitHubHttpError ? error.status : null;
     return { status: status === 401 ? "invalid_token" : "github_error" };
   }
+  if (owner.oauthScopes.length > 0) return { status: "token_too_broad" };
   if (!sameLogin(owner.login, inst.accountLogin)) {
     await audit(
       actor,
@@ -174,6 +207,26 @@ export async function storeBillingToken(
       "login_mismatch",
     );
     return { status: "login_mismatch", login: owner.login };
+  }
+  // A connected credential being replaced is revoked at GitHub first; if
+  // that fails nothing is replaced, so the old grant can still be revoked.
+  const previous = await revokeStoredCredentialAtGitHub(
+    inst.id,
+    "grant",
+    credentialDeps(deps),
+  );
+  if (previous === "failed") {
+    await audit(
+      actor,
+      "BILLING_CREDENTIAL_SET",
+      inst.id,
+      "FAILED",
+      { kind: "PAT", githubLogin: owner.login, previousRevocation: previous },
+      "TYPED",
+      input.idempotencyKey,
+      "previous_revocation_failed",
+    );
+    return { status: "revoke_failed" };
   }
   await saveCredential({
     installationId: inst.id,
@@ -192,7 +245,7 @@ export async function storeBillingToken(
     "BILLING_CREDENTIAL_SET",
     inst.id,
     "SUCCEEDED",
-    { kind: "PAT", githubLogin: owner.login },
+    { kind: "PAT", githubLogin: owner.login, previousRevocation: previous },
     "TYPED",
     input.idempotencyKey,
   );
@@ -289,8 +342,8 @@ export async function completeConnect(
     return { status: "github_error" };
   }
   if (!sameLogin(owner.login, inst.accountLogin)) {
-    // The authorisation is not needed: give it back right away.
-    await revokeUserToken(app, tokens.accessToken, deps.fetch).catch(
+    // The authorisation is not needed: give the whole grant back right away.
+    await revokeUserGrant(app, tokens.accessToken, deps.fetch).catch(
       () => undefined,
     );
     await audit(
@@ -305,6 +358,19 @@ export async function completeConnect(
     );
     return { status: "login_mismatch", login: owner.login };
   }
+  // GitHub keeps earlier user-to-server tokens alive on a new authorisation,
+  // so the replaced credential is given back. The same GitHub user shares
+  // the grant with the token just obtained: then only the old token pair is
+  // revoked, never the grant.
+  const old = await storedCredentialOwner(inst.id);
+  const previous: RemoteRevocation =
+    old?.kind === "USER_TO_SERVER"
+      ? await revokeStoredCredentialAtGitHub(
+          inst.id,
+          old.githubUserId === owner.id ? "token" : "grant",
+          { app, fetch: deps.fetch, now: deps.now, envToken: null },
+        )
+      : "not_needed";
   await saveCredential({
     installationId: inst.id,
     kind: "USER_TO_SERVER",
@@ -317,15 +383,25 @@ export async function completeConnect(
     "BILLING_CREDENTIAL_CONNECT",
     inst.id,
     "SUCCEEDED",
-    { kind: "USER_TO_SERVER", githubLogin: owner.login },
+    {
+      kind: "USER_TO_SERVER",
+      githubLogin: owner.login,
+      previousRevocation: previous,
+    },
     "NONE",
   );
   return { status: "connected", login: owner.login };
 }
 
 /**
- * Revoke: a user-to-server token is also revoked at GitHub
- * (`DELETE /applications/{client_id}/token`); the stored row is deleted.
+ * Revoke: a connected credential is revoked at GitHub as a whole grant
+ * (access and refresh tokens), then the stored row is deleted.
+ *
+ * - GitHub refused or could not be reached: the row stays (with a usable
+ *   token) so the admin can retry; "revoke_failed", audited FAILED.
+ * - The App's client credentials are not configured: the row is deleted, but
+ *   the result is "revoked_locally" and the audit row is FAILED, so nobody is
+ *   told the authorisation ended at GitHub.
  */
 export async function revokeBillingCredential(
   actor: Actor,
@@ -351,26 +427,46 @@ export async function revokeBillingCredential(
   const inst = await personalInstallation(actor.scope, input.installationId);
   if (input.confirmation.trim() !== inst.accountLogin)
     return { status: "confirmation_mismatch" };
-  const stored = await storedAccessToken(inst.id);
-  let remote: string = "not_needed";
-  if (stored?.kind === "USER_TO_SERVER" && stored.token) {
-    const app = appClient();
-    if (app) {
-      try {
-        await revokeUserToken(app, stored.token, deps.fetch);
-        remote = "revoked";
-      } catch {
-        remote = "failed";
-      }
-    } else remote = "not_configured";
+  const stored = await storedCredentialOwner(inst.id);
+  const remote = await revokeStoredCredentialAtGitHub(
+    inst.id,
+    "grant",
+    credentialDeps(deps),
+  );
+  const params = { kind: stored?.kind ?? null, remoteRevocation: remote };
+  if (remote === "failed") {
+    await audit(
+      actor,
+      "BILLING_CREDENTIAL_REVOKE",
+      inst.id,
+      "FAILED",
+      params,
+      "TYPED",
+      input.idempotencyKey,
+      "remote_revocation_failed",
+    );
+    return { status: "revoke_failed" };
   }
   await deleteCredential(inst.id);
+  if (remote === "not_configured") {
+    await audit(
+      actor,
+      "BILLING_CREDENTIAL_REVOKE",
+      inst.id,
+      "FAILED",
+      params,
+      "TYPED",
+      input.idempotencyKey,
+      "remote_revocation_not_configured",
+    );
+    return { status: "revoked_locally" };
+  }
   await audit(
     actor,
     "BILLING_CREDENTIAL_REVOKE",
     inst.id,
     "SUCCEEDED",
-    { kind: stored?.kind ?? null, remoteRevocation: remote },
+    params,
     "TYPED",
     input.idempotencyKey,
   );

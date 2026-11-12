@@ -4,8 +4,11 @@ import { env } from "@/env";
 import { decryptToken, encryptToken } from "@/server/crypto";
 import { db } from "@/server/db";
 import {
+  GitHubHttpError,
   OAuthError,
   refreshUserToken,
+  revokeUserGrant,
+  revokeUserToken,
   type AppClient,
   type Fetch,
   type GitHubUser,
@@ -270,24 +273,135 @@ async function billingDueNow(installationId: bigint) {
   });
 }
 
-/** Decrypted access token of a stored credential (revoke flow); null when none. */
-export async function storedAccessToken(
+/** Kind and GitHub user of the stored credential; null when there is none. */
+export async function storedCredentialOwner(
   installationId: bigint,
-): Promise<{ kind: "PAT" | "USER_TO_SERVER"; token: string | null } | null> {
-  const row = await db.gitHubCredential.findUnique({
+): Promise<{ kind: "PAT" | "USER_TO_SERVER"; githubUserId: bigint } | null> {
+  return db.gitHubCredential.findUnique({
     where: { installationId },
-    select: { kind: true, accessToken: true },
+    select: { kind: true, githubUserId: true },
   });
-  if (!row) return null;
-  return {
-    kind: row.kind,
-    token: row.accessToken
-      ? decryptToken(
-          row.accessToken,
-          credentialAad(installationId, "accessToken"),
+}
+
+/**
+ * What happened at GitHub when a stored credential was given back:
+ * - "revoked": GitHub confirmed the revocation;
+ * - "already_gone": no token of it can be used any more (expired, rejected
+ *   refresh token, or GitHub answered 404);
+ * - "not_needed": nothing to revoke (no row, a PAT, or tokens already wiped);
+ * - "not_configured": the App's client id/secret are missing;
+ * - "failed": GitHub refused or could not be reached; the row keeps a usable
+ *   (possibly rotated) token so the revocation can be retried.
+ */
+export type RemoteRevocation =
+  "revoked" | "already_gone" | "not_needed" | "not_configured" | "failed";
+
+/**
+ * Revokes a stored user-to-server credential at GitHub (design §3.4).
+ *
+ * The access token lives eight hours and the refresh token six months, so
+ * revoking only the stored access token would usually hit an expired token
+ * and leave the refresh token alive. Instead a live access token is used to
+ * identify the authorisation: the stored one while it is valid, otherwise a
+ * fresh one from the refresh token (rotation persisted in the same row lock
+ * as billingTokenFor, so a failed revocation can be retried).
+ *
+ * - `mode: "grant"` revokes the whole authorisation
+ *   (`DELETE /applications/{client_id}/grant`): every access and refresh
+ *   token of that GitHub user for the App.
+ * - `mode: "token"` revokes only that token pair
+ *   (`DELETE /applications/{client_id}/token`); used when the same GitHub
+ *   user has just connected again, whose new token shares the grant.
+ *
+ * Tokens are never logged; the row is not deleted here.
+ */
+export async function revokeStoredCredentialAtGitHub(
+  installationId: bigint,
+  mode: "grant" | "token",
+  deps: CredentialDeps = credentialDepsFromEnv(),
+): Promise<RemoteRevocation> {
+  return db.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM "GitHubCredential" WHERE "installationId" = ${installationId} FOR UPDATE`;
+      const row = await tx.gitHubCredential.findUnique({
+        where: { installationId },
+      });
+      if (!row || row.kind !== "USER_TO_SERVER") return "not_needed";
+      if (!row.accessToken && !row.refreshToken) return "not_needed";
+      if (!deps.app) return "not_configured";
+      const app = deps.app;
+      const now = deps.now();
+      const revoke = (token: string) =>
+        mode === "grant"
+          ? revokeUserGrant(app, token, deps.fetch)
+          : revokeUserToken(app, token, deps.fetch);
+
+      try {
+        const accessLive =
+          row.accessToken != null &&
+          (!row.accessTokenExpiresAt ||
+            row.accessTokenExpiresAt.getTime() - REFRESH_MARGIN_MS >
+              now.getTime());
+        if (accessLive) {
+          const outcome = await revoke(
+            decryptToken(
+              row.accessToken!,
+              credentialAad(installationId, "accessToken"),
+            ),
+          );
+          if (outcome === "revoked") return "revoked";
+          // 404 for a token we thought live: the refresh token may still work.
+        }
+
+        const refreshUsable =
+          row.refreshToken != null &&
+          (row.refreshTokenExpiresAt == null ||
+            row.refreshTokenExpiresAt.getTime() > now.getTime());
+        if (!refreshUsable) return "already_gone";
+
+        let set: UserTokenSet;
+        try {
+          set = await refreshUserToken(
+            app,
+            decryptToken(
+              row.refreshToken!,
+              credentialAad(installationId, "refreshToken"),
+            ),
+            deps.fetch,
+            now,
+          );
+        } catch (error) {
+          if (error instanceof OAuthError && error.reconnectRequired)
+            return "already_gone";
+          throw error;
+        }
+        // Persist the rotation first: the old refresh token is spent now.
+        await tx.gitHubCredential.update({
+          where: { installationId },
+          data: {
+            ...encryptSet(installationId, {
+              ...set,
+              refreshTokenExpiresAt:
+                set.refreshTokenExpiresAt ?? row.refreshTokenExpiresAt,
+            }),
+            lastRefreshedAt: now,
+          },
+        });
+        const outcome = await revoke(set.accessToken);
+        return outcome === "revoked" ? "revoked" : "already_gone";
+      } catch (error) {
+        if (
+          error instanceof GitHubHttpError ||
+          error instanceof OAuthError ||
+          error instanceof TypeError ||
+          (error instanceof Error && error.name === "TimeoutError")
         )
-      : null,
-  };
+          return "failed";
+        throw error;
+      }
+    },
+    { maxWait: 10_000, timeout: 60_000 },
+  );
 }
 
 export async function deleteCredential(installationId: bigint): Promise<void> {

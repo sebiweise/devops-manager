@@ -202,7 +202,7 @@ export function RevokeForm({
               idempotencyKey: crypto.randomUUID(),
             });
             setResult(res);
-            if (res.status === "revoked") {
+            if (res.status === "revoked" || res.status === "revoked_locally") {
               setConfirmation("");
               router.refresh();
             }

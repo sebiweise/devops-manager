@@ -58,13 +58,18 @@ row and column. They never appear in logs or audit parameters.
 
 - Either set `GITHUB_BILLING_TOKEN` (or `GITHUB_BILLING_TOKEN_FILE`). It
   applies only when the instance has exactly one personal installation and
-  is never written to the database.
+  is never written to the database. Startup validation accepts only a
+  fine-grained PAT (`github_pat_...`).
 - Or store a token through the admin Server Action (`/admin/github`): a
   fine-grained personal access token of that account with the account
   permission **Plan: read**. The token is validated with `GET /user`; its
   login must equal the installation's account, and the account login must
   be typed as confirmation. The expiry GitHub reports for the token is
   stored, and the status warns 14 days ahead.
+- Only fine-grained PATs are accepted: a classic token (`ghp_`), an OAuth
+  token (`gho_`) or any token whose `GET /user` answer carries a non-empty
+  `x-oauth-scopes` header is refused as "token too broad", so the stored
+  secret cannot do more than read billing.
 
 ### Option B: "Connect GitHub"
 
@@ -96,5 +101,31 @@ transaction; a concurrent caller waits and uses the new token.
 A rejected refresh token, an expired refresh token or a
 `github_app_authorization.revoked` webhook wipes the tokens and marks the
 credential "reconnect required"; admins see a reconnect notice and costs fall
-back to estimates. Revoking from the app also calls
-`DELETE /applications/{client_id}/token`.
+back to estimates.
+
+Revoke and replace: removing a connected credential revokes the whole
+authorisation with `DELETE /applications/{client_id}/grant` (Basic auth with
+the App's client id and secret, body `{access_token}`), which ends every
+access and refresh token of that user for the App. The grant endpoint needs
+a valid access token, and the stored one has usually expired (8 h, refreshed
+only by the daily billing step), so the app first refreshes it while the row
+is locked and persists the rotated pair. Outcomes:
+
+- GitHub confirms, or no token of the credential is usable any more
+  (expired or rejected refresh token, 404): the row is deleted, audit
+  SUCCEEDED.
+- GitHub refuses or cannot be reached: the row stays with a usable token so
+  the removal can be retried ("revoke failed", audit FAILED). Revoking the
+  App under GitHub Settings > Applications also works; the
+  `github_app_authorization.revoked` webhook then wipes the tokens and the
+  removal succeeds.
+- `GITHUB_APP_CLIENT_ID`/`GITHUB_APP_CLIENT_SECRET` missing: the row is
+  deleted, but the result is "removed here only" and the audit row is FAILED.
+
+Storing a PAT over a connected credential revokes the grant first (and
+stores nothing if that fails). "Reconnect" as the same GitHub user revokes
+only the old token pair (`DELETE /applications/{client_id}/token`), because
+the new token belongs to the same grant; connecting another user revokes the
+old user's grant. The outcome is recorded as `previousRevocation` in the
+audit parameters. A Connect attempt with the wrong account gives that
+account's grant back right away.

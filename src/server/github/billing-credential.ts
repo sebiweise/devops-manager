@@ -27,8 +27,31 @@ export type UserTokenSet = {
 
 export type GitHubUser = { id: bigint; login: string };
 
-/** The token's owner, plus the expiry GitHub reports for expiring PATs. */
-export type TokenOwner = GitHubUser & { tokenExpiresAt: Date | null };
+/**
+ * The token's owner, plus the expiry GitHub reports for expiring PATs and the
+ * OAuth scopes of a classic token (`x-oauth-scopes`; fine-grained PATs and
+ * user-to-server tokens send none).
+ */
+export type TokenOwner = GitHubUser & {
+  tokenExpiresAt: Date | null;
+  oauthScopes: string[];
+};
+
+/** Fine-grained personal access tokens start with this prefix. */
+export const FINE_GRAINED_PAT_PREFIX = "github_pat_";
+
+/** True for a fine-grained PAT shape (classic `ghp_`, OAuth `gho_` and other tokens are not). */
+export function isFineGrainedPat(token: string): boolean {
+  return /^github_pat_[A-Za-z0-9_]{20,250}$/.test(token);
+}
+
+/** Parses `x-oauth-scopes` ("repo, admin:org") into a list; empty when absent. */
+export function parseOAuthScopes(value: string | null): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
 
 /** Parses `github-authentication-token-expiration` ("2026-12-01 10:00:00 UTC"). */
 export function parseTokenExpiry(value: string | null): Date | null {
@@ -103,6 +126,7 @@ export async function fetchTokenOwner(
     tokenExpiresAt: parseTokenExpiry(
       res.headers.get("github-authentication-token-expiration"),
     ),
+    oauthScopes: parseOAuthScopes(res.headers.get("x-oauth-scopes")),
   };
 }
 
@@ -250,20 +274,20 @@ export function refreshUserToken(
   );
 }
 
-/**
- * `DELETE /applications/{client_id}/token` (Basic auth with the App's client
- * credentials). 404 means the token is already gone, which is fine.
- */
-export async function revokeUserToken(
+/** Outcome of a revocation call: "gone" when GitHub no longer knows the token (404). */
+export type RevokeOutcome = "revoked" | "gone";
+
+async function deleteWithToken(
   app: AppClient,
+  path: "token" | "grant",
   accessToken: string,
-  fetchImpl: Fetch = fetch,
-): Promise<void> {
+  fetchImpl: Fetch,
+): Promise<RevokeOutcome> {
   const basic = Buffer.from(`${app.clientId}:${app.clientSecret}`).toString(
     "base64",
   );
   const res = await fetchImpl(
-    `${GITHUB_API}/applications/${encodeURIComponent(app.clientId)}/token`,
+    `${GITHUB_API}/applications/${encodeURIComponent(app.clientId)}/${path}`,
     {
       method: "DELETE",
       headers: {
@@ -276,5 +300,34 @@ export async function revokeUserToken(
       signal: signal(),
     },
   );
-  if (!res.ok && res.status !== 404) throw new GitHubHttpError(res.status);
+  if (res.status === 404) return "gone";
+  if (!res.ok) throw new GitHubHttpError(res.status);
+  return "revoked";
+}
+
+/**
+ * `DELETE /applications/{client_id}/token` (Basic auth with the App's client
+ * credentials): revokes this one access token. 404 means GitHub no longer
+ * knows it (expired or already revoked); its refresh token may still live,
+ * so a full revocation uses {@link revokeUserGrant}.
+ */
+export function revokeUserToken(
+  app: AppClient,
+  accessToken: string,
+  fetchImpl: Fetch = fetch,
+): Promise<RevokeOutcome> {
+  return deleteWithToken(app, "token", accessToken, fetchImpl);
+}
+
+/**
+ * `DELETE /applications/{client_id}/grant`: revokes the user's whole
+ * authorisation of the App, every access and refresh token included. The
+ * access token only identifies the grant, so it must still be valid.
+ */
+export function revokeUserGrant(
+  app: AppClient,
+  accessToken: string,
+  fetchImpl: Fetch = fetch,
+): Promise<RevokeOutcome> {
+  return deleteWithToken(app, "grant", accessToken, fetchImpl);
 }
