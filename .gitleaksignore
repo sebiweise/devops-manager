@@ -1,3 +1,5 @@
 # Placeholder secrets in the integration tests (not real credentials)
 3d8b8ffb93e6467dd68b9d196ce8a5a198969832:test/integration/support/actions.ts:generic-api-key:22
 9c0929df19ec25c6eb947a3c59ce69500205bd9a:test/integration/oidc-login.test.ts:generic-api-key:37
+9b2ef4c2b236fdbe386bde1f493e793bb5a80895:src/server/audit/chain.test.ts:generic-api-key:251
+bacdd6b283cf0325ac6414ca8d783a067487f1e5:test/integration/billing.test.ts:generic-api-key:902

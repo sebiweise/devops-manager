@@ -248,7 +248,7 @@ describe("audit hash chain", () => {
         enableDebugLogging: false,
       },
       confirmation: "DIALOG",
-      idempotencyKey: "3e1d2c4b-5a6f-4e7d-8c9b-0a1f2e3d4c5b",
+      idempotencyKey: "3e1d2c4b-5a6f-4e7d-8c9b-0a1f2e3d4c5b", // gitleaks:allow (test UUID)
       createdAt: new Date(Date.UTC(2026, 10, 13, 8, 0, 0)),
     };
     const hash = auditHash(immutableFields(row as ChainRow), GENESIS_HASH);
