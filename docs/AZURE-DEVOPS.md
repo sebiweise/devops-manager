@@ -160,10 +160,15 @@ pause the sync until the reset time.
   `ActivityId`. Parameters are ids only (project GUID, definition id, build
   id, stage identifier, branch ref).
 - **Unknown outcomes**: a queued build is tagged `dm-audit-<audit id>`. If a
-  request fails after it was sent, the entry is "outcome unknown"; the next
+  request fails after it was sent, the entry is "outcome unknown" (stored as
+  a final `FAILED` entry whose error starts with `outcome_unknown`, like the
+  GitHub and Vercel actions; there is no separate audit status); the next
   sync links the build to the entry (exact through the tag, or "probably" by
   definition, branch and a 2-minute window). The entry itself is never
-  changed.
+  changed. A build whose link was lost (for example a crash after the tag
+  write) is linked exactly by the tag in the next pass.
+- **Viewers** see no action buttons: the pages render them only while every
+  gate the UI knows of is open for the current role.
 - **Log excerpt**: operators and admins can show the last 200 lines (at most
   64 KB) of a job's log. It is read live, the credential, the organisation
   name and token patterns are removed, shown as plain text and never stored

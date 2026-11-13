@@ -1842,7 +1842,85 @@ describe.skipIf(!DATABASE_URL)("azure devops (M7)", () => {
         where: { installationId: B, reason: "workflow_dispatch" },
       });
       expect(linked.auditLinkKind).toBe("probable");
+      const row = await db.auditLog.findFirstOrThrow({
+        where: { installationId: B, action: "ADO_QUEUE_RUN" },
+        orderBy: { seq: "desc" },
+      });
+      // UNKNOWN is a final FAILED row whose error starts with outcome_unknown.
+      expect(row.status).toBe("FAILED");
+      expect(row.error).toMatch(/^outcome_unknown/);
+      expect(linked.auditLogId).toBe(row.id);
       expect((await auditLog.verifyAuditChain(B)).ok).toBe(true);
+    });
+
+    it("links a tagged build exactly in the next pass when the link was lost", async () => {
+      const q = await actions.queueAzureRun(
+        actor("OPERATOR"),
+        {
+          installationId: B,
+          projectId: P1,
+          definitionId: 3,
+          branch: "main",
+          confirmed: true,
+          idempotencyKey: randomUUID(),
+        },
+        deps(),
+      );
+      const id = (q as { data: { buildId: number } }).data.buildId;
+      // A crash after the tag write: the stored build and its link are gone.
+      await db.azureBuildJob.deleteMany({
+        where: { installationId: B, buildId: id },
+      });
+      await db.azureBuild.deleteMany({ where: { installationId: B, id } });
+      await runStep();
+      const b = await db.azureBuild.findFirstOrThrow({
+        where: { installationId: B, id },
+      });
+      expect(b.auditLinkKind).toBe("exact");
+      expect(az.builds.find((x) => x.id === id)!.tags).toEqual([
+        `dm-audit-${b.auditLogId}`,
+      ]);
+    });
+
+    it("pauses actions while the connection is paused and hides the buttons from viewers", async () => {
+      const state = (role: Role) =>
+        data.getAzureActionState(actor(role).scope, B, true, true);
+      expect(await state("VIEWER")).toMatchObject({
+        canAct: false,
+        blockedBy: "role",
+        canViewLog: false,
+      });
+      expect(await state("OPERATOR")).toMatchObject({
+        canAct: true,
+        blockedBy: null,
+        canViewLog: true,
+        hostedParallelJobs: 1,
+      });
+      expect(
+        await data.getAzureActionState(actor("OPERATOR").scope, B, true, false),
+      ).toMatchObject({
+        canAct: false,
+        blockedBy: "azure_management_disabled_global",
+      });
+      await db.azureDevOpsConnection.updateMany({
+        where: { installationId: B },
+        data: { pausedUntil: new Date(Date.now() + 300_000) },
+      });
+      expect(await state("OPERATOR")).toMatchObject({
+        canAct: false,
+        blockedBy: "azure_rate_limited",
+      });
+      expect(await act("cancel", running)).toEqual({
+        status: "unavailable",
+        reason: "azure_rate_limited",
+      });
+      await db.azureDevOpsConnection.updateMany({
+        where: { installationId: B },
+        data: { pausedUntil: null },
+      });
+      await expect(
+        data.getAzureActionState(actor("OPERATOR", [B]).scope, A, true, true),
+      ).rejects.toThrow();
     });
 
     it("refuses queue and retry when the minutes are exhausted and blocking is on", async () => {
@@ -1909,6 +1987,8 @@ describe.skipIf(!DATABASE_URL)("azure devops (M7)", () => {
     });
 
     it("reads a scrubbed, capped log excerpt for operators only and stores nothing of it", async () => {
+      for (const m of ["log", "info", "debug"] as const)
+        vi.spyOn(console, m).mockImplementation(() => undefined);
       const b = az.builds.find((x) => x.id === failed)!;
       b.logs.set(
         10,
@@ -1929,6 +2009,19 @@ describe.skipIf(!DATABASE_URL)("azure devops (M7)", () => {
       );
       expect(ex.status).toBe("ok");
       const text = json(ex);
+      const logged = [
+        console.log,
+        console.info,
+        console.warn,
+        console.error,
+        console.debug,
+      ]
+        .flatMap((f) =>
+          vi.isMockFunction(f) ? f.mock.calls.map((c) => json(c)) : [],
+        )
+        .join("\n");
+      expect(logged).not.toContain(PAT_EXEC);
+      expect(logged).not.toContain("line\\n");
       expect(text).not.toContain(PAT_EXEC);
       expect(text).not.toContain(FAKE_ORG + " ");
       expect(
