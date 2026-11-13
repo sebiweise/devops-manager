@@ -180,6 +180,44 @@ export async function foldCheckHint(
   return { builds: builds.slice(0, MAX_BUILDS) };
 }
 
+/**
+ * The debounce of builds without a row yet (not stored because their
+ * definition is not linked, or not listed by Azure DevOps): a bounded
+ * in-process map, so a burst of check_run deliveries for such a build
+ * makes one call per 30 s and instance instead of one per event.
+ */
+const UNSTORED_MAX = 2_000;
+const unstored = new Map<string, number>();
+
+function claimUnstored(
+  installationId: bigint,
+  buildId: number,
+  now: Date,
+): boolean {
+  const key = `${installationId}:${buildId}`;
+  const at = unstored.get(key);
+  if (at !== undefined && now.getTime() - at < DEBOUNCE_MS) return false;
+  unstored.delete(key);
+  unstored.set(key, now.getTime());
+  while (unstored.size > UNSTORED_MAX) {
+    const oldest = unstored.keys().next().value;
+    if (oldest === undefined) break;
+    unstored.delete(oldest);
+  }
+  return true;
+}
+
+/** Tests only. */
+export function clearAzureHintDebounce(): void {
+  unstored.clear();
+}
+
+/**
+ * A hint for a build of an unknown definition re-lists the definitions at
+ * most once in this window (the next pass after the reset does it).
+ */
+const DEFINITIONS_RESET_COOLDOWN_MS = 30 * 60_000;
+
 /** Claims the 30 s debounce of each build; returns the claimed ones. */
 async function claim(
   installationId: bigint,
@@ -193,7 +231,7 @@ async function claim(
       select: { hintRefreshedAt: true },
     });
     if (!exists) {
-      out.push(b);
+      if (claimUnstored(installationId, b.buildId, now)) out.push(b);
       continue;
     }
     const { count } = await db.azureBuild.updateMany({
@@ -300,7 +338,12 @@ export async function refreshAzureBuilds(
     });
     if (unknownDefinition)
       await db.azureDevOpsConnection.updateMany({
-        where: { installationId },
+        where: {
+          installationId,
+          definitionsSyncedAt: {
+            lt: new Date(now.getTime() - DEFINITIONS_RESET_COOLDOWN_MS),
+          },
+        },
         data: { definitionsSyncedAt: null },
       });
     // Timelines with the calls that are left.
