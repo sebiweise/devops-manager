@@ -672,6 +672,11 @@ enum AuditAction {
   VERCEL_TOKEN_ROTATE
   VERCEL_DISCONNECT
   VERCEL_PROJECT_LINK
+  VERCEL_MANAGEMENT_TOGGLE
+  VERCEL_REDEPLOY
+  VERCEL_CANCEL
+  VERCEL_PROMOTE
+  VERCEL_ROLLBACK
 }
 
 enum AuditStatus {
@@ -738,7 +743,7 @@ model AuditChainHead {
   updatedAt      DateTime @db.Timestamptz(3)
 }
 
-// ---------- hosting: Vercel (M5, read-only) ----------
+// ---------- hosting: Vercel (M5 read-only, M6 actions) ----------
 //
 // One Vercel team per GitHub installation (1:1). Every table carries
 // installationId and its indexes lead with it. Env var values, Vercel user
@@ -820,8 +825,15 @@ model VercelProject {
   latestProdReadyAt      DateTime?        @db.Timestamptz(3)
   /// The deployment production traffic is served from (targets.production).
   liveProdDeploymentId   String?
-  /// Set while production is pinned to an older deployment (rollback); cleared when the newest one is live.
+  /// Set while production is pinned to an older deployment (rollback); cleared by a promote or when the newest one is live.
   autoAssignPausedAt     DateTime?        @db.Timestamptz(3)
+  /// The last promote or rollback request (GET /v9/projects/{id}?rollbackInfo=true lastAliasRequest), read after an M6 action.
+  /// "promote" | "rollback"
+  aliasRequestType       String?
+  /// pending | in-progress | succeeded | failed | skipped
+  aliasRequestStatus     String?
+  aliasRequestAt         DateTime?        @db.Timestamptz(3)
+  aliasToDeploymentId    String?
   /// Set by GitHub deployment_status hints; the next refresh clears it.
   dirtyAt                DateTime?        @db.Timestamptz(3)
   /// Last targeted refresh from a hint (debounced to 30 s).
@@ -874,8 +886,10 @@ model VercelDeployment {
   /// Vercel's error code of an ERROR deployment, e.g. BUILD_FAILED.
   errorCode           String?
   isRollbackCandidate Boolean               @default(false)
-  /// Links an M6 action with an ambiguous outcome.
+  /// The audit row of the M6 action that created it (redeploy).
   auditLogId          String?
+  /// "exact" (meta.devopsManagerAudit) | "probable" (project, 2-minute window, creator kind redeploy)
+  auditLinkKind       String?
   createdAt           DateTime              @db.Timestamptz(3)
   buildingAt          DateTime?             @db.Timestamptz(3)
   readyAt             DateTime?             @db.Timestamptz(3)
