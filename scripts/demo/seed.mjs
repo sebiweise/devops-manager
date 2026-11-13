@@ -10,7 +10,9 @@
 // Vercel team with projects, deployments (a failed production build and a
 // rolled-back production), findings and hash-chained audit entries of the
 // M6 actions (Vercel actions switched on, a rollback, a redeploy whose new
-// deployment is linked to its entry).
+// deployment is linked to its entry), and an Azure DevOps organisation with
+// pipelines (one on macOS), runs (a failed one, a retried one, one running,
+// one queued), pools and hosted usage near the free tier (M7).
 // Every name is a generic placeholder. With --app, it then calls the app's
 // cron endpoint (CRON_SECRET from the environment) until the daily
 // summaries are computed. Refuses to run when NODE_ENV=production or when
@@ -113,7 +115,11 @@ await client.query(`
     "BillingUsageItem", "GitHubCredential", "SyncState", "WebhookDelivery",
     "InstallationRateLimit", "AuditLog", "AuditChainHead", "VercelDeployment",
     "VercelProject", "VercelConnection", "DailyDeploymentStat", "Finding",
-    "FeatureAvailability", "Repository", "Installation" CASCADE`);
+    "FeatureAvailability", "AzureBuildJob", "AzureBuild", "AzurePipelineDefinition",
+    "AzureDevOpsProject", "AzureAgent", "AzurePoolSample", "AzurePool",
+    "AzureJobRequest", "DailyAzureUsage", "AzureUsageSnapshot",
+    "AzureHookSubscription", "PipelineRollupDirty", "DailyPipelineStat",
+    "AzureDevOpsConnection", "Repository", "Installation" CASCADE`);
 
 const permissions = JSON.stringify({
   metadata: "read",
@@ -138,7 +144,8 @@ await insert("Installation", [
     accountType: "ORGANIZATION",
     repositorySelection: "ALL",
     permissions,
-    events: "{workflow_run,workflow_job}",
+    events:
+      "{workflow_run,workflow_job,deployment_status,check_run,check_suite}",
     permissionsCheckedAt: recent(1),
     managementEnabled: true,
     includedMinutes: 3000,
@@ -955,6 +962,700 @@ await insert("Finding", [
     },
   ),
 ]);
+
+// ---------- CI: a synthetic Azure DevOps organisation for example-org (M7) ----------
+// The connection holds no secret (accessToken null), so the app makes no
+// Azure DevOps call in the demo. Pipelines of project-a build repo-a..d (one
+// on macOS, one near the 60-minute job limit), a fifth points at a
+// repository outside this installation (unlinked). One failed default branch, one
+// retried run (attempt 2, flaky-recovered), one running and one queued run.
+// Job requests put the hosted minutes of this month near the free tier.
+const AZ_ORG_ID = "00000000-0000-4000-8000-000000000001";
+const AZ_P1 = "00000000-0000-4000-8000-000000000011";
+const AZ_P2 = "00000000-0000-4000-8000-000000000012";
+const AZ_HOSTED_POOL = 9;
+const AZ_SELF_POOL = 12;
+await insert("AzureDevOpsConnection", [
+  {
+    installationId: ORG,
+    orgId: AZ_ORG_ID,
+    orgName: "contoso-ci",
+    authKind: "PAT",
+    accessToken: null,
+    tokenHint: "c0d3",
+    tokenExpiresAt: iso(NOW + 60 * DAY),
+    scopes: JSON.stringify({
+      projects: "ok",
+      pools: "ok",
+      builds: "ok",
+      execute: "ok",
+      hooks: "unknown",
+    }),
+    managementEnabled: true,
+    hostedParallelJobs: 1,
+    includedMinutes: 1800,
+    maxJobMinutes: 60,
+    monthResetDay: 1,
+    blockWhenQuotaExhausted: false,
+    detectedLimits: JSON.stringify({
+      totalMinutes: 1800,
+      totalCount: 1,
+      isPremium: false,
+    }),
+    createdByUserId: "demo-admin",
+    lastSyncStatus: "ok",
+    lastSyncedAt: recent(4),
+    lastUsedAt: recent(4),
+    definitionsSyncedAt: recent(90),
+    poolsSampledAt: recent(4),
+    usageSyncedAt: recent(30),
+    jobRequestsAvailable: true,
+    checkAppSlug: "azure-pipelines",
+    updatedAt: recent(4),
+  },
+]);
+await insert("AzureDevOpsProject", [
+  {
+    installationId: ORG,
+    id: AZ_P1,
+    name: "project-a",
+    visibility: "private",
+    selected: true,
+    buildsCursor: recent(5),
+    backfillDone: true,
+    updatedAt: recent(5),
+  },
+  {
+    installationId: ORG,
+    id: AZ_P2,
+    name: "project-b",
+    visibility: "public",
+    selected: false,
+    backfillDone: false,
+    updatedAt: recent(5),
+  },
+]);
+/** @type {Array<{ id: number; name: string; repoId: number | null; linkRepo: string; os: "LINUX" | "WINDOWS" | "MACOS"; image: string; perDay: number; minS: number; maxS: number; jobs: string[]; fail: number }>} */
+const azDefs = [
+  {
+    id: 11,
+    name: "ci-linux",
+    repoId: 201,
+    linkRepo: "example-org/repo-a",
+    os: "LINUX",
+    image: "ubuntu-latest",
+    perDay: 4,
+    minS: 240,
+    maxS: 540,
+    jobs: ["build", "test"],
+    fail: 0.08,
+  },
+  {
+    id: 12,
+    name: "ios-build",
+    repoId: 202,
+    linkRepo: "example-org/repo-b",
+    os: "MACOS",
+    image: "macOS-14",
+    perDay: 2,
+    minS: 900,
+    maxS: 1500,
+    jobs: ["build_ios"],
+    fail: 0.15,
+  },
+  {
+    id: 13,
+    name: "windows-tests",
+    repoId: 203,
+    linkRepo: "example-org/repo-c",
+    os: "WINDOWS",
+    image: "windows-latest",
+    perDay: 1,
+    minS: 600,
+    maxS: 1000,
+    jobs: ["test_windows"],
+    fail: 0.1,
+  },
+  {
+    id: 14,
+    name: "nightly-e2e",
+    repoId: 201,
+    linkRepo: "example-org/repo-a",
+    os: "LINUX",
+    image: "ubuntu-latest",
+    perDay: 0.5,
+    minS: 3000,
+    maxS: 3560,
+    jobs: ["e2e"],
+    fail: 0.2,
+  },
+  {
+    id: 15,
+    name: "legacy-app",
+    repoId: null,
+    linkRepo: "example-other/legacy-app",
+    os: "LINUX",
+    image: "ubuntu-latest",
+    perDay: 0.5,
+    minS: 300,
+    maxS: 600,
+    jobs: ["build"],
+    fail: 0.1,
+  },
+];
+await insert(
+  "AzurePipelineDefinition",
+  azDefs.map((d) => ({
+    installationId: ORG,
+    projectId: AZ_P1,
+    id: d.id,
+    name: d.name,
+    path: "\\",
+    yamlPath: d.id === 14 ? "pipelines/nightly.yml" : "azure-pipelines.yml",
+    repoType: "GitHub",
+    linkRepoFullName: d.linkRepo,
+    repositoryId: d.repoId,
+    defaultBranch: "main",
+    queueStatus: "enabled",
+    updatedAt: recent(90),
+  })),
+);
+const hex40 = () =>
+  Array.from({ length: 40 }, () => "0123456789abcdef"[between(0, 15)]).join("");
+/** @param {number} n */
+const recId = (n) =>
+  `00000000-0000-4000-9000-${n.toString(16).padStart(12, "0")}`;
+const azBuilds = [];
+const azJobs = [];
+const azRequests = [];
+let azBuildId = 4100;
+let azRec = 1;
+let azReq = 700_000;
+for (let day = 29; day >= 0; day--) {
+  // The sync stores runs of linked pipelines only.
+  for (const d of azDefs.filter((x) => x.repoId != null)) {
+    const count = d.perDay >= 1 ? d.perDay : rand() < d.perDay ? 1 : 0;
+    for (let k = 0; k < count; k++) {
+      const id = azBuildId++;
+      const queued = NOW - day * DAY - between(30, 1300) * MIN;
+      if (queued > NOW - 20 * MIN) continue;
+      const failed = rand() < d.fail;
+      const retried = !failed && rand() < 0.05;
+      const wait = between(5, rand() < 0.15 ? 900 : 120);
+      const started = queued + wait * 1000;
+      const dur = between(d.minS, d.maxS);
+      const finished = started + dur * 1000 + (retried ? (dur + 60) * 1000 : 0);
+      const pr = rand() < 0.25 ? between(10, 60) : null;
+      azBuilds.push({
+        installationId: ORG,
+        id,
+        projectId: AZ_P1,
+        definitionId: d.id,
+        repositoryId: d.repoId,
+        buildNumber: `${new Date(queued).toISOString().slice(0, 10).replaceAll("-", "")}.${k + 1}`,
+        status: "COMPLETED",
+        result: failed
+          ? rand() < 0.3
+            ? "PARTIALLY_SUCCEEDED"
+            : "FAILED"
+          : "SUCCEEDED",
+        reason: pr ? "pull_request" : d.id === 14 ? "schedule" : "push",
+        headBranch: pr ? `feature/change-${pr}` : "main",
+        headSha: hex40(),
+        prNumber: pr,
+        isDefaultBranch: !pr,
+        queuedAt: iso(queued),
+        startedAt: iso(started),
+        finishedAt: iso(finished),
+        durationS: Math.round((finished - started) / 1000),
+        queueS: wait,
+        maxAttempt: retried ? 2 : 1,
+        firstAttemptResult: retried
+          ? "FAILED"
+          : failed
+            ? rand() < 0.3
+              ? "PARTIALLY_SUCCEEDED"
+              : "FAILED"
+            : "SUCCEEDED",
+        timedOut: false,
+        lastChangedAt: iso(finished),
+        timelineSyncedAt: iso(finished + 60_000),
+        syncedAt: iso(finished + 60_000),
+      });
+      const attempts = retried ? [1, 2] : [1];
+      for (const attempt of attempts) {
+        const base = started + (attempt - 1) * (dur + 60) * 1000;
+        const stageRec = recId(azRec++);
+        azJobs.push({
+          installationId: ORG,
+          buildId: id,
+          recordId: stageRec,
+          attempt,
+          type: "Stage",
+          projectId: AZ_P1,
+          repositoryId: d.repoId,
+          identifier: "Build",
+          stageIdentifier: "Build",
+          name: "Build",
+          baseName: "Build",
+          state: "completed",
+          result: attempt === 1 && (retried || failed) ? "FAILED" : "SUCCEEDED",
+          os: "UNKNOWN",
+          startedAt: iso(base),
+          finishedAt: iso(base + dur * 1000),
+          durationS: dur,
+          hitJobCap: false,
+        });
+        let offset = 0;
+        for (const [ji, name] of d.jobs.entries()) {
+          const jdur = Math.round(dur / d.jobs.length);
+          const rec = recId(azRec++);
+          const jFailed =
+            (attempt === 1 && retried && ji === d.jobs.length - 1) ||
+            (failed && ji === d.jobs.length - 1);
+          const js = base + offset * 1000;
+          azJobs.push({
+            installationId: ORG,
+            buildId: id,
+            recordId: rec,
+            attempt,
+            type: "Job",
+            projectId: AZ_P1,
+            repositoryId: d.repoId,
+            identifier: `Build.${name}`,
+            stageIdentifier: "Build",
+            name,
+            baseName: name,
+            state: "completed",
+            result: jFailed ? "FAILED" : "SUCCEEDED",
+            poolId: AZ_HOSTED_POOL,
+            isHosted: true,
+            hostedImage: d.image,
+            os: d.os,
+            workerName: `Azure Pipelines ${between(1, 9)}`,
+            logId: ji + 2,
+            queuedAt: iso(queued),
+            startedAt: iso(js),
+            finishedAt: iso(js + jdur * 1000),
+            durationS: jdur,
+            queueS: wait,
+            hitJobCap: false,
+          });
+          azRequests.push({
+            installationId: ORG,
+            poolId: AZ_HOSTED_POOL,
+            requestId: BigInt(azReq++),
+            projectId: AZ_P1,
+            isHosted: true,
+            isPrivate: true,
+            os: d.os,
+            hostedImage: d.image,
+            queueTime: iso(queued),
+            assignTime: iso(js),
+            finishTime: iso(js + jdur * 1000),
+            jobId: rec,
+            buildId: id,
+            result: jFailed ? "failed" : "succeeded",
+          });
+          offset += jdur;
+        }
+      }
+    }
+  }
+}
+// The newest ios-build on main failed (default branch failing finding).
+const iosMain = azBuilds
+  .filter((b) => b.definitionId === 12 && b.isDefaultBranch)
+  .at(-1);
+if (iosMain) {
+  iosMain.result = "FAILED";
+  iosMain.firstAttemptResult = "FAILED";
+  iosMain.maxAttempt = 1;
+  for (const j of azJobs) if (j.buildId === iosMain.id) j.result = "FAILED";
+}
+// A retried ci-linux run that succeeded on attempt 2 (visible in the list).
+const retry = azBuilds.find((b) => b.definitionId === 11 && b.maxAttempt === 2);
+// One running and one queued run (1/1 parallel job busy, one waiting).
+const runningId = azBuildId++;
+azBuilds.push({
+  installationId: ORG,
+  id: runningId,
+  projectId: AZ_P1,
+  definitionId: 12,
+  repositoryId: 202,
+  buildNumber: `${new Date(NOW).toISOString().slice(0, 10).replaceAll("-", "")}.9`,
+  status: "IN_PROGRESS",
+  result: "NONE",
+  reason: "push",
+  headBranch: "main",
+  headSha: hex40(),
+  prNumber: null,
+  isDefaultBranch: true,
+  queuedAt: recent(14),
+  startedAt: recent(12),
+  finishedAt: null,
+  durationS: null,
+  queueS: 120,
+  maxAttempt: 1,
+  firstAttemptResult: null,
+  timedOut: false,
+  lastChangedAt: recent(3),
+  timelineSyncedAt: recent(3),
+  syncedAt: recent(3),
+});
+const runRec = recId(azRec++);
+azJobs.push(
+  {
+    installationId: ORG,
+    buildId: runningId,
+    recordId: recId(azRec++),
+    attempt: 1,
+    type: "Stage",
+    projectId: AZ_P1,
+    repositoryId: 202,
+    identifier: "Build",
+    stageIdentifier: "Build",
+    name: "Build",
+    baseName: "Build",
+    state: "inProgress",
+    result: "NONE",
+    os: "UNKNOWN",
+    startedAt: recent(12),
+    hitJobCap: false,
+  },
+  {
+    installationId: ORG,
+    buildId: runningId,
+    recordId: runRec,
+    attempt: 1,
+    type: "Job",
+    projectId: AZ_P1,
+    repositoryId: 202,
+    identifier: "Build.build_ios",
+    stageIdentifier: "Build",
+    name: "build_ios",
+    baseName: "build_ios",
+    state: "inProgress",
+    result: "NONE",
+    poolId: AZ_HOSTED_POOL,
+    isHosted: true,
+    hostedImage: "macOS-14",
+    os: "MACOS",
+    workerName: "Azure Pipelines 3",
+    logId: 2,
+    queuedAt: recent(14),
+    startedAt: recent(12),
+    queueS: 120,
+    hitJobCap: false,
+  },
+);
+azRequests.push({
+  installationId: ORG,
+  poolId: AZ_HOSTED_POOL,
+  requestId: BigInt(azReq++),
+  projectId: AZ_P1,
+  isHosted: true,
+  isPrivate: true,
+  os: "MACOS",
+  hostedImage: "macOS-14",
+  queueTime: recent(14),
+  assignTime: recent(12),
+  finishTime: null,
+  jobId: runRec,
+  buildId: runningId,
+  result: null,
+});
+const queuedId = azBuildId++;
+azBuilds.push({
+  installationId: ORG,
+  id: queuedId,
+  projectId: AZ_P1,
+  definitionId: 11,
+  repositoryId: 201,
+  buildNumber: `${new Date(NOW).toISOString().slice(0, 10).replaceAll("-", "")}.10`,
+  status: "NOT_STARTED",
+  result: "NONE",
+  reason: "pull_request",
+  headBranch: "feature/change-42",
+  headSha: hex40(),
+  prNumber: 42,
+  isDefaultBranch: false,
+  queuedAt: recent(6),
+  startedAt: null,
+  finishedAt: null,
+  durationS: null,
+  queueS: null,
+  queuePosition: 1,
+  maxAttempt: 1,
+  firstAttemptResult: null,
+  timedOut: false,
+  lastChangedAt: recent(6),
+  syncedAt: recent(3),
+});
+azRequests.push({
+  installationId: ORG,
+  poolId: AZ_HOSTED_POOL,
+  requestId: BigInt(azReq++),
+  projectId: AZ_P1,
+  isHosted: true,
+  isPrivate: true,
+  os: "LINUX",
+  hostedImage: "ubuntu-latest",
+  queueTime: recent(6),
+  assignTime: null,
+  finishTime: null,
+  jobId: null,
+  buildId: queuedId,
+  result: null,
+});
+const azBuildCols = [...new Set(azBuilds.flatMap((r) => Object.keys(r)))];
+const azJobCols = [...new Set(azJobs.flatMap((r) => Object.keys(r)))];
+await insert("AzureBuild", fill(azBuilds, azBuildCols));
+await insert("AzureBuildJob", fill(azJobs, azJobCols));
+await insert("AzureJobRequest", azRequests);
+await insert("AzurePool", [
+  {
+    installationId: ORG,
+    id: AZ_HOSTED_POOL,
+    name: "Azure Pipelines",
+    isHosted: true,
+    poolType: "automation",
+    size: 10,
+    sampledAt: recent(4),
+  },
+  {
+    installationId: ORG,
+    id: AZ_SELF_POOL,
+    name: "self-hosted-pool",
+    isHosted: false,
+    poolType: "automation",
+    size: 2,
+    sampledAt: recent(4),
+  },
+]);
+await insert("AzureAgent", [
+  {
+    installationId: ORG,
+    poolId: AZ_SELF_POOL,
+    id: 1,
+    name: "agent-1",
+    status: "online",
+    enabled: true,
+    version: "4.250.0",
+    osDescription: "Linux",
+    busy: false,
+    statusChangedAt: recent(600),
+    sampledAt: recent(4),
+  },
+  {
+    installationId: ORG,
+    poolId: AZ_SELF_POOL,
+    id: 2,
+    name: "agent-2",
+    status: "offline",
+    enabled: true,
+    version: "4.248.0",
+    osDescription: "Linux",
+    busy: false,
+    statusChangedAt: recent(3000),
+    sampledAt: recent(4),
+  },
+]);
+const azSamples = [];
+for (let m = 24 * 60; m >= 0; m -= 15) {
+  const busy = m % 120 < 45 || m < 15 ? 1 : 0;
+  azSamples.push({
+    installationId: ORG,
+    poolId: AZ_HOSTED_POOL,
+    at: recent(m + 4),
+    running: busy,
+    queued: busy && m % 120 < 20 ? between(1, 2) : 0,
+    onlineAgents: null,
+  });
+  azSamples.push({
+    installationId: ORG,
+    poolId: AZ_SELF_POOL,
+    at: recent(m + 4),
+    running: 0,
+    queued: 0,
+    onlineAgents: 1,
+  });
+}
+await insert("AzurePoolSample", azSamples);
+// Hosted usage per day (the app computes the same from the job requests).
+/** @type {Map<string, Record<string, any>>} */
+const azUsage = new Map();
+for (const r of azRequests) {
+  if (!r.assignTime || !r.finishTime) continue;
+  const dayKey = r.assignTime.slice(0, 10);
+  const u = azUsage.get(dayKey) ?? {
+    installationId: ORG,
+    day: dayKey,
+    hostedMinutesPrivate: 0,
+    hostedMinutesPublic: 0,
+    hostedMinutesMacos: 0,
+    hostedMinutesLinux: 0,
+    hostedMinutesWindows: 0,
+    peakParallel: 1,
+    saturatedS: between(1200, 7200),
+    jobsQueuedOver10m: 0,
+    saturationQueueS: 0,
+    source: "jobrequests",
+  };
+  const min = Math.ceil(
+    (Date.parse(r.finishTime) - Date.parse(r.assignTime)) / MIN,
+  );
+  u.hostedMinutesPrivate += min;
+  if (r.os === "MACOS") u.hostedMinutesMacos += min;
+  else if (r.os === "WINDOWS") u.hostedMinutesWindows += min;
+  else u.hostedMinutesLinux += min;
+  const waited = (Date.parse(r.assignTime) - Date.parse(r.queueTime)) / 1000;
+  if (waited > 600) u.jobsQueuedOver10m++;
+  if (waited > 60) u.saturationQueueS += Math.round(waited);
+  azUsage.set(dayKey, u);
+}
+await insert("DailyAzureUsage", [...azUsage.values()]);
+const monthKey = new Date(NOW).toISOString().slice(0, 7);
+const monthUsed = [...azUsage.values()]
+  .filter((u) => u.day.startsWith(monthKey))
+  .reduce((s, u) => s + u.hostedMinutesPrivate, 0);
+await insert("AzureUsageSnapshot", [
+  {
+    installationId: ORG,
+    month: monthKey,
+    source: "api",
+    usedMinutes: Math.round(monthUsed * 1.08),
+    totalMinutes: 1800,
+    usedParallel: 1,
+    totalParallel: 1,
+    isPremium: false,
+    capturedAt: recent(30),
+  },
+  {
+    installationId: ORG,
+    month: monthKey,
+    source: "estimate",
+    usedMinutes: monthUsed,
+    totalMinutes: 1800,
+    usedParallel: 1,
+    totalParallel: 1,
+    isPremium: null,
+    capturedAt: recent(4),
+  },
+]);
+// Daily pipeline stats: the same DELETE + INSERT … SELECT as the app (azure-rollup.ts).
+await client.query(`
+  INSERT INTO "DailyPipelineStat" (
+    "installationId", "projectId", "definitionId", "day", "defaultBranch", "repositoryId",
+    "builds", "succeeded", "partial", "failed", "canceled", "timedOut",
+    "firstTrySuccess", "flakyRecovered", "durSumS", "durationHist", "queueHist",
+    "jobSecondsHostedLinux", "jobSecondsHostedWindows", "jobSecondsHostedMacos",
+    "jobSecondsSelfHosted", "jobsNearCap")
+  SELECT b."installationId", b."projectId", b."definitionId", (b."queuedAt" AT TIME ZONE 'UTC')::date, b."isDefaultBranch", max(b."repositoryId"),
+    count(*)::int,
+    count(*) FILTER (WHERE b."result" = 'SUCCEEDED')::int,
+    count(*) FILTER (WHERE b."result" = 'PARTIALLY_SUCCEEDED')::int,
+    count(*) FILTER (WHERE b."result" = 'FAILED')::int,
+    count(*) FILTER (WHERE b."result" = 'CANCELED')::int,
+    0,
+    count(*) FILTER (WHERE b."firstAttemptResult" = 'SUCCEEDED')::int,
+    count(*) FILTER (WHERE b."maxAttempt" > 1 AND b."result" = 'SUCCEEDED')::int,
+    COALESCE(sum(b."durationS"), 0)::bigint, hist_agg(b."durationS"), hist_agg(b."queueS"),
+    COALESCE(sum(j.linux), 0)::int, COALESCE(sum(j.windows), 0)::int, COALESCE(sum(j.macos), 0)::int, 0,
+    COALESCE(sum(j.near), 0)::int
+  FROM "AzureBuild" b
+  LEFT JOIN LATERAL (
+    SELECT sum("durationS") FILTER (WHERE "os" = 'LINUX') AS linux,
+           sum("durationS") FILTER (WHERE "os" = 'WINDOWS') AS windows,
+           sum("durationS") FILTER (WHERE "os" = 'MACOS') AS macos,
+           count(*) FILTER (WHERE "durationS" >= 3000) AS near
+    FROM "AzureBuildJob" WHERE "installationId" = b."installationId" AND "buildId" = b."id" AND "type" = 'Job'
+  ) j ON true
+  WHERE b."installationId" = ${ORG} AND b."status" = 'COMPLETED'
+  GROUP BY 1, 2, 3, 4, 5`);
+/** @param {string} ruleKey @param {string} source @param {string} severity @param {string} title @param {Record<string, string | number | null>} details @param {string | null} url */
+const azFinding = (ruleKey, source, severity, title, details, url) => ({
+  id: `finding-${ruleKey.replace(/[^a-z0-9]/gi, "-")}`,
+  installationId: ORG,
+  repositoryId: null,
+  source,
+  ruleKey,
+  severity,
+  status: "OPEN",
+  title,
+  externalUrl: url,
+  details: JSON.stringify(details),
+  firstSeenAt: iso(NOW - 3 * 3_600_000),
+  lastSeenAt: recent(4),
+});
+/** @param {number} id */
+const azDefUrl = (id) =>
+  `https://dev.azure.com/contoso-ci/${AZ_P1}/_build?definitionId=${id}`;
+await insert("Finding", [
+  azFinding(
+    `azure:default-failing:${AZ_P1}:12`,
+    "AZURE_PIPELINES",
+    "HIGH",
+    "ios-build: default branch pipeline failing",
+    {
+      kind: "azure_default_failing",
+      projectName: "ios-build",
+      definitionId: 12,
+      projectId: AZ_P1,
+      buildId: iosMain?.id ?? null,
+      repositoryId: "202",
+    },
+    azDefUrl(12),
+  ),
+  azFinding(
+    `azure:job-cap:${AZ_P1}:14`,
+    "AZURE_PIPELINES",
+    "MEDIUM",
+    "nightly-e2e: jobs near the 60-minute limit",
+    {
+      kind: "azure_job_cap",
+      projectName: "nightly-e2e",
+      definitionId: 14,
+      projectId: AZ_P1,
+      p90Minutes: 58,
+      capMinutes: 60,
+      hits: 0,
+      repositoryId: "201",
+    },
+    azDefUrl(14),
+  ),
+  azFinding(
+    `azure:minutes:${monthKey}`,
+    "AZURE_PIPELINES",
+    "MEDIUM",
+    `Azure Pipelines minutes: ${Math.round(monthUsed * 1.08)} of 1800`,
+    {
+      kind: "azure_minutes",
+      used: Math.round(monthUsed * 1.08),
+      included: 1800,
+      month: monthKey,
+      source: "api",
+    },
+    "https://dev.azure.com/contoso-ci",
+  ),
+  azFinding(
+    `azure:definition-unlinked:${AZ_P1}:15`,
+    "AZURE_PIPELINES",
+    "LOW",
+    "legacy-app: repository not in this installation",
+    {
+      kind: "azure_definition_unlinked",
+      projectName: "legacy-app",
+      definitionId: 15,
+      projectId: AZ_P1,
+      linkRepo: "example-other/legacy-app",
+    },
+    azDefUrl(15),
+  ),
+]);
+console.log(
+  `seeded ${azBuilds.length} Azure pipeline runs (retried run ${retry?.id ?? "none"}), ${azJobs.length} job rows, ${azRequests.length} job requests, ${monthUsed} hosted minutes this month`,
+);
 
 // ---------- audit: the M6 actions of example-org, hash-chained ----------
 // Computed like src/server/audit/chain.ts, so "Verify chain" succeeds.

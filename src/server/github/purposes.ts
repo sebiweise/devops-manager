@@ -22,6 +22,7 @@ export type TokenPurpose =
   | "read.org_variables"
   | "read.dependabot"
   | "read.deployments"
+  | "read.checks"
   | "act.runs"
   | "act.variables"
   | "act.org_variables"
@@ -62,6 +63,9 @@ export const PURPOSES: Record<TokenPurpose, PurposeSpec> = {
   // Optional (addendum §7.3): only gates the deployment_status hint fold,
   // which needs no token; without it the hints are simply inactive.
   "read.deployments": { required: { deployments: "read" } },
+  // Optional (addendum M7 §4.4): only gates the check_run hint fold of Azure
+  // Pipelines, which needs no token; without it polling still converges.
+  "read.checks": { required: { checks: "read" } },
   "act.runs": { required: { actions: "write" }, mutation: true },
   "act.variables": { required: { actions_variables: "write" }, mutation: true },
   "act.org_variables": {

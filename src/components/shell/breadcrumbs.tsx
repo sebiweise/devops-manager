@@ -25,7 +25,8 @@ export type Crumb =
         | "settings"
         | "audit"
         | "deployments"
-        | "projects";
+        | "projects"
+        | "pipelines";
     }
   | { kind: "repo"; login: string; name: string; fullName: string }
   | {
@@ -42,7 +43,9 @@ export type Crumb =
       number: number | null;
       attempt: number;
     }
-  | { kind: "runner"; login: string; key: string; name: string };
+  | { kind: "runner"; login: string; key: string; name: string }
+  | { kind: "pipelineSection"; login: string; section: "runs" | "usage" }
+  | { kind: "azureRun"; login: string; id: number; number: string };
 
 const acct = (login: string) => `/o/${encodeURIComponent(login)}`;
 
@@ -62,6 +65,10 @@ export function crumbHref(c: Crumb): string {
       return `${acct(c.login)}/runs/${c.id}`;
     case "runner":
       return `${acct(c.login)}/runners/${encodeURIComponent(c.key)}`;
+    case "pipelineSection":
+      return `${acct(c.login)}/pipelines/${c.section}`;
+    case "azureRun":
+      return `${acct(c.login)}/pipelines/runs/${c.id}`;
   }
 }
 
@@ -92,6 +99,10 @@ export function Breadcrumbs({
           : t("run", { number: c.number ?? c.id });
       case "runner":
         return c.name;
+      case "pipelineSection":
+        return t(`pipelineSections.${c.section}`);
+      case "azureRun":
+        return t("azureRun", { number: c.number });
     }
   };
   return (

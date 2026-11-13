@@ -30,6 +30,9 @@ export const FILE_SECRETS = [
   "GITHUB_BILLING_TOKEN",
   "VERCEL_TOKEN",
   "ALLOWED_VERCEL_TEAMS",
+  "AZURE_DEVOPS_PAT",
+  "AZURE_DEVOPS_CLIENT_SECRET",
+  "ALLOWED_AZURE_ORGS",
 ] as const;
 
 /** Copies `<NAME>_FILE` contents into `<NAME>` when `<NAME>` is not set. */
@@ -158,6 +161,21 @@ export const env = createEnv({
     VERCEL_ACCOUNT: optionalString,
     ALLOWED_VERCEL_TEAMS: optionalString,
 
+    // CI: Azure DevOps (M7). The env credential is a shortcut for
+    // single-owner setups: an organisation-scoped PAT, or a Microsoft Entra
+    // service principal (tenant, client id and client secret), for the
+    // installation of AZURE_DEVOPS_ACCOUNT; never written to the database.
+    // ALLOWED_AZURE_ORGS limits which organisations may be connected.
+    AZURE_DEVOPS_PAT: optionalString,
+    AZURE_DEVOPS_ORG: optionalString,
+    AZURE_DEVOPS_ACCOUNT: optionalString,
+    AZURE_DEVOPS_TENANT_ID: optionalString,
+    AZURE_DEVOPS_CLIENT_ID: optionalString,
+    AZURE_DEVOPS_CLIENT_SECRET: optionalString,
+    ALLOWED_AZURE_ORGS: optionalString,
+    /** Azure Pipelines actions (M7b): off by default, on top of MANAGEMENT_ENABLED. */
+    AZURE_MANAGEMENT_ENABLED: flag(false),
+
     // Management
     MANAGEMENT_ENABLED: flag(true),
     VARIABLE_PRESETS: optionalString,
@@ -213,6 +231,36 @@ export const env = createEnv({
           path: ["VERCEL_ACCOUNT"],
           message:
             "VERCEL_TOKEN needs VERCEL_ACCOUNT: the GitHub account whose installation the Vercel team belongs to",
+        });
+      }
+      const azureSp =
+        v.AZURE_DEVOPS_TENANT_ID ||
+        v.AZURE_DEVOPS_CLIENT_ID ||
+        v.AZURE_DEVOPS_CLIENT_SECRET;
+      if (
+        (v.AZURE_DEVOPS_PAT || azureSp) &&
+        !(v.AZURE_DEVOPS_ORG && v.AZURE_DEVOPS_ACCOUNT)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["AZURE_DEVOPS_ORG"],
+          message:
+            "the Azure DevOps env credential needs AZURE_DEVOPS_ORG and AZURE_DEVOPS_ACCOUNT (the GitHub account whose installation the organisation belongs to)",
+        });
+      }
+      if (
+        azureSp &&
+        !(
+          v.AZURE_DEVOPS_TENANT_ID &&
+          v.AZURE_DEVOPS_CLIENT_ID &&
+          v.AZURE_DEVOPS_CLIENT_SECRET
+        )
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["AZURE_DEVOPS_CLIENT_ID"],
+          message:
+            "a service principal needs AZURE_DEVOPS_TENANT_ID, AZURE_DEVOPS_CLIENT_ID and AZURE_DEVOPS_CLIENT_SECRET",
         });
       }
       if (

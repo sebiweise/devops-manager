@@ -1,6 +1,11 @@
 import {
   CircleAlert,
+  Clock,
   ExternalLink,
+  Gauge,
+  Hourglass,
+  Link2Off,
+  Unplug,
   Info,
   KeyRound,
   Rocket,
@@ -352,6 +357,16 @@ const ATTENTION_ICON = {
   auto_assign_paused: TriangleAlert,
   token_expiring: KeyRound,
   credential_revoked: KeyRound,
+  // Azure Pipelines (M7)
+  azure_default_failing: CircleAlert,
+  azure_job_cap: Clock,
+  azure_minutes: Gauge,
+  azure_parallel_saturated: Hourglass,
+  azure_pool_offline: Unplug,
+  azure_hook_disabled: TriangleAlert,
+  azure_definition_unlinked: Link2Off,
+  azure_token_expiring: KeyRound,
+  azure_credential_revoked: KeyRound,
 } as const;
 
 /** The Needs-attention list (findings), most severe first. */
@@ -380,8 +395,12 @@ export async function NeedsAttention({
           ATTENTION_ICON[i.kind as keyof typeof ATTENTION_ICON] ?? CircleAlert;
         const known = i.kind in ATTENTION_ICON;
         const when = i.at ? new Date(i.at) : new Date(i.since);
+        const azure = i.kind.startsWith("azure_");
         const credential =
-          i.kind === "token_expiring" || i.kind === "credential_revoked";
+          i.kind === "token_expiring" ||
+          i.kind === "credential_revoked" ||
+          i.kind === "azure_token_expiring" ||
+          i.kind === "azure_credential_revoked";
         return (
           <li
             key={i.id}
@@ -422,13 +441,14 @@ export async function NeedsAttention({
                     timeStyle: "short",
                   })}
                 >
-                  {i.kind === "token_expiring"
+                  {i.kind === "token_expiring" ||
+                  i.kind === "azure_token_expiring"
                     ? t("expires", { when: format.relativeTime(when) })
                     : t("since", { when: format.relativeTime(when) })}
                 </time>
                 {credential && settingsHref ? (
                   <Link
-                    href={`${settingsHref}#hosting`}
+                    href={`${settingsHref}#${azure ? "azure" : "hosting"}`}
                     className="underline-offset-2 hover:underline"
                   >
                     {t("reconnect")}
@@ -436,7 +456,7 @@ export async function NeedsAttention({
                 ) : i.externalUrl ? (
                   <ExternalVercelLink
                     href={i.externalUrl}
-                    label={t("openInVercel")}
+                    label={azure ? t("openInAzure") : t("openInVercel")}
                   />
                 ) : null}
               </span>

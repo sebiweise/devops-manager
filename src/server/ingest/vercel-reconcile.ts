@@ -12,7 +12,8 @@ import {
   type VercelRateInfo,
   type VercelReadApi,
 } from "@/server/vercel/client";
-import { Deadline, DeadlineReached } from "./budget";
+import { DeadlineReached, type Deadline } from "./budget";
+import { raiseFinding, resolveFindings, stepDeadline } from "./provider-step";
 import {
   markVercelRevoked,
   touchVercelUse,
@@ -109,12 +110,6 @@ const empty = (status: VercelStepStatus): VercelStepResult => ({
   refreshed: 0,
   requests: 0,
 });
-
-function stepDeadline(outer: Deadline, budgetMs: number): Deadline {
-  return new Deadline(Math.min(outer.endsAt, outer.now() + budgetMs), () =>
-    outer.now(),
-  );
-}
 
 export function vercelApiFor(
   token: string,
@@ -502,82 +497,9 @@ async function refreshOpen(ctx: Ctx): Promise<void> {
 
 // ---------- v4 ----------
 
-type FindingInput = {
-  source: "VERCEL" | "CREDENTIAL";
-  ruleKey: string;
-  repositoryId: bigint | null;
-  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
-  title: string;
-  externalUrl: string | null;
-  details: Record<string, string | number | boolean | null>;
-};
-
-/** Opens or refreshes a finding (ruleKey is stable). */
-export async function raiseFinding(
-  installationId: bigint,
-  f: FindingInput,
-  now: Date,
-): Promise<void> {
-  const existing = await db.finding.findFirst({
-    where: {
-      installationId,
-      source: f.source,
-      ruleKey: f.ruleKey,
-      repositoryId: f.repositoryId,
-    },
-    select: { id: true, status: true },
-  });
-  const data = {
-    severity: f.severity,
-    title: f.title.slice(0, 200),
-    externalUrl: f.externalUrl,
-    details: f.details,
-    lastSeenAt: now,
-  };
-  if (!existing) {
-    await db.finding.create({
-      data: {
-        installationId,
-        source: f.source,
-        ruleKey: f.ruleKey,
-        repositoryId: f.repositoryId,
-        status: "OPEN",
-        firstSeenAt: now,
-        ...data,
-      },
-    });
-    return;
-  }
-  await db.finding.update({
-    where: { id: existing.id },
-    data: {
-      ...data,
-      // A dismissed finding stays dismissed; a fixed one opens again.
-      ...(existing.status === "FIXED"
-        ? { status: "OPEN", firstSeenAt: now, resolvedAt: null }
-        : {}),
-    },
-  });
-}
-
-/** Marks open findings with these rule-key prefixes fixed, except `keep`. */
-export async function resolveFindings(
-  installationId: bigint,
-  source: "VERCEL" | "CREDENTIAL",
-  prefix: string,
-  keep: ReadonlyArray<string>,
-  now: Date,
-): Promise<void> {
-  await db.finding.updateMany({
-    where: {
-      installationId,
-      source,
-      status: "OPEN",
-      ruleKey: { startsWith: prefix, notIn: [...keep] },
-    },
-    data: { status: "FIXED", resolvedAt: now },
-  });
-}
+// The finding helpers moved to provider-step.ts (shared with Azure DevOps);
+// re-exported so existing callers keep their import path.
+export { raiseFinding, resolveFindings };
 
 function latestOf(a: Date | null, b: Date | null): Date | null {
   if (!a) return b;

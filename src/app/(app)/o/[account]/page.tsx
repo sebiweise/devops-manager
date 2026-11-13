@@ -47,6 +47,11 @@ import {
   listNeedsAttention,
 } from "@/server/data/vercel";
 import { HostingCard } from "@/components/hosting/hosting-card";
+import { NeedsAttention } from "@/components/hosting/hosting";
+import { AzureOverviewCard } from "@/components/azure/azure-views";
+import { CiRunsTable } from "@/components/azure/ci-runs-section";
+import { getAzureCard } from "@/server/data/azure";
+import { listCiRuns } from "@/server/data/ci-runs";
 
 export const generateMetadata = accountMeta("overview");
 
@@ -131,10 +136,21 @@ export default async function AccountPage({
       getAccountSummaries(scope, now, { backfillDays: env.BACKFILL_DAYS }),
       orNotFound(getVercelSummary(scope, installation.id)),
     ]);
+  const azureCard = await orNotFound(getAzureCard(scope, installation.id, now));
+  const [recentCi, azureAttention] = azureCard
+    ? await Promise.all([
+        orNotFound(listCiRuns(scope, installation.id, { limit: 8 })),
+        orNotFound(listNeedsAttention(scope, installation.id, 40)).then((a) =>
+          a.filter((i) => i.kind.startsWith("azure_")).slice(0, 8),
+        ),
+      ])
+    : [null, []];
   const [hosting, attention, vercelActions] = vercel
     ? await Promise.all([
         orNotFound(getDeploymentInsights(scope, installation.id, range, now)),
-        orNotFound(listNeedsAttention(scope, installation.id, 8)),
+        orNotFound(listNeedsAttention(scope, installation.id, 40)).then((a) =>
+          a.filter((i) => !i.kind.startsWith("azure_")).slice(0, 8),
+        ),
         orNotFound(
           getVercelActionState(
             scope,
@@ -361,6 +377,36 @@ export default async function AccountPage({
             state: vercelActions,
           }}
         />
+      ) : null}
+
+      {azureCard ? (
+        <div className="flex flex-col gap-4">
+          <AzureOverviewCard card={azureCard} login={login} />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ListCard
+              title={t("ci.azure.card.attention")}
+              showAllLabel={t("ci.azure.card.attention")}
+            >
+              <NeedsAttention
+                items={azureAttention}
+                login={login}
+                settingsHref={isAdmin ? `${base}/settings` : undefined}
+              />
+            </ListCard>
+            <ListCard
+              title={t("ci.recent.title")}
+              showAll={`${base}/pipelines/runs`}
+              showAllLabel={t("ci.recent.showAzure")}
+            >
+              <CiRunsTable
+                login={login}
+                runs={recentCi?.runs ?? []}
+                caption={t("ci.recent.title")}
+                compact
+              />
+            </ListCard>
+          </div>
+        </div>
       ) : null}
 
       {overview.bucket === "hour" ? (

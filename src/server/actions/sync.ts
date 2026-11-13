@@ -65,7 +65,7 @@ export async function syncNow(raw: {
     installationId,
     (task) => after(task),
     undefined,
-    { forceVercelProjects: true },
+    { forceVercelProjects: true, forceAzureDefinitions: true },
   );
   return { status: "started" };
 }

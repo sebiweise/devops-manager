@@ -56,6 +56,7 @@ any number of organisations, through **one least-privilege GitHub App**.
 | **M3** Management (this release) | Action pipeline (kill switch, per-installation toggle, live role check, App permission check, idempotency, rate limit, typed confirmations, hash-chained audit with the app user and the App identity, installation tokens narrowed per action and repository). Re-run, re-run failed, cancel and force cancel on the run page and in run lists (operator); repository and organisation variables with a name × repo matrix, inline edit with diff, the `LINUX_RUNNER` / `MACOS_RUNNER` presets, bulk set with preview diff and per-repo results, batch revert, optional value redaction (admin); open PRs per installation and per repository with checks, mergeable state, review decision and chips, SHA-pinned merge as the App including workflow-changing PRs, GitHub's 405/409 shown verbatim (admin); read-only Dependabot alerts by severity × repo with the matching Dependabot PR; audit log with filters, chain Verify, CSV export and Revert batch links; management disabled banner; the guarded Dependabot bulk merge (admin) |
 | **M5** Vercel, read-only         | One Vercel team per installation, connected with a team-scoped token (stored encrypted) or `VERCEL_TOKEN`; reconcile step "v" with its own budget, resumable cursors, a 5-minute lazy fast path and GitHub `deployment_status` hints; Deployments page (KPIs incl. deploys in 24 h against the Hobby allotment, deployments per day by state, filters), Projects page, Deployments card on the repository page, preview badges on pull requests and runs, Hosting card with "Needs attention" (failing production, auto-assign paused, token expiring or rejected) on the overview and the dashboard. See [docs/VERCEL.md](docs/VERCEL.md)                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **M6** Vercel actions            | Redeploy, cancel, promote and roll back through the action pipeline (operator; typed project name for production; a separate Vercel actions toggle, off by default; one audit row each with the token identity and `x-vercel-id`; ambiguous outcomes linked to the deployment they created), the auto-assign-paused banner with Promote, the Hobby rollback limit, a live build log excerpt for operators (scrubbed, never stored). See [docs/VERCEL.md](docs/VERCEL.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **M7** Azure DevOps              | One Azure DevOps organisation per installation, connected with an organisation-scoped PAT or a Microsoft Entra service principal (client secret, M7c), both stored encrypted, or the env shortcut; reconcile step "z" with its own budget, resumable cursors and a sweep for retries, GitHub `check_run` hints and an optional service hook; Pipelines, Runs, run detail and Usage pages (free-tier minutes, parallel jobs, pools); Azure builds with a source badge in the unified runs lists, the repository Pipelines tab, pull requests, the queue and costs; findings; queue, cancel, retry and stage retry behind a separate Azure actions toggle (M7b). See [docs/AZURE-DEVOPS.md](docs/AZURE-DEVOPS.md)                                                                                                                                                                                                                                                                                                                              |
 | **M4** Polish, v0.1.0            | Complete German translation, user and role management, `/admin/ops`, setup wizard, full docs, signed GHCR image                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ## Screenshots
@@ -171,7 +172,7 @@ of failing.
 | Repository: Contents              | write  | read      | `PUT /pulls/{n}/merge`                                                                                                | PR merge (M3)                   |
 | Repository: Pull requests         | write  | read      | PR list, merge state, merge                                                                                           | PRs (M3)                        |
 | Repository: Workflows             | write  | —         | merging PRs that change `.github/workflows` (e.g. Dependabot updates of Actions); only requested for those merges     | PR merge (M3)                   |
-| Repository: Checks                | read   | read      | check rollup in the PR list (optional)                                                                                | PRs (M3)                        |
+| Repository: Checks                | read   | read      | check rollup in the PR list; `check_run`/`check_suite` events as hints for Azure Pipelines (optional)                 | PRs (M3), CI (M7)               |
 | Repository: Commit statuses       | read   | read      | status rollup in the PR list (optional)                                                                               | PRs (M3)                        |
 | Repository: Variables             | write  | read      | repository Actions variables and the runs-on presets                                                                  | variables (M3)                  |
 | Repository: Dependabot alerts     | read   | read      | alert overview (optional)                                                                                             | Dependabot (M3)                 |
@@ -184,7 +185,7 @@ of failing.
 | Account: Plan                     | read   | read      | personal-account billing via "Connect GitHub" (removable; option A needs it on the token instead)                     | costs (M2)                      |
 
 Webhook events: `workflow_run`, `workflow_job`, `repository`,
-`deployment_status` (subscribed);
+`deployment_status`, `check_run`, `check_suite` (subscribed);
 `installation`, `installation_repositories`, `github_app_authorization`
 (delivered automatically). Not requested: secrets, environments, issues,
 members, codespaces.
@@ -219,10 +220,20 @@ any actor; add it to a ruleset's bypass list yourself if you want it to bypass.
   names or e-mail addresses, deploy hook URLs, build logs (the build log
   excerpt of M6 is read live and not stored). Details in
   [docs/VERCEL.md](docs/VERCEL.md).
+- From M7 (only with an Azure DevOps connection): the organisation, the
+  encrypted PAT or client secret and its last 4 characters, projects,
+  pipeline definitions, builds, stages and jobs (result, times, attempts,
+  branch, commit SHA, PR number) for the raw retention, pools, agents, job
+  requests, daily pipeline stats and hosted minutes, findings. Never: Azure
+  DevOps identities, user names or e-mail addresses, build logs (the log
+  excerpt is read live and not stored). Details in
+  [docs/AZURE-DEVOPS.md](docs/AZURE-DEVOPS.md).
 - Never stored: logs, job steps, Actions secrets.
 
 Outbound hosts: `api.github.com` and `github.com`; with a Vercel
-connection also `api.vercel.com` (fixed, not configurable).
+connection also `api.vercel.com`; with an Azure DevOps connection also
+`dev.azure.com` and, for a service principal, `login.microsoftonline.com`
+(fixed, not configurable).
 
 An installation's data is hidden immediately after uninstall and deleted
 after 30 days.
@@ -370,6 +381,17 @@ team (or set `VERCEL_TOKEN` and `VERCEL_ACCOUNT`). Accept the App's
 status. To redeploy, cancel, promote and roll back from the app, an admin
 also turns on **Vercel actions** there (off by default). See
 [docs/VERCEL.md](docs/VERCEL.md).
+
+### 7. Optional: Azure DevOps
+
+To see the Azure Pipelines runs of an Azure DevOps organisation, open the
+account's **Settings & sync → CI · Azure DevOps** as an admin and connect
+it with an organisation-scoped PAT or a Microsoft Entra service principal
+(or set the `AZURE_DEVOPS_*` variables). Accept the App's **Checks: read**
+permission and the check run events on the installation for faster
+updates. To queue, cancel and retry builds from the app, set
+`AZURE_MANAGEMENT_ENABLED=true` and let an admin turn on **Azure actions**
+there (off by default). See [docs/AZURE-DEVOPS.md](docs/AZURE-DEVOPS.md).
 
 ## Sync and freshness
 

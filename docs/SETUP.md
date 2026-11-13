@@ -156,3 +156,12 @@ permissions until an owner accepts the change on GitHub (the installation's
 settings show the request). The Vercel pages work without it; the app then
 refreshes Vercel data by polling only and the settings page says so.
 Connecting a Vercel team is described in [VERCEL.md](VERCEL.md).
+
+## Azure DevOps (optional)
+
+The manifests request the `check_run` and `check_suite` events (with
+**Repository: Checks (read)**). A check run of the Azure Pipelines app then
+names the build to refresh. Without them the Azure pages work and refresh
+by polling, and the settings page says so. Connecting an organisation, the
+service principal setup and the optional service hook are described in
+[AZURE-DEVOPS.md](AZURE-DEVOPS.md).

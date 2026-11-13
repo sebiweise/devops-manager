@@ -35,6 +35,11 @@ import {
   refreshFromHint,
   type HintPayload,
 } from "./vercel-hints";
+import {
+  foldCheckHint,
+  refreshAzureBuilds,
+  type CheckHintPayload,
+} from "./azure-hints";
 
 const LOCK_MS = 5 * 60 * 1000;
 
@@ -271,6 +276,32 @@ export const prismaWebhookStore: WebhookStore = {
               );
             } catch {
               // Outside a request (replays): the dirty mark is picked up by step v3.
+            }
+          }
+        }
+        return;
+      case "check_run":
+      case "check_suite":
+        if (installationId !== null) {
+          const hint = await foldCheckHint(
+            installationId,
+            event,
+            payload as unknown as CheckHintPayload,
+            new Date(),
+          );
+          if (hint && hint.builds.length > 0) {
+            try {
+              after(() =>
+                refreshAzureBuilds(installationId, hint.builds).catch(
+                  (error: unknown) =>
+                    console.warn(
+                      "Azure DevOps hint refresh failed",
+                      describeError(error),
+                    ),
+                ),
+              );
+            } catch {
+              // Outside a request (replays): the dirty marks are picked up by step z3.
             }
           }
         }

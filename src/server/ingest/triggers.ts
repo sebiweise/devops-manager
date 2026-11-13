@@ -15,6 +15,12 @@ import { persistRateBudget } from "./rate-store";
 import { claimLazyRunnerSample, sampleRunners } from "./runners";
 import { effectiveRetentionDays } from "./prune";
 import { runVercelStep } from "./vercel-reconcile";
+import { refreshAzureBuilds } from "./azure-hints";
+import {
+  AZURE_FAST_BUDGET_MS,
+  refreshAzureUsageNow,
+  runAzureStep,
+} from "./azure-reconcile";
 import type { Fetch } from "@/server/vercel/client";
 import {
   claimInstallation,
@@ -186,7 +192,7 @@ export function scheduleInstallationReconcile(
   installationId: bigint,
   schedule: Scheduler,
   clients: GitHubClients = githubClients,
-  opts: { forceVercelProjects?: boolean } = {},
+  opts: { forceVercelProjects?: boolean; forceAzureDefinitions?: boolean } = {},
 ): void {
   schedule(async () => {
     const deadline = lazyDeadline();
@@ -198,6 +204,7 @@ export function scheduleInstallationReconcile(
       installationId,
       preclaimed: true,
       vercel: { forceProjects: opts.forceVercelProjects },
+      azure: { forceDefinitions: opts.forceAzureDefinitions },
     }).catch((error: unknown) => {
       console.error(
         "sync now failed",
@@ -347,4 +354,153 @@ export async function maybeLazyVercelRefresh(
     }
   });
   return true;
+}
+
+// ---------- Azure DevOps (design addendum M7 §4.2) ----------
+
+const AZURE_LAZY_MS = 10 * 60 * 1000;
+const AZURE_LAZY_LOCK_MS = 30 * 1000;
+
+/**
+ * Claims the Azure DevOps fast path of a page view: synced more than 10
+ * minutes ago, not revoked or paused, and no reconcile holds the
+ * installation's lock (the same column lock as reconcile).
+ */
+export async function claimLazyAzure(
+  installationId: bigint,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const { count } = await db.installation.updateMany({
+    where: {
+      id: installationId,
+      deletedAt: null,
+      suspendedAt: null,
+      OR: [
+        { reconcileLockedUntil: null },
+        { reconcileLockedUntil: { lt: now } },
+      ],
+      azure: {
+        is: {
+          revokedAt: null,
+          AND: [
+            {
+              OR: [
+                { lastSyncedAt: null },
+                {
+                  lastSyncedAt: { lt: new Date(now.getTime() - AZURE_LAZY_MS) },
+                },
+              ],
+            },
+            { OR: [{ pausedUntil: null }, { pausedUntil: { lt: now } }] },
+          ],
+        },
+      },
+    },
+    data: {
+      reconcileLockedUntil: new Date(now.getTime() + AZURE_LAZY_LOCK_MS),
+    },
+  });
+  return count === 1;
+}
+
+/**
+ * Page-view trigger of the Azure DevOps fast path (z2a, z2b, z3, z7; 8 s)
+ * in `after()`, when neither the GitHub lazy reconcile nor the Vercel fast
+ * path started (only one stale provider per page view).
+ */
+export async function maybeLazyAzureRefresh(
+  installationId: bigint,
+  schedule: Scheduler,
+  opts: { now?: Date; fetch?: Fetch } = {},
+): Promise<boolean> {
+  if (!(await claimLazyAzure(installationId, opts.now))) return false;
+  schedule(async () => {
+    try {
+      const inst = await db.installation.findUnique({
+        where: { id: installationId },
+        select: { timezone: true, rawRetentionDays: true },
+      });
+      if (!inst) return;
+      await runAzureStep({
+        installationId,
+        timezone: inst.timezone,
+        retentionDays: effectiveRetentionDays(
+          inst.rawRetentionDays,
+          env.MAX_RETENTION_DAYS,
+        ),
+        deadline: lazyDeadline(),
+        mode: "fast",
+        budgetMs: AZURE_FAST_BUDGET_MS,
+        fetch: opts.fetch,
+      });
+    } catch (error) {
+      console.warn("lazy Azure DevOps refresh failed", describeError(error));
+    } finally {
+      await db.installation
+        .updateMany({
+          where: { id: installationId },
+          data: { reconcileLockedUntil: null },
+        })
+        .catch(() => undefined);
+    }
+  });
+  return true;
+}
+
+/** The Usage page's resourceusage read (z5), at most every 10 minutes, 5 s. */
+export async function maybeAzureUsageRefresh(
+  installationId: bigint,
+  schedule: Scheduler,
+  opts: { now?: Date; fetch?: Fetch } = {},
+): Promise<boolean> {
+  const now = opts.now ?? new Date();
+  const { count } = await db.azureDevOpsConnection.updateMany({
+    where: {
+      installationId,
+      revokedAt: null,
+      OR: [{ pausedUntil: null }, { pausedUntil: { lt: now } }],
+      AND: [
+        {
+          OR: [
+            { usageSyncedAt: null },
+            { usageSyncedAt: { lt: new Date(now.getTime() - 10 * 60_000) } },
+          ],
+        },
+      ],
+    },
+    data: { usageSyncedAt: now },
+  });
+  if (count !== 1) return false;
+  schedule(() =>
+    refreshAzureUsageNow(installationId, { fetch: opts.fetch }).catch(
+      (error: unknown) =>
+        console.warn("Azure DevOps usage refresh failed", describeError(error)),
+    ),
+  );
+  return true;
+}
+
+/**
+ * Open builds on a page that polls (Azure runs list, run detail): a
+ * targeted refresh of at most 3 of them in `after()`, debounced to 30 s per
+ * build (refreshAzureBuilds claims it), so the poll shows fresh state
+ * without a full pass.
+ */
+export function scheduleOpenAzureRefresh(
+  installationId: bigint,
+  builds: ReadonlyArray<{ projectId: string; buildId: number }>,
+  schedule: Scheduler,
+  opts: { fetch?: Fetch } = {},
+): void {
+  if (builds.length === 0) return;
+  schedule(() =>
+    refreshAzureBuilds(installationId, builds.slice(0, 3), {
+      fetch: opts.fetch,
+    }).catch((error: unknown) =>
+      console.warn(
+        "Azure DevOps open-build refresh failed",
+        describeError(error),
+      ),
+    ),
+  );
 }

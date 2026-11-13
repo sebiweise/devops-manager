@@ -17,6 +17,8 @@ import { AutoRefresh } from "@/components/insights/auto-refresh";
 import { repoHref, runHref } from "@/components/insights/workflow-link";
 import { LabelList } from "@/components/runners/runner-badges";
 import { PageHeader } from "@/components/shell/page-header";
+import { AzureQueueBlock } from "@/components/azure/azure-views";
+import { getAzureQueue } from "@/server/data/azure";
 import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
 import { formatDuration, formatNumber } from "@/lib/format";
 import { accountMeta } from "@/lib/page-meta";
@@ -62,6 +64,7 @@ export default async function QueuePage({
   const { account } = await params;
   const sp = (await searchParams) as SearchParamsLike;
   const { scope, installation } = await loadAccount(account);
+  const azureQueue = await orNotFound(getAzureQueue(scope, installation.id));
   const sampling = await lazyRunnerSample(installation.id);
   const [t, locale, format, queue] = await Promise.all([
     getTranslations(),
@@ -463,6 +466,9 @@ export default async function QueuePage({
           </details>
         )}
       </section>
+      {azureQueue ? (
+        <AzureQueueBlock queue={azureQueue} login={installation.accountLogin} />
+      ) : null}
     </div>
   );
 }

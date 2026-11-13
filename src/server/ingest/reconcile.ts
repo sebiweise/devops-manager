@@ -42,6 +42,20 @@ import { describeError } from "@/lib/describe-error";
 import type { EnvVercelToken } from "./vercel-credential";
 import { reencryptStoredTokens } from "./vercel-credential";
 import { runVercelStep, type VercelStepResult } from "./vercel-reconcile";
+import type { Fetch as AzureFetch } from "@/server/azure/client";
+import {
+  azureEncryptedColumns,
+  envAzureCredential,
+  type EnvAzureCredential,
+} from "./azure-credential";
+import { runAzureStep, type AzureStepResult } from "./azure-reconcile";
+import {
+  planProviderPhase,
+  reencryptColumns,
+  remainingProviderBudget,
+  type ProviderName,
+} from "./provider-step";
+import { envVercelToken } from "./vercel-credential";
 import {
   backfill,
   incrementalSync,
@@ -67,6 +81,8 @@ import {
  *   k) open PR and Dependabot alert counts per repository (every 6 h)
  *   v) Vercel inventory (vercel-reconcile.ts; own 25 s budget, right
  *      after the claim and before the GitHub steps)
+ *   z) Azure Pipelines (azure-reconcile.ts; own budget after v, see
+ *      runProviderPhase)
  *   k2) re-encrypt stored tokens under a rotated key (cron pass only)
  *
  * Installations are processed round-robin by lastReconciledAt and claimed
@@ -90,6 +106,8 @@ export type InstallationResult = {
   repoCounts?: number;
   /** Step v (Vercel); absent without a connection. */
   vercel?: VercelStepResult;
+  /** Step z (Azure DevOps); absent without a connection. */
+  azure?: AzureStepResult;
 };
 
 export type ReconcileResult = {
@@ -113,6 +131,12 @@ export type ReconcileOptions = {
     forceProjects?: boolean;
     fetch?: Fetch;
     envToken?: EnvVercelToken | null;
+  };
+  /** Step z: Sync now forces the definitions; tests inject fetch and the env credential. */
+  azure?: {
+    forceDefinitions?: boolean;
+    fetch?: AzureFetch;
+    envCredential?: EnvAzureCredential | null;
   };
 };
 
@@ -226,22 +250,10 @@ async function reconcileInstallation(
   );
   result.repos = ordered.length;
 
-  // v) Vercel, before the GitHub steps, bounded by its own budget.
+  // v) Vercel and z) Azure DevOps, before the GitHub steps, each bounded
+  // by its own budget (provider phase, design addendum M7 §4.2).
   if (!deadline.expired(10_000)) {
-    try {
-      const vercel = await runVercelStep({
-        installationId: inst.id,
-        timezone: inst.timezone,
-        retentionDays: retention,
-        deadline,
-        forceProjects: opts.vercel?.forceProjects,
-        fetch: opts.vercel?.fetch,
-        envToken: opts.vercel?.envToken,
-      });
-      if (vercel.status !== "none") result.vercel = vercel;
-    } catch (error) {
-      console.warn("vercel step failed", describeError(error));
-    }
+    await runProviderPhase(inst, opts, retention, result);
   }
 
   try {
@@ -478,6 +490,99 @@ async function reconcileInstallation(
   return result;
 }
 
+/**
+ * The provider phase (design addendum M7 §4.2): Vercel (v) and Azure DevOps
+ * (z) of one installation. Cron passes run v (25 s) then z (30 s);
+ * interactive passes (Sync now, lazy) give the providers at most 25 s
+ * together, so GitHub keeps 35 s or more of the 60 s: one provider gets up
+ * to 25 s; with both, the one synced longer ago goes first with 15 s and
+ * the other gets the rest (at least 10 s, or it is skipped this time).
+ */
+async function runProviderPhase(
+  inst: InstallationRow,
+  opts: ReconcileOptions,
+  retention: number | null,
+  result: InstallationResult,
+): Promise<void> {
+  const { deadline } = opts;
+  const [vercelConn, azureConn] = await Promise.all([
+    db.vercelConnection.findUnique({
+      where: { installationId: inst.id },
+      select: { lastSyncedAt: true },
+    }),
+    db.azureDevOpsConnection.findUnique({
+      where: { installationId: inst.id },
+      select: { lastSyncedAt: true },
+    }),
+  ]);
+  const login = inst.accountLogin.toLowerCase();
+  const vercelEnv =
+    opts.vercel?.envToken === undefined
+      ? envVercelToken()
+      : opts.vercel.envToken;
+  const azureEnv =
+    opts.azure?.envCredential === undefined
+      ? envAzureCredential()
+      : opts.azure.envCredential;
+  const providers: Array<{
+    provider: ProviderName;
+    lastSyncedAt: Date | null;
+  }> = [];
+  if (vercelConn || vercelEnv?.accountLogin.toLowerCase() === login)
+    providers.push({
+      provider: "vercel",
+      lastSyncedAt: vercelConn?.lastSyncedAt ?? null,
+    });
+  if (azureConn || azureEnv?.accountLogin.toLowerCase() === login)
+    providers.push({
+      provider: "azure",
+      lastSyncedAt: azureConn?.lastSyncedAt ?? null,
+    });
+  const interactive = opts.installationId !== undefined;
+  const plan = planProviderPhase(
+    interactive ? "interactive" : "cron",
+    providers,
+  );
+  const phaseStart = deadline.now();
+  for (const [i, step] of plan.entries()) {
+    if (deadline.expired(10_000)) break;
+    const budgetMs =
+      interactive && i > 0
+        ? remainingProviderBudget(deadline.now() - phaseStart, step.budgetMs)
+        : step.budgetMs;
+    if (budgetMs <= 0) continue;
+    try {
+      if (step.provider === "vercel") {
+        const vercel = await runVercelStep({
+          installationId: inst.id,
+          timezone: inst.timezone,
+          retentionDays: retention,
+          deadline,
+          budgetMs,
+          forceProjects: opts.vercel?.forceProjects,
+          fetch: opts.vercel?.fetch,
+          envToken: opts.vercel?.envToken,
+        });
+        if (vercel.status !== "none") result.vercel = vercel;
+      } else {
+        const azure = await runAzureStep({
+          installationId: inst.id,
+          timezone: inst.timezone,
+          retentionDays: retention,
+          deadline,
+          budgetMs,
+          forceDefinitions: opts.azure?.forceDefinitions,
+          fetch: opts.azure?.fetch,
+          envCredential: opts.azure?.envCredential,
+        });
+        if (azure.status !== "none") result.azure = azure;
+      }
+    } catch (error) {
+      console.warn(`${step.provider} step failed`, describeError(error));
+    }
+  }
+}
+
 async function recordRepoError(repositoryId: bigint, error: unknown) {
   await db.syncState.updateMany({
     where: { repositoryId },
@@ -582,6 +687,9 @@ export async function runReconcile(
   if (opts.installationId === undefined && !deadline.expired(5_000)) {
     try {
       await reencryptStoredTokens(() => deadline.expired(5_000));
+      await reencryptColumns([azureEncryptedColumns], () =>
+        deadline.expired(5_000),
+      );
     } catch (error) {
       console.warn("re-encrypt failed", describeError(error));
     }

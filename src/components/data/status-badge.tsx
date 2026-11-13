@@ -56,6 +56,8 @@ const DEFS = {
   WAITING: { icon: CirclePause, tone: "warning" },
   IN_PROGRESS: { icon: LoaderCircle, tone: "info" },
   COMPLETED: { icon: CircleCheck, tone: "muted" },
+  // Azure Pipelines: partially succeeded (amber, not a success)
+  PARTIAL: { icon: CircleAlert, tone: "warning", info: true },
   // runners
   busy: { icon: LoaderCircle, tone: "info" },
   idle: { icon: CircleCheck, tone: "good" },

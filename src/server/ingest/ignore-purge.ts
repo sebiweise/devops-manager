@@ -14,7 +14,8 @@ import { compareCodeUnits } from "@/lib/compare";
  * stored data is deleted in batches of 5,000 rows (ctid, like
  * `purgeInstallation`): jobs, runs, daily workflow and job stats, dirty
  * marks, the sync state, the repo-level runners with their samples and
- * their `shr:<repoId>:*` runner stats. `BillingUsageItem` is kept: it is
+ * their `shr:<repoId>:*` runner stats, and the repository's Azure
+ * Pipelines builds, job rows and pipeline stats. `BillingUsageItem` is kept: it is
  * GitHub's bill and feeds the "Ignored repositories" cost row.
  *
  * Org runner and hosted pool stats (`sh:*`, `pool:*`) span repositories, so
@@ -36,13 +37,18 @@ const BATCH = 5_000;
 const DAY_MS = 86_400_000;
 
 /** Tables keyed by `repositoryId`, children first. */
-const REPO_TABLES = [
+export const REPO_TABLES = [
   "WorkflowJob",
   "WorkflowRun",
   "DailyWorkflowStat",
   "DailyJobStat",
   "RollupDirty",
   "SyncState",
+  // Azure Pipelines builds of the repository (its definitions stop linking
+  // to an ignored repository, so nothing new is stored).
+  "AzureBuildJob",
+  "AzureBuild",
+  "DailyPipelineStat",
 ] as const;
 
 export type IgnorePurgeResult = {

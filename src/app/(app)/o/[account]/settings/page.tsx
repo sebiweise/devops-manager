@@ -22,6 +22,9 @@ import { getSyncHealth, type SyncHealth } from "@/server/data/insights";
 import { getManagementState } from "@/server/data/management";
 import { getVercelSettings } from "@/server/data/vercel";
 import { VercelSection } from "@/components/hosting/vercel-section";
+import { AzureSection } from "@/components/azure/azure-section";
+import { getAzureSettings } from "@/server/data/azure";
+import { hookUrlPrefix } from "@/server/ingest/azure-reconcile";
 import {
   listIgnoredRepositories,
   type IgnoredRepository,
@@ -42,6 +45,7 @@ const DELIVERY_STATUSES = [
 const SECTIONS = [
   "management",
   "hosting",
+  "azure",
   "repositories",
   "sync",
   "diagnostics",
@@ -63,8 +67,8 @@ export default async function InstallationSettingsPage({
   const { account } = await params;
   const { scope, installation } = await loadAccount(account);
   if (!hasRole(scope.role, "ADMIN")) notFound();
-  const [t, format, locale, health, state, ignored, vercel] = await Promise.all(
-    [
+  const [t, format, locale, health, state, ignored, vercel, azure] =
+    await Promise.all([
       getTranslations(),
       getFormatter(),
       getLocale(),
@@ -72,8 +76,8 @@ export default async function InstallationSettingsPage({
       orNotFound(getManagementState(scope, installation.id)),
       orNotFound(listIgnoredRepositories(scope, installation.id)),
       orNotFound(getVercelSettings(scope, installation.id)),
-    ],
-  );
+      orNotFound(getAzureSettings(scope, installation.id, hookUrlPrefix())),
+    ]);
   const login = installation.accountLogin;
   const installationId = String(installation.id);
   const when = (iso: string | null) =>
@@ -297,6 +301,13 @@ export default async function InstallationSettingsPage({
         globalEnabled={state.globalEnabled}
       />
 
+      <AzureSection
+        installationId={installationId}
+        settings={azure}
+        globalEnabled={state.globalEnabled}
+        azureGlobal={env.AZURE_MANAGEMENT_ENABLED}
+      />
+
       <section aria-labelledby="repositories" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 id="repositories" className={h2}>
@@ -359,6 +370,50 @@ export default async function InstallationSettingsPage({
               <span className="text-muted-foreground">
                 {" "}
                 · {vercel.connection.lastError}
+              </span>
+            ) : null}
+          </p>
+        ) : null}
+        {azure.connection ? (
+          <p className="text-sm">
+            <span className="text-muted-foreground">
+              {t("ci.azure.settings.syncRow")}:{" "}
+            </span>
+            {t(
+              `ci.azure.settings.status.${azure.connection.lastSyncStatus ?? "never"}`,
+            )}
+            {azure.connection.lastSyncedAt ? (
+              <> · {when(azure.connection.lastSyncedAt)}</>
+            ) : null}
+            {azure.rateLimit ? (
+              <span className="text-muted-foreground">
+                {" "}
+                ·{" "}
+                {t("ci.azure.settings.rateLimitValue", {
+                  remaining: azure.rateLimit.remaining,
+                  limit: azure.rateLimit.limit,
+                })}
+              </span>
+            ) : null}
+            <span className="text-muted-foreground">
+              {" "}
+              ·{" "}
+              {t("ci.azure.settings.backfillRow", {
+                done: azure.projects.filter((p) => p.selected && p.backfillDone)
+                  .length,
+                total: azure.projects.filter((p) => p.selected).length,
+              })}
+              {" · "}
+              {azure.connection.hook.subscriptions.length > 0
+                ? t("ci.azure.settings.hookRow", {
+                    count: azure.connection.hook.subscriptions.length,
+                  })
+                : t("ci.azure.settings.noHookRow")}
+            </span>
+            {azure.connection.lastError ? (
+              <span className="text-muted-foreground">
+                {" "}
+                · {azure.connection.lastError}
               </span>
             ) : null}
           </p>

@@ -1458,7 +1458,9 @@ export async function listNeedsAttention(
         projectName: str("projectName"),
         externalUrl:
           r.externalUrl &&
-          /^https:\/\/(vercel\.com|github\.com)\//.test(r.externalUrl)
+          /^https:\/\/(vercel\.com|github\.com|dev\.azure\.com)\//.test(
+            r.externalUrl,
+          )
             ? r.externalUrl
             : null,
         since: r.firstSeenAt.toISOString(),
