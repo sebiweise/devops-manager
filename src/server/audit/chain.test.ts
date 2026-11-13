@@ -222,4 +222,50 @@ describe("audit hash chain", () => {
     expect(a).toBe(b);
     expect(auditHash({ a: "1" }, "p")).toBe(auditHash({ a: 1n }, "p"));
   });
+
+  it("hashes an existing GitHub action row byte for byte as before M6", () => {
+    // Pinned before the pipeline was generalised for Vercel (design
+    // addendum §8.1 regression gate): a GitHub run re-run row must hash to
+    // exactly these values.
+    const row = {
+      id: "0b6f7a52-8f61-4c3e-9a1d-2f3c4b5a6d7e",
+      installationId: 1001n,
+      actorUserId: "user-operator",
+      actorDisplay: "operator",
+      actorRole: "OPERATOR",
+      actorProvider: "oidc",
+      actingAs: "app:example-devops-manager[bot]",
+      action: "RUN_RERUN",
+      repositoryId: 11n,
+      repoFullName: "example-user/repo-a",
+      targetType: "run",
+      targetId: "9001",
+      batchId: null,
+      params: {
+        workflowName: "CI",
+        runNumber: 7,
+        runAttempt: 1,
+        enableDebugLogging: false,
+      },
+      confirmation: "DIALOG",
+      idempotencyKey: "3e1d2c4b-5a6f-4e7d-8c9b-0a1f2e3d4c5b",
+      createdAt: new Date(Date.UTC(2026, 10, 13, 8, 0, 0)),
+    };
+    const hash = auditHash(immutableFields(row as ChainRow), GENESIS_HASH);
+    expect(hash).toBe(
+      "42ece74253cfa3c2ad31b42eadae246da67e96ce53b49576659a8859b94db633",
+    );
+    expect(
+      resultHash(
+        {
+          status: "SUCCEEDED",
+          httpStatus: 201,
+          githubRequestId: "ABCD:1234",
+          error: null,
+          completedAt: new Date(Date.UTC(2026, 10, 13, 8, 0, 1)),
+        },
+        hash,
+      ),
+    ).toBe("9eb6bd12cac032d6d03abed44a0d868edc7e889136c52b01559908206f02301b");
+  });
 });
