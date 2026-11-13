@@ -6,6 +6,7 @@ import {
   MAX_BODY_BYTES,
   readBodyCapped,
   redactError,
+  scrubKnown,
   type DeliveryOutcome,
   type DeliveryRow,
   type TenantCheck,
@@ -360,6 +361,23 @@ describe("redactError", () => {
     expect(out).not.toContain("ghs_0123456789abcdef");
     expect(out).not.toContain("abc.def");
     expect(out.length).toBeLessThanOrEqual(500);
+  });
+});
+
+describe("redactError for Vercel tokens", () => {
+  it("removes vcp_ tokens and Bearer values", () => {
+    const out = redactError(
+      "GET /v2/user failed for vcp_0123456789abcdefABCDEF with Bearer abcdef0123456789",
+    );
+    expect(out).not.toContain("vcp_0123456789abcdefABCDEF");
+    expect(out).not.toContain("abcdef0123456789");
+  });
+
+  it("scrubKnown removes an exact token without a known prefix", () => {
+    const token = "Zk3q9PlainLegacyToken24c";
+    const out = scrubKnown(`request with ${token} failed`, [token, null]);
+    expect(out).toBe("request with [redacted] failed");
+    expect(scrubKnown("nothing to hide", [undefined])).toBe("nothing to hide");
   });
 });
 
