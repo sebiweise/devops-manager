@@ -219,6 +219,12 @@ export type GateSpec = {
    */
   provider?: "github" | "vercel" | "azure";
   /**
+   * Azure only: the action turns the connection's own toggle on, so the
+   * gate stops after the env switch, the connection, revoked, paused and
+   * headroom checks (the toggle and the execute scope are what it sets).
+   */
+  azureToggle?: boolean;
+  /**
    * Who performs the action when it is not the App (e.g.
    * "vercel:token:<hint>"); used by `record()` when the row gives none.
    */
@@ -415,7 +421,8 @@ const AZURE_MIN_HEADROOM = 0.1;
  * MANAGEMENT_ENABLED and AZURE_MANAGEMENT_ENABLED (env, default off), the
  * installation toggle, a connection, not revoked, not paused and at least
  * 10 % of the rate budget (TSTU) left, the connection's own toggle, and the
- * execute scope (probed when the toggle was turned on).
+ * execute scope (probed when the toggle was turned on). Turning the toggle
+ * on (`azureToggle`) stops before the last two.
  */
 async function azureGate(
   inst: ActionInstallation,
@@ -453,6 +460,7 @@ async function azureGate(
     rate.remaining < rate.limit * AZURE_MIN_HEADROOM
   )
     return "azure_rate_limited";
+  if (spec.azureToggle) return null;
   if (!conn.managementEnabled) return "azure_management_disabled";
   const scopes = (conn.scopes ?? {}) as Record<string, unknown>;
   if (scopes.execute !== "ok") return "azure_scope_missing";

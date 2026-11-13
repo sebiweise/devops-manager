@@ -386,9 +386,12 @@ export async function performAzureBuildAction(
 
 /**
  * ADO_MANAGEMENT_TOGGLE: admin, TYPED organisation name, works while the
- * installation's management is off. Turning it on first runs the execute
- * probe (previewRun on one linked definition: expands the YAML, starts
- * nothing); if it fails the toggle stays off and the scope shows missing.
+ * installation's management is off. Turning it on needs
+ * AZURE_MANAGEMENT_ENABLED and a connection that is neither revoked nor
+ * paused and has rate headroom (else `unavailable` with a DENIED row); it
+ * then runs the execute probe (previewRun on one linked definition: expands
+ * the YAML, starts nothing); if it fails the toggle stays off and the scope
+ * shows missing.
  */
 export async function setAzureManagementEnabled(
   actor: ActionActor,
@@ -410,6 +413,12 @@ export async function setAzureManagementEnabled(
       target: { type: "azure_org", id: String(input.installationId) },
       confirmation: "TYPED",
       requiresManagement: false,
+      // Turning it on calls Azure DevOps (the probe): the env switch, a
+      // revoked or paused connection and the rate headroom answer first.
+      // Turning it off never calls out and always works.
+      ...(input.enabled
+        ? { provider: "azure" as const, azureToggle: true }
+        : {}),
     },
     deps,
   );
