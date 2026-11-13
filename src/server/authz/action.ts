@@ -19,14 +19,11 @@ import {
 } from "@/server/github/purposes";
 import type { GitHubApi, GitHubClients } from "@/server/ingest/github-client";
 import { githubClients } from "@/server/ingest/triggers";
-import {
-  markVercelRevoked,
-  vercelCredentialFor,
-} from "@/server/ingest/vercel-credential";
+import { vercelCredentialFor } from "@/server/ingest/vercel-credential";
+import { noteVercelFailure } from "@/server/ingest/vercel-reconcile";
 import { redactError, scrubKnown } from "@/server/ingest/webhook";
 import {
   createVercelClient,
-  VercelError,
   type Fetch,
   type VercelReadApi,
 } from "@/server/vercel/client";
@@ -689,7 +686,10 @@ export class ActionSession {
    * Step 8 and 9 for Vercel: decrypt the token, call Vercel, record the
    * result with Vercel's status, message and `x-vercel-id`, scrubbed of
    * the token. A rejected token (401, or 403 naming the token) also marks
-   * the connection revoked, so the sync stops calling.
+   * the connection revoked (plus its finding), so the sync stops calling.
+   * A 429 here does not pause the sync: write limits (deployments per day,
+   * for example) are per action and can last hours, while the reads have
+   * their own limits.
    */
   async executeVercel<T>(
     auditId: string,
@@ -707,13 +707,13 @@ export class ActionSession {
         try {
           return await fn(api);
         } catch (error) {
-          if (error instanceof VercelError && error.revoked)
-            await markVercelRevoked(
-              this.installation.id,
-              `${error.status ?? ""} ${error.message}`.trim(),
-              this.deps.now(),
-              api.token,
-            );
+          await noteVercelFailure(
+            this.installation.id,
+            error,
+            this.deps.now(),
+            api.token,
+            { pause: false },
+          );
           throw error;
         }
       },

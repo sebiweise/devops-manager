@@ -1,4 +1,5 @@
 import "server-only";
+import { describeError } from "@/lib/describe-error";
 import {
   beginAction,
   defaultActionDeps,
@@ -20,12 +21,11 @@ import {
   setVercelManagement,
   type DeploymentActionTarget,
 } from "@/server/data/vercel";
+import { vercelCredentialFor } from "@/server/ingest/vercel-credential";
 import {
-  markVercelRevoked,
-  vercelCredentialFor,
-} from "@/server/ingest/vercel-credential";
-import {
+  applyAliasActionLocally,
   applyProjectAliasRead,
+  noteVercelFailure,
   upsertDeployments,
 } from "@/server/ingest/vercel-reconcile";
 import { scrubKnown } from "@/server/ingest/webhook";
@@ -56,7 +56,10 @@ import { buildLogExcerpt, type LogExcerpt } from "@/server/vercel/log-excerpt";
  * flags only; the audit row records Vercel's status, message and
  * `x-vercel-id`; the acting identity is the token (`vercel:token:<hint>`).
  * After the call the deployment or project is re-read from Vercel and
- * stored; nothing is guessed locally. A redeploy carries the audit id in
+ * stored; nothing is guessed locally. The re-read is separate from the call:
+ * when it fails after Vercel accepted the call, the row still records the
+ * call's own result (a promote or rollback then records the request on the
+ * project and leaves the serving deployment to the next read). A redeploy carries the audit id in
  * `meta.devopsManagerAudit`, so a deployment created by a request whose
  * outcome is unknown is linked to it later (reconcile v7).
  *
@@ -310,19 +313,40 @@ async function run(
         input.operation === "promote"
           ? await api.write.promote(t.projectId, t.id)
           : await api.write.rollback(t.projectId, t.id);
-      const project = await readProjectAfterAlias(api.read, t.projectId, sleep);
-      await applyProjectAliasRead(
-        installationId,
-        project,
-        input.operation,
-        deps.now(),
-      );
+      // Vercel accepted the call: a failing re-read must not turn the row
+      // into FAILED (or outcome unknown) while production did switch.
+      const project = await readProjectAfterAlias(
+        api.read,
+        t.projectId,
+        sleep,
+      ).catch((error: unknown) => {
+        console.warn(
+          "Vercel project re-read after the alias request failed",
+          describeError(error),
+        );
+        return null;
+      });
+      if (project)
+        await applyProjectAliasRead(
+          installationId,
+          project,
+          input.operation,
+          deps.now(),
+        );
+      else
+        await applyAliasActionLocally(
+          installationId,
+          t.projectId,
+          input.operation,
+          t.id,
+          deps.now(),
+        );
       return {
         data: {
           deploymentId: t.id,
           state: "READY",
-          liveDeploymentId: project.liveProductionId,
-          aliasStatus: project.aliasRequest?.status ?? null,
+          liveDeploymentId: project?.liveProductionId ?? null,
+          aliasStatus: project?.aliasRequest?.status ?? null,
         },
         httpStatus: res.status,
         requestId: res.requestId,
@@ -430,13 +454,14 @@ export async function getBuildLogExcerpt(
       vercelUrl: vercelDeploymentUrl(t.teamSlug, t.projectName, t.id),
     };
   } catch (error) {
-    if (error instanceof VercelError && error.revoked)
-      await markVercelRevoked(
-        input.installationId,
-        `${error.status ?? ""} ${error.message}`.trim(),
-        deps.now(),
-        cred.token,
-      );
+    // A rejected token revokes the connection, a 429 pauses the sync (this
+    // is a read like the sync's own).
+    await noteVercelFailure(
+      input.installationId,
+      error,
+      deps.now(),
+      cred.token,
+    );
     return {
       status: "failed",
       httpStatus: error instanceof VercelError ? error.status : null,

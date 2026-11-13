@@ -761,6 +761,79 @@ describe.skipIf(!DATABASE_URL)("vercel actions (M6)", () => {
       expect(await step.linkProbableRedeploys(A, new Date())).toBe(0);
     });
 
+    it("keeps an accepted rollback or promote when the project re-read fails", async () => {
+      // Vercel accepts the rollback, then the project GET answers 503.
+      vc.failNext("/v9/projects/prj_testA1", 503, {
+        error: { code: "internal_error", message: "try again" },
+      });
+      const rb = await act("OPERATOR", "dpl_testA_p1", "rollback", {
+        typed: "project-a",
+      });
+      expect(rb).toMatchObject({
+        status: "succeeded",
+        data: { deploymentId: "dpl_testA_p1", liveDeploymentId: null },
+      });
+      expect(vc.projects[0]!.liveProductionId).toBe("dpl_testA_p1");
+      const project = await db.vercelProject.findUniqueOrThrow({
+        where: { id: "prj_testA1" },
+      });
+      expect(project).toMatchObject({
+        aliasRequestType: "rollback",
+        aliasToDeploymentId: "dpl_testA_p1",
+      });
+      expect(project.autoAssignPausedAt).not.toBeNull();
+      expect(project.dirtyAt).not.toBeNull();
+      expect(
+        (await data.listNeedsAttention(actor("VIEWER").scope, A)).map(
+          (i) => i.kind,
+        ),
+      ).toContain("auto_assign_paused");
+      // The next pass reads the project and keeps the pause.
+      expect((await sync()).status).toBe("ok");
+      expect(
+        (
+          await db.vercelProject.findUniqueOrThrow({
+            where: { id: "prj_testA1" },
+          })
+        ).liveProdDeploymentId,
+      ).toBe("dpl_testA_p1");
+
+      // A promote whose re-read hits a 429 still ends the pause.
+      vc.failNext(
+        "/v9/projects/prj_testA1",
+        429,
+        { error: { code: "rate_limited", message: "slow down" } },
+        { "retry-after": "60" },
+      );
+      const pr = await act("OPERATOR", "dpl_testA_p2", "promote", {
+        typed: "project-a",
+      });
+      expect(pr).toMatchObject({ status: "succeeded" });
+      const after = await db.vercelProject.findUniqueOrThrow({
+        where: { id: "prj_testA1" },
+      });
+      expect(after.autoAssignPausedAt).toBeNull();
+      expect(after.aliasRequestType).toBe("promote");
+      const rows = await db.auditLog.findMany({
+        where: {
+          installationId: A,
+          action: { in: ["VERCEL_ROLLBACK", "VERCEL_PROMOTE"] },
+        },
+        orderBy: { seq: "asc" },
+      });
+      expect(
+        rows.map((r) => [
+          r.action,
+          r.status,
+          r.httpStatus,
+          !!r.githubRequestId,
+        ]),
+      ).toEqual([
+        ["VERCEL_ROLLBACK", "SUCCEEDED", 201, true],
+        ["VERCEL_PROMOTE", "SUCCEEDED", 202, true],
+      ]);
+    });
+
     it("marks the connection revoked when Vercel rejects the token during an action", async () => {
       vc.tokens.get(TOKEN_A)!.revoked = true;
       const res = await act("OPERATOR", "dpl_testA_v1", "redeploy");
@@ -778,6 +851,50 @@ describe.skipIf(!DATABASE_URL)("vercel actions (M6)", () => {
   });
 
   describe("build log excerpt", () => {
+    it("revokes on a rejected token and pauses the sync on a 429", async () => {
+      vc.failNext("/v3/deployments/dpl_testA_p3/events", 429, {
+        error: {
+          code: "rate_limited",
+          message: "slow down",
+          limit: { resetMs: Date.now() + 120_000 },
+        },
+      });
+      const limited = await actions.getBuildLogExcerpt(
+        actor("OPERATOR"),
+        { installationId: A, deploymentId: "dpl_testA_p3" },
+        base(),
+      );
+      expect(limited).toMatchObject({ status: "failed", httpStatus: 429 });
+      const paused = await db.vercelConnection.findUniqueOrThrow({
+        where: { installationId: A },
+      });
+      expect(paused.pausedUntil!.getTime()).toBeGreaterThan(
+        Date.now() + 60_000,
+      );
+      expect(paused.revokedAt).toBeNull();
+
+      vc.tokens.get(TOKEN_A)!.revoked = true;
+      const rejected = await actions.getBuildLogExcerpt(
+        actor("OPERATOR"),
+        { installationId: A, deploymentId: "dpl_testA_p3" },
+        base(),
+      );
+      expect(rejected).toMatchObject({ status: "failed", httpStatus: 401 });
+      expect(json(rejected)).not.toContain(TOKEN_A);
+      expect(
+        (
+          await db.vercelConnection.findUniqueOrThrow({
+            where: { installationId: A },
+          })
+        ).revokedAt,
+      ).not.toBeNull();
+      expect(
+        (await data.listNeedsAttention(actor("VIEWER").scope, A)).map(
+          (i) => i.kind,
+        ),
+      ).toContain("credential_revoked");
+    });
+
     it("is fetched live for operators, scrubbed, capped and never stored", async () => {
       vc.logs.set("dpl_testA_p3", [
         {
