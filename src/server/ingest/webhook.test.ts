@@ -367,9 +367,9 @@ describe("redactError", () => {
 describe("redactError for Vercel tokens", () => {
   it("removes vcp_ tokens and Bearer values", () => {
     const out = redactError(
-      "GET /v2/user failed for vcp_0123456789abcdefABCDEF with Bearer abcdef0123456789",
+      "GET /v2/user failed for vcp_test0123456789abcdefAB with Bearer abcdef0123456789",
     );
-    expect(out).not.toContain("vcp_0123456789abcdefABCDEF");
+    expect(out).not.toContain("vcp_test0123456789abcdefAB");
     expect(out).not.toContain("abcdef0123456789");
   });
 

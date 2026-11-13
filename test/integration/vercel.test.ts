@@ -47,9 +47,9 @@ import { ENV_SECRET_VALUE, FakeVercel } from "./support/vercel";
 vi.mock("next/cache", () => ({ revalidateTag: () => undefined }));
 
 const PREVIOUS_KEY = Buffer.alloc(32, 9).toString("base64");
-const TOKEN_A = "vcp_teamscopedtokenaaaaaaaaaaaaaa1111";
-const TOKEN_FULL = "vcp_fullaccounttokenbbbbbbbbbbbbbb2222";
-const TOKEN_B = "vcp_otherteamtokencccccccccccccccc3333";
+const TOKEN_A = "vcp_testteamscopedaaaaaaaaaaaaaa1111";
+const TOKEN_FULL = "vcp_testfullaccountbbbbbbbbbbbbbb2222";
+const TOKEN_B = "vcp_testotherteamcccccccccccccccc3333";
 const TEAM_A = "team_testAAAAAAAAAAAA";
 const TEAM_B = "team_testBBBBBBBBBBBB";
 const DAY = 86_400_000;
@@ -365,7 +365,7 @@ describe.skipIf(!DATABASE_URL)("vercel (M5)", () => {
     it("rejects wrong, revoked and ambiguous full-account tokens with a clear reason", async () => {
       const wrong = await connectA(
         "ADMIN",
-        "vcp_unknowntokenzzzzzzzzzzzzzzzzzz9999",
+        "vcp_testunknownzzzzzzzzzzzzzzzzzz9999",
       );
       expect(wrong).toMatchObject({
         status: "failed",
@@ -459,14 +459,14 @@ describe.skipIf(!DATABASE_URL)("vercel (M5)", () => {
         where: { installationId: A },
         data: { revokedAt: new Date(), lastSyncStatus: "credential_error" },
       });
-      vc.tokens.set("vcp_rotatedtokendddddddddddddddd4444", {
+      vc.tokens.set("vcp_testrotateddddddddddddddddd4444", {
         teams: [TEAM_A],
       });
       const ok = await mgmt.rotateVercelToken(
         actor("ADMIN"),
         {
           installationId: A,
-          token: "vcp_rotatedtokendddddddddddddddd4444",
+          token: "vcp_testrotateddddddddddddddddd4444",
           confirmed: true,
           idempotencyKey: randomUUID(),
         },
