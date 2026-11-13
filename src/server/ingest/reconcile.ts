@@ -299,7 +299,8 @@ async function reconcileInstallation(
       }
       for (const repo of ordered) {
         try {
-          if (await backfill(ctx, repo)) result.backfillDone++;
+          await backfill(ctx, repo);
+          result.backfillDone++;
         } catch (error) {
           if (error instanceof DeadlineReached || error instanceof RateLimited)
             throw error;

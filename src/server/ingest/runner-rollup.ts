@@ -19,6 +19,7 @@ import {
 } from "@/server/metrics/runners";
 import type { Conclusion } from "@/server/metrics/stats";
 import type { Deadline } from "./budget";
+import { compareCodeUnits } from "@/lib/compare";
 
 /**
  * DailyRunnerStat (design §5.5, §6.5): one row per (installation, runnerKey,
@@ -226,7 +227,7 @@ export async function rollupRunnerDays(
   opts: RunnerDayOptions = {},
 ): Promise<number> {
   let done = 0;
-  for (const day of [...new Set(days)].sort()) {
+  for (const day of [...new Set(days)].sort(compareCodeUnits)) {
     if (deadline.expired(5_000)) break;
     await rollupRunnerDay(installationId, day, timezone, opts);
     done++;

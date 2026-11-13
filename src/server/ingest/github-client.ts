@@ -135,7 +135,7 @@ export function nextLink(
   const link = headers.link;
   if (typeof link !== "string") return null;
   for (const part of link.split(",")) {
-    const m = part.match(/<([^>]+)>\s*;\s*rel="next"/);
+    const m = part.match(/<([^<>]+)>\s*;\s*rel="next"/);
     if (m) return m[1]!;
   }
   return null;

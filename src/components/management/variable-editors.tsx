@@ -22,6 +22,7 @@ import {
   ResultMessage,
   type DialogControls,
 } from "./action-dialog";
+import { compareCodeUnits } from "@/lib/compare";
 
 /**
  * Repository variables (design §7 /variables, §8.2 #5): the matrix of
@@ -485,7 +486,7 @@ export function RepoVariablesList({
   caption: string;
 }) {
   const t = useTranslations("management.variables");
-  const names = Object.keys(repo.variables).sort();
+  const names = Object.keys(repo.variables).sort(compareCodeUnits);
   if (repo.status === "unavailable")
     return <p className="text-sm text-muted-foreground">{t("unavailable")}</p>;
   return (

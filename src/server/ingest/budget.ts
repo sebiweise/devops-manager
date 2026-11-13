@@ -71,7 +71,7 @@ export class RateLimited extends Error {
 type Headers = Record<string, string | number | undefined>;
 
 const num = (v: string | number | undefined) =>
-  v === undefined || v === "" ? NaN : Number(v);
+  v === undefined || v === "" ? Number.NaN : Number(v);
 
 export class RateBudget {
   readonly snapshots = new Map<string, RateSnapshot>();

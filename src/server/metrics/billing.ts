@@ -171,7 +171,7 @@ export function skuKeyOf(billingSku: string): string {
     .toLowerCase()
     .replace(/^actions[\s_-]+/, "")
     .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+    .replace(/^_|_$/g, "");
   const base: Record<string, string> = {
     linux_2_core: "linux",
     windows_2_core: "windows",

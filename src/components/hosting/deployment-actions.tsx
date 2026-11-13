@@ -337,7 +337,8 @@ export function BuildLogExcerpt({
             <p className="text-xs text-muted-foreground">{t("empty")}</p>
           ) : (
             <pre
-              tabIndex={0}
+              // A scrollable region must be reachable by keyboard (WCAG 2.1.1).
+              tabIndex={0} // NOSONAR(typescript:S6845)
               aria-label={t("label")}
               className="max-h-80 overflow-auto rounded-md border bg-muted/40 p-2 font-mono text-xs leading-relaxed whitespace-pre-wrap"
             >

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { compareCodeUnits } from "@/lib/compare";
 
 /**
  * URL state of the paged tables (UI overhaul §1.6, §1.7, §4.5): search
@@ -104,7 +105,7 @@ export function serializeTableQuery<S extends string, F extends string>(
     q: query.q || undefined,
     f:
       query.filters && query.filters.length > 0
-        ? [...query.filters].sort().join(",")
+        ? [...query.filters].sort(compareCodeUnits).join(",")
         : undefined,
     sort:
       sort === spec.defaultSort && dir === defaultDirOf(spec, sort)
@@ -164,7 +165,7 @@ export function toggleFilter<F extends string>(
 ): F[] {
   return filters.includes(filter)
     ? filters.filter((f) => f !== filter)
-    : [...filters, filter].sort();
+    : [...filters, filter].sort(compareCodeUnits);
 }
 
 export type PageWindow = {

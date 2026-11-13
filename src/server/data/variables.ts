@@ -18,6 +18,7 @@ import {
   listRepoTargets,
   variablePresets,
 } from "./management";
+import { compareCodeUnits } from "@/lib/compare";
 
 /**
  * The variables matrix (design §7 /variables): repository variables of every
@@ -162,7 +163,7 @@ export async function listVariableMatrix(
   return {
     status: "ok",
     masked,
-    names: [...names].sort(),
+    names: [...names].sort(compareCodeUnits),
     repos: out,
     org,
     presets,

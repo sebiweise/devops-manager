@@ -27,9 +27,10 @@ RUN pnpm exec prisma generate && pnpm exec next build
 FROM ${NODE_IMAGE} AS migrator
 ARG PRISMA_VERSION
 WORKDIR /opt/prisma
-RUN npm init -y >/dev/null \
-  && npm install --no-audit --no-fund --omit=dev "prisma@${PRISMA_VERSION}" \
-  && npm cache clean --force
+RUN npm init -y >/dev/null
+# The postinstall of @prisma/engines fetches the schema engine that
+# `prisma migrate` needs; the only package installed is the pinned Prisma CLI.
+RUN npm install --no-audit --no-fund --omit=dev "prisma@${PRISMA_VERSION}" && npm cache clean --force # NOSONAR(docker:S6505)
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 

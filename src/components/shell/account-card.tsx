@@ -18,6 +18,7 @@ import { formatNumber, formatPercent, formatPointsDelta } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { AccountSummary } from "@/server/data/summaries";
 import { GettingStarted } from "./getting-started";
+import { compareCodeUnits } from "@/lib/compare";
 
 function Mini({
   label,
@@ -63,7 +64,7 @@ export async function AccountCard({
   const base = accountPath(s.accountLogin);
   const updated = [s.lastWebhookAt, s.lastReconciledAt]
     .filter((v): v is string => !!v)
-    .sort()
+    .sort(compareCodeUnits)
     .pop();
   const noRuns = s.sparkline.every((p) => p.runs === 0) && s.runs7d === 0;
   const spark = s.sparkline.reduce(
