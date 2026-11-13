@@ -591,7 +591,12 @@
       "not_configured": "Connect GitHub is not configured on this instance.",
       "invalid_state": "The connection request expired or was started by someone else. Start again.",
       "github_error": "GitHub could not be reached. Try again later.",
-      "denied": "The authorisation was cancelled on GitHub."
+      "denied": "The authorisation was cancelled on GitHub.",
+      "unauthorized": "Your access has ended. Sign in again.",
+      "management_disabled": "Changes are turned off for this instance (MANAGEMENT_ENABLED).",
+      "rate_limited": "Too many actions. Try again in a minute.",
+      "conflict": "This request was already used. Reload the page and try again.",
+      "replayed": "This request was already submitted; reload the page to see its result."
     }
   },
   "runners": {
@@ -987,7 +992,12 @@
       "github_error": "GitHub could not be reached. Try again later.",
       "login_mismatch": "The GitHub account that authorised the App is not the account of this installation. Nothing was stored.",
       "not_configured": "Connect GitHub is not configured on this instance.",
-      "forbidden": "Only admins can manage billing credentials."
+      "forbidden": "Only admins can manage billing credentials.",
+      "unauthorized": "Your access has ended. Sign in again.",
+      "management_disabled": "Changes are turned off for this instance (MANAGEMENT_ENABLED).",
+      "rate_limited": "Too many actions. Try again in a minute.",
+      "conflict": "This request was already used. Reload the page and try again.",
+      "replayed": "This request was already submitted; reload the page to see its result."
     },
     "hosting": {
       "title": "Hosting",

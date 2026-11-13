@@ -591,7 +591,12 @@
       "not_configured": "Connect GitHub ist auf dieser Instanz nicht konfiguriert.",
       "invalid_state": "Die Verbindungsanfrage ist abgelaufen oder wurde von jemand anderem gestartet. Bitte neu starten.",
       "github_error": "GitHub ist nicht erreichbar. Bitte später erneut versuchen.",
-      "denied": "Die Autorisierung wurde auf GitHub abgebrochen."
+      "denied": "Die Autorisierung wurde auf GitHub abgebrochen.",
+      "unauthorized": "Dein Zugang ist beendet. Melde dich erneut an.",
+      "management_disabled": "Änderungen sind für diese Instanz ausgeschaltet (MANAGEMENT_ENABLED).",
+      "rate_limited": "Zu viele Aktionen. Versuche es in einer Minute erneut.",
+      "conflict": "Diese Anfrage wurde schon verwendet. Lade die Seite neu und versuche es erneut.",
+      "replayed": "Diese Anfrage wurde schon gesendet; lade die Seite neu, um das Ergebnis zu sehen."
     }
   },
   "runners": {
@@ -987,7 +992,12 @@
       "github_error": "GitHub ist nicht erreichbar. Bitte später erneut versuchen.",
       "login_mismatch": "Das GitHub-Konto, das die App autorisiert hat, ist nicht das Konto dieser Installation. Es wurde nichts gespeichert.",
       "not_configured": "Mit GitHub verbinden ist auf dieser Instanz nicht eingerichtet.",
-      "forbidden": "Nur Admins können Abrechnungszugänge verwalten."
+      "forbidden": "Nur Admins können Abrechnungszugänge verwalten.",
+      "unauthorized": "Dein Zugang ist beendet. Melde dich erneut an.",
+      "management_disabled": "Änderungen sind für diese Instanz ausgeschaltet (MANAGEMENT_ENABLED).",
+      "rate_limited": "Zu viele Aktionen. Versuche es in einer Minute erneut.",
+      "conflict": "Diese Anfrage wurde schon verwendet. Lade die Seite neu und versuche es erneut.",
+      "replayed": "Diese Anfrage wurde schon gesendet; lade die Seite neu, um das Ergebnis zu sehen."
     },
     "hosting": {
       "title": "Hosting",

@@ -73,8 +73,15 @@ const scope = (
   role: TenantScope["role"] = "ADMIN",
 ): TenantScope => ({ userId: "user-admin", role, installationIds });
 
+/** App users (roles re-resolved live by the pipeline from these e-mails). */
+const USERS: Record<string, { name: string; email: string }> = {
+  "user-admin": { name: "Admin", email: "admin@example.com" },
+  "user-other": { name: "Other admin", email: "other-admin@example.com" },
+  "user-viewer": { name: "Viewer", email: "viewer@example.com" },
+};
+
 const actor = (s: TenantScope = scope()) => ({
-  user: { id: s.userId, name: "Admin", email: "admin@example.com" },
+  user: { id: s.userId, ...USERS[s.userId]! },
   scope: s,
 });
 
@@ -245,6 +252,8 @@ describe.skipIf(!DATABASE_URL)("billing", () => {
       GITHUB_CONNECT_ENABLED: "true",
       GITHUB_APP_CLIENT_ID: CLIENT_ID,
       GITHUB_APP_CLIENT_SECRET: CLIENT_SECRET,
+      ADMIN_EMAILS: "admin@example.com,other-admin@example.com",
+      VIEWER_EMAILS: "viewer@example.com",
     });
     ({ db } = await import("@/server/db"));
     reconcile = await import("@/server/ingest/reconcile");
@@ -265,6 +274,13 @@ describe.skipIf(!DATABASE_URL)("billing", () => {
 
   beforeEach(async () => {
     await resetTables(db);
+    await db.$executeRawUnsafe(
+      `TRUNCATE "RateLimitBucket", "Session", "Account", "User" CASCADE`,
+    );
+    for (const [id, u] of Object.entries(USERS))
+      await db.user.create({
+        data: { id, name: u.name, email: u.email, emailVerified: true },
+      });
   });
 
   it("syncs org billing with the sync.billing token; totals equal the report's netAmount", async () => {
@@ -878,6 +894,50 @@ describe.skipIf(!DATABASE_URL)("billing", () => {
     expect(await db.gitHubCredential.count()).toBe(0);
   });
 
+  it("runs through the management pipeline: one call per key, kill switch, instance chain", async () => {
+    await seedInstallations(db);
+    const gh = new FakeGitHub();
+    const oauth = new FakeOAuth(gh);
+    oauth.users.set(PAT, { id: 4242, login: "example-user" });
+    const key = "6f1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+    const deps = { fetch: oauth.fetch, now: () => new Date(gh.now) };
+    const input = {
+      installationId: A,
+      token: PAT,
+      confirmation: "example-user",
+      idempotencyKey: key,
+    };
+    expect(await personal.storeBillingToken(actor(), input, deps)).toEqual({
+      status: "saved",
+      login: "example-user",
+    });
+    const calls = oauth.calls.length;
+    // A double submit answers from the audit row and calls GitHub no more.
+    expect(await personal.storeBillingToken(actor(), input, deps)).toEqual({
+      status: "replayed",
+    });
+    expect(oauth.calls).toHaveLength(calls);
+    const rows = await db.auditLog.findMany({
+      where: { idempotencyKey: key },
+    });
+    expect(rows.map((r) => [r.installationId, r.status])).toEqual([
+      [0n, "SUCCEEDED"],
+    ]);
+    // The global kill switch blocks credential changes as well.
+    const { defaultActionDeps } = await import("@/server/authz/action");
+    expect(
+      await personal.revokeBillingCredential(
+        actor(),
+        { installationId: A, confirmation: "example-user" },
+        {
+          ...deps,
+          action: defaultActionDeps({ managementEnabled: false }),
+        },
+      ),
+    ).toEqual({ status: "management_disabled" });
+    expect(await db.gitHubCredential.count()).toBe(1);
+  });
+
   it("an empty usage report after a successful sync is billed at $0, not an estimate", async () => {
     await seedInstallations(db, {
       permissions: { organization_administration: "read" },
@@ -938,11 +998,14 @@ describe.skipIf(!DATABASE_URL)("billing", () => {
     ).rejects.toBeInstanceOf(NotFound);
     // A viewer is denied (and audited), before any GitHub call.
     expect(
-      await personal.storeBillingToken(actor(scope([A, B], "VIEWER")), {
-        installationId: A,
-        token: PAT,
-        confirmation: "example-user",
-      }),
+      await personal.storeBillingToken(
+        actor({ ...scope([A, B], "VIEWER"), userId: "user-viewer" }),
+        {
+          installationId: A,
+          token: PAT,
+          confirmation: "example-user",
+        },
+      ),
     ).toEqual({ status: "forbidden" });
     const denied = await db.auditLog.findMany({ where: { status: "DENIED" } });
     expect(denied.map((d) => d.action)).toEqual(["BILLING_CREDENTIAL_SET"]);

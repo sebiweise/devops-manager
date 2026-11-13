@@ -34,6 +34,11 @@ const CONNECT_STATUSES = [
   "login_mismatch",
   "not_configured",
   "forbidden",
+  "unauthorized",
+  "management_disabled",
+  "rate_limited",
+  "conflict",
+  "replayed",
 ] as const;
 type ConnectStatus = (typeof CONNECT_STATUSES)[number];
 
