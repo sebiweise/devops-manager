@@ -22,10 +22,14 @@ function largest(types: UpdateType[]): UpdateType | null {
 export function updateTypeFromCommit(message: string): UpdateType | null {
   const types: UpdateType[] = [];
   let unknown = false;
-  for (const m of message.matchAll(
-    /^[^\S\n]*update-type:[^\S\n]*(\S+)[^\S\n]*$/gim,
-  )) {
-    const t = /^version-update:semver-(patch|minor|major)$/i.exec(m[1]!);
+  // Line by line instead of one multiline regex, which backtracks super-linearly:
+  // a line counts when it reads "update-type: <one token>".
+  for (const raw of message.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line.toLowerCase().startsWith("update-type:")) continue;
+    const value = line.slice("update-type:".length).trim();
+    if (value === "" || /\s/.test(value)) continue;
+    const t = /^version-update:semver-(patch|minor|major)$/i.exec(value);
     if (t) types.push(t[1]!.toLowerCase() as UpdateType);
     else unknown = true;
   }
