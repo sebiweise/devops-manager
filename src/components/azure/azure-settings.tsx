@@ -812,7 +812,11 @@ export function HookForm({
             <dt className="text-muted-foreground">{t("username")}</dt>
             <dd className="font-mono text-xs break-all">{data.username}</dd>
             <dt className="text-muted-foreground">{t("password")}</dt>
-            <dd className="font-mono text-xs break-all">{data.password}</dd>
+            {data.password === null ? (
+              <dd className="text-xs">{t("passwordKept")}</dd>
+            ) : (
+              <dd className="font-mono text-xs break-all">{data.password}</dd>
+            )}
           </dl>
           <p className="text-xs text-muted-foreground">
             {data.mode === "auto"

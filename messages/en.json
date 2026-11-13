@@ -2647,6 +2647,7 @@
           "url": "URL",
           "username": "User name",
           "password": "Password",
+          "passwordKept": "Unchanged: the existing password is kept and not shown again. Use “Rotate secret” for a new one.",
           "created": "{count, plural, one {# subscription} other {# subscriptions}} created.",
           "manualSteps": "In Azure DevOps: Project settings → Service hooks → Web Hooks, events “Run state changed” and “Run job state changed”, this URL, Basic authentication with this user name and password, resource details “Minimal”, messages “None”.",
           "op": {

@@ -721,8 +721,11 @@ export async function updateAzureLimits(
 export type HookSetup = {
   url: string;
   username: string;
-  /** Shown once; never stored in plaintext or written to the audit row. */
-  password: string;
+  /**
+   * Shown once, when it is made; never stored in plaintext or written to the
+   * audit row. `null` when an existing secret is kept (rotate for a new one).
+   */
+  password: string | null;
   subscriptions: number;
   mode: "auto" | "manual";
 };
@@ -736,8 +739,9 @@ const HOOK_EVENTS = [
  * ADO_HOOKS_INSTALL: creates the route key and secret (if none yet) and,
  * in "auto" mode, our service hook subscriptions for every selected project
  * (needs Service Hooks: Read & write; replaces the ones we made before). In
- * "manual" mode only the credentials are made, for a guided setup. The
- * secret is returned once.
+ * "manual" mode only the credentials are made, for a guided setup. A new
+ * secret is returned once; an existing one is kept and not shown again
+ * (`password: null`), and the previous-secret window of a rotation stays.
  */
 export async function installAzureHooks(
   actor: ActionActor,
@@ -772,28 +776,32 @@ export async function installAzureHooks(
   });
   if (!row.created)
     return { status: "pending", auditId: row.id, replayed: true };
-  const creds =
-    c.hookKey && c.hookSecret
-      ? {
-          hookKey: c.hookKey,
-          secret: decryptAzureSecret(
-            input.installationId,
-            "hookSecret",
-            c.hookSecret,
-          ),
-        }
-      : newHookCredentials();
+  // An existing secret is kept and never shown again; only rotate (or
+  // disconnect) changes it or the previous-secret window.
+  const existing = Boolean(c.hookKey && c.hookSecret);
+  const creds = existing
+    ? {
+        hookKey: c.hookKey as string,
+        secret: decryptAzureSecret(
+          input.installationId,
+          "hookSecret",
+          c.hookSecret as string,
+        ),
+      }
+    : newHookCredentials();
+  const shown = existing ? null : creds.secret;
   const url = `${hookUrlPrefix()}${creds.hookKey}`;
-  await setAzureHookCredentials(actor.scope, input.installationId, {
-    hookKey: creds.hookKey,
-    hookSecret: encryptAzureSecret(
-      input.installationId,
-      "hookSecret",
-      creds.secret,
-    ),
-    hookSecretPrev: null,
-    hookSecretPrevUntil: null,
-  });
+  if (!existing)
+    await setAzureHookCredentials(actor.scope, input.installationId, {
+      hookKey: creds.hookKey,
+      hookSecret: encryptAzureSecret(
+        input.installationId,
+        "hookSecret",
+        creds.secret,
+      ),
+      hookSecretPrev: null,
+      hookSecretPrevUntil: null,
+    });
   if (input.mode === "manual") {
     await session.finish(row.id, { status: "SUCCEEDED" });
     session.revalidate();
@@ -804,7 +812,7 @@ export async function installAzureHooks(
       data: {
         url,
         username: creds.hookKey,
-        password: creds.secret,
+        password: shown,
         subscriptions: 0,
         mode: "manual",
       },
@@ -873,7 +881,7 @@ export async function installAzureHooks(
         data: {
           url,
           username: creds.hookKey,
-          password: creds.secret,
+          password: shown,
           subscriptions: made.length,
           mode: "auto" as const,
         },

@@ -2647,6 +2647,7 @@
           "url": "URL",
           "username": "Benutzername",
           "password": "Passwort",
+          "passwordKept": "Unverändert: Das bestehende Passwort bleibt und wird nicht erneut angezeigt. Für ein neues „Secret erneuern“ verwenden.",
           "created": "{count, plural, one {# Abo} other {# Abos}} angelegt.",
           "manualSteps": "In Azure DevOps: Projekteinstellungen → Service Hooks → Web Hooks, Events „Run state changed“ und „Run job state changed“, diese URL, Basic-Authentifizierung mit diesem Benutzernamen und Passwort, Ressourcendetails „Minimal“, Nachrichten „None“.",
           "op": {
