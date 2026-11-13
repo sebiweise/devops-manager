@@ -7,6 +7,7 @@ import {
   createAzureTransport,
   normalizeOrg,
   rateInfoOf,
+  safeAzureMessage,
   stopUntil,
   type Fetch,
 } from "./client";
@@ -159,6 +160,39 @@ describe("rate limits", () => {
     await t.request(req);
     await t.request(req);
     await expect(t.request(req)).rejects.toMatchObject({ code: "request_cap" });
+  });
+});
+
+describe("error texts", () => {
+  it("keeps only the status, the TF/VS key and the type key of an error body", async () => {
+    const api = createAzureClient({
+      org: "contoso-ci",
+      auth: { kind: "basic", pat: PAT },
+      fetch: fake(() =>
+        json(
+          {
+            message:
+              "TF400813: The user 'someone@example.com' is not authorized. Access denied. Example Person needs Queue builds permissions.",
+            typeKey: "AccessCheckException",
+          },
+          403,
+        ),
+      ).fetch,
+    });
+    const err = (await api.listPools().catch((e: unknown) => e)) as AzureError;
+    expect(err.code).toBe("forbidden");
+    expect(err.message).toBe("TF400813 AccessCheckException HTTP 403");
+    expect(err.message).not.toContain("example.com");
+    expect(err.message).not.toContain("Example Person");
+    expect(safeAzureMessage(400, "Access denied. Example Person needs x")).toBe(
+      "HTTP 400",
+    );
+    expect(safeAzureMessage(404, "VS800075: The project does not exist")).toBe(
+      "VS800075 HTTP 404",
+    );
+    expect(safeAzureMessage(500, null, "Bad type key with spaces")).toBe(
+      "HTTP 500",
+    );
   });
 });
 

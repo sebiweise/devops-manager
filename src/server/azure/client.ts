@@ -641,6 +641,32 @@ export type AzureTransport = {
   readonly stoppedUntil: Date | null;
 };
 
+/**
+ * The stored form of an Azure DevOps error body: its free text often names
+ * the identity ("<display name> needs … permissions", "The user '<upn>' is
+ * not authorized"), so only the HTTP status, the leading TFxxxxx/VSxxxxx key
+ * and the exception type key are kept.
+ */
+export function safeAzureMessage(
+  status: number,
+  message: unknown,
+  typeKey?: unknown,
+): string {
+  const parts: string[] = [];
+  const key =
+    typeof message === "string"
+      ? /^\s*((?:TF|VS)\d{5,6})\b/.exec(message)
+      : null;
+  if (key) parts.push(key[1]!);
+  if (
+    typeof typeKey === "string" &&
+    /^[A-Za-z][A-Za-z0-9]{0,79}$/.test(typeKey)
+  )
+    parts.push(typeKey);
+  parts.push(`HTTP ${status}`);
+  return parts.join(" ");
+}
+
 export function createAzureTransport(opts: AzureClientOptions): AzureTransport {
   const doFetch: Fetch = opts.fetch ?? ((input, init) => fetch(input, init));
   const now = opts.now ?? Date.now;
@@ -759,11 +785,16 @@ export function createAzureTransport(opts: AzureClientOptions): AzureTransport {
     } catch {
       body = null;
     }
-    const message = (() => {
-      const m = (body as { message?: unknown } | null)?.message;
-      return typeof m === "string" ? m.slice(0, 300) : `HTTP ${res.status}`;
-    })();
-    if (res.status === 429 || /TF400733/.test(message)) {
+    const rawMessage = (body as { message?: unknown } | null)?.message;
+    const message = safeAzureMessage(
+      res.status,
+      rawMessage,
+      (body as { typeKey?: unknown } | null)?.typeKey,
+    );
+    if (
+      res.status === 429 ||
+      (typeof rawMessage === "string" && /TF400733/.test(rawMessage))
+    ) {
       const retryAt =
         stop ?? new Date(now() + Math.max(60, rate.retryAfterS ?? 60) * 1000);
       stoppedUntil = retryAt;
