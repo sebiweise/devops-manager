@@ -1,11 +1,13 @@
-# Vercel (hosting, M5: read-only)
+# Vercel (hosting: M5 read-only, M6 actions)
 
 DevOps Manager can show the projects and deployments of one Vercel team per
 GitHub installation (account or organisation): a Deployments page, a
 Projects page, a Deployments card on the repository page, preview badges on
 pull requests and runs, a Hosting card with "Needs attention" on the
-overview and the dashboard. M5 is **read-only**: the app sends GET requests
-only (a unit test checks it) and changes nothing at Vercel.
+overview and the dashboard. Reading is GET only (the read client cannot
+send anything else; a unit test checks it). From M6, operators can
+redeploy, cancel, promote and roll back deployments once an admin turned on
+**Vercel actions** (see "Actions"); nothing else is ever changed at Vercel.
 
 ## Connecting
 
@@ -59,20 +61,57 @@ A rejected token (401, or 403 with `invalidToken`/`missingToken`) stops the
 sync, shows a banner and a "Needs attention" item, and makes no further calls
 until the token is rotated. A 429 pauses the sync until its retry time.
 
+## Actions (M6)
+
+| Action         | Role     | Confirmation                                         | Rule                                                              |
+| -------------- | -------- | ---------------------------------------------------- | ----------------------------------------------------------------- |
+| Redeploy       | operator | dialog (preview), type the project name (production) | finished deployments; optional "use the latest commit"            |
+| Cancel         | operator | dialog                                               | queued or building deployments                                    |
+| Promote        | operator | type the project name                                | ready production deployments; no new build                        |
+| Roll back      | operator | type the project name                                | candidates only; on Hobby only the previous production deployment |
+| Vercel actions | admin    | type the team slug                                   | the switch itself; off by default                                 |
+
+- **Three switches**: `MANAGEMENT_ENABLED`, the account's management switch
+  and **Vercel actions** in **Settings & sync → Hosting · Vercel**. With any
+  of them off, or a rejected token, an action answers "unavailable" and the
+  attempt is recorded as DENIED; viewers get "forbidden", also recorded.
+- **Audit**: every action is one entry in the installation's hash-chained
+  audit log, performed as `vercel:token:<last 4>` (or `vercel:env-token`),
+  with Vercel's status, message and `x-vercel-id`. Parameters are ids and
+  flags only. A double submit (same dialog) sends one request.
+- **Re-read**: after each call the deployment (or the project) is read from
+  Vercel again and stored; the page shows what Vercel reported.
+- **Auto-assign paused (rollback)**: after a rollback Vercel stops assigning
+  the production domains to new deployments. The repository card, the
+  project row and "Needs attention" show a banner with **Promote** for the
+  newest ready production deployment; promoting turns auto-assignment on
+  again.
+- **Unknown outcomes**: a redeploy carries its audit entry's id in
+  `meta.devopsManagerAudit`. If the request fails after it was sent, the
+  entry is "outcome unknown"; the next sync links the deployment it created
+  to the entry (exact through `meta`, or "probably" by project, creator
+  kind and a 2-minute window). The entry itself is never changed.
+- **Build log excerpt**: operators and admins can show the newest 200 lines
+  of a deployment's build output in the expanded row. It is read live from
+  Vercel, the token and token patterns are removed, it is capped at 256 KB,
+  shown as plain text and never stored or logged. Viewers get the link to
+  Vercel.
+
 ## What is stored
 
-| Data                   | Fields                                                                                                                                                                                                                                                                                       |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Connection             | team id, slug and name, plan, token source, the encrypted token and its last 4 characters, token scope (team or full) and expiry, sync status, the last error (redacted)                                                                                                                     |
-| Projects               | id, name, framework, Git link type, linked GitHub repository id and name, production branch, the deployment serving production, the derived "auto-assign paused" state                                                                                                                       |
-| Deployments            | id, project, target, state, hostname, branch, commit SHA, the first line of the commit message (200 characters), creator **kind** (git, cli, api, redeploy), error code, build time; kept for the installation's raw retention (latest production and latest preview per branch always stay) |
-| Daily deployment stats | per project, day and target: counts by state, build time p50/p90                                                                                                                                                                                                                             |
-| Findings               | failing production, auto-assign paused, token expiring or rejected                                                                                                                                                                                                                           |
+| Data                   | Fields                                                                                                                                                                                                                                                                                                                                          |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Connection             | team id, slug and name, plan, token source, the encrypted token and its last 4 characters, token scope (team or full) and expiry, sync status, the last error (redacted)                                                                                                                                                                        |
+| Projects               | id, name, framework, Git link type, linked GitHub repository id and name, production branch, the deployment serving production, the derived "auto-assign paused" state, the last promote or rollback request (type, job status, time, target) read after an action                                                                              |
+| Deployments            | id, project, target, state, hostname, branch, commit SHA, the first line of the commit message (200 characters), creator **kind** (git, cli, api, redeploy), error code, build time, the audit entry of a redeploy (exact or probable); kept for the installation's raw retention (latest production and latest preview per branch always stay) |
+| Daily deployment stats | per project, day and target: counts by state, build time p50/p90                                                                                                                                                                                                                                                                                |
+| Findings               | failing production, auto-assign paused, token expiring or rejected                                                                                                                                                                                                                                                                              |
 
 Never read or stored: environment variable values (project lists contain an
 `env` array; it is dropped at the client boundary, and a `decrypt` parameter
 is refused), Vercel user names, logins, e-mail addresses and avatars, deploy
-hook URLs, build and runtime logs.
+hook URLs, build and runtime logs (the M6 build log excerpt is read live,
+scrubbed and discarded).
 
 A project's repository link is resolved only to a repository of **the same
 installation** that is neither removed nor ignored. Admins can link CLI-deployed
@@ -116,3 +155,18 @@ depend on them) and `x-vercel-id` as the request id.
 Plan limits shown in the app (static, from the Limits page): deployments
 created per day 100 (Hobby) and 6000 (Pro), in a 86 400 s window; the
 "Deploys in 24 h" tile counts the last 24 hours.
+
+### M6 calls (verified against the Vercel REST docs, 2026-11)
+
+| Call                                                                    | Use                    | Notes                                                                                                                                                                                                                                                                                         |
+| ----------------------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /v13/deployments?forceNew=1`                                      | redeploy               | body `{ name, deploymentId, target?, withLatestCommit?, meta }`; `name` is required; with `deploymentId` all settings are inherited; `target` omitted means preview; `withLatestCommit` drops the old SHA; `meta` values are strings (`devopsManagerAudit`) and come back in deployment reads |
+| `PATCH /v12/deployments/{id}/cancel`                                    | cancel                 | 400 when the deployment is no longer cancelable (READY, ERROR, CANCELED); returns the deployment with `readyState: CANCELED`                                                                                                                                                                  |
+| `POST /v10/projects/{projectId}/promote/{deploymentId}`                 | promote                | no rebuild; 201 or 202 without a documented body; re-enables auto-assignment of production domains                                                                                                                                                                                            |
+| `POST /v1/projects/{projectId}/rollback/{deploymentId}`                 | rollback               | 201; Hobby may roll back to the previous production deployment only (Pro: any deployment once aliased to production); turns auto-assignment off; 409 while another promote or rollback job runs                                                                                               |
+| `GET /v9/projects/{id}?rollbackInfo=true`                               | re-read after an alias | `lastAliasRequest.{type (promote, rollback), jobStatus (pending, in-progress, succeeded, failed, skipped), requestedAt, toDeploymentId}`, null without `rollbackInfo` and in `GET /v10/projects`; `targets.production.id` is the serving deployment; re-read up to 3 times while the job runs |
+| `GET /v3/deployments/{id}/events?follow=0&direction=backward&limit=200` | build log excerpt      | an array of events; build output in `type` command, stdout, stderr, exit, fatal with `payload.text` (or `text`); other types are skipped                                                                                                                                                      |
+
+The `GET /v1/projects/{projectId}/promote/aliases` (alias
+status of the last promote) is not used: the project read above answers
+whether the job finished.
