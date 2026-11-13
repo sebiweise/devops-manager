@@ -725,7 +725,7 @@ export async function pipelineColumns({
                 projectId: p.projectId,
                 id: p.id,
                 name: p.name,
-                defaultBranch: null,
+                defaultBranch: p.defaultBranch,
                 p90Minutes:
                   p.summary.p90 == null ? null : Math.round(p.summary.p90 / 60),
               }}

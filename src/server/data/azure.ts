@@ -872,6 +872,8 @@ export type PipelineRow = {
   id: number;
   name: string;
   yamlPath: string | null;
+  /** The definition's default branch (prefills the queue dialog). */
+  defaultBranch: string | null;
   repoFullName: string | null;
   linkRepo: string | null;
   link: "linked" | "manual" | "unlinked";
@@ -1068,6 +1070,7 @@ export async function listPipelines(
       id: d.id,
       name: d.name,
       yamlPath: d.yamlPath,
+      defaultBranch: d.defaultBranch,
       repoFullName: repo,
       linkRepo: d.linkRepoFullName,
       link: repo
@@ -1382,6 +1385,8 @@ export type AzureJobDto = {
 export type AzureRunDetail = {
   run: AzureRunRow;
   defaultBranch: string | null;
+  /** The definition's p90 of the last 30 days in minutes (action dialogs). */
+  p90Minutes: number | null;
   stages: Array<AzureJobDto & { jobs: AzureJobDto[] }>;
   /** Jobs without a known stage. */
   jobs: AzureJobDto[];
@@ -1469,6 +1474,12 @@ export async function getAzureRun(
   return {
     run: run!,
     defaultBranch: def?.defaultBranch ?? null,
+    p90Minutes: await definitionP90Minutes(
+      installationId,
+      b.projectId,
+      b.definitionId,
+      new Date(),
+    ),
     stages,
     jobs: jobs
       .filter((j) => !placed.has(`${j.recordId}:${j.attempt}`))
@@ -1787,14 +1798,11 @@ export async function findAzureDefinitionTarget(
           select: { id: true, fullName: true, defaultBranch: true },
         })
       : null;
-  const durations = await db.$queryRaw<Array<{ d: number }>>`
-    SELECT b."durationS" AS d FROM "AzureBuild" b
-    WHERE b."installationId" = ${installationId} AND b."projectId" = ${projectId}
-      AND b."definitionId" = ${definitionId} AND b."durationS" IS NOT NULL
-      AND b."queuedAt" >= ${new Date(now.getTime() - 30 * DAY_MS)}`;
-  const p90 = percentileExact(
-    durations.map((x) => x.d),
-    0.9,
+  const p90Minutes = await definitionP90Minutes(
+    installationId,
+    projectId,
+    definitionId,
+    now,
   );
   return {
     projectId: d.projectId,
@@ -1809,8 +1817,27 @@ export async function findAzureDefinitionTarget(
       conn.authKind === "ENV"
         ? "azure:env-token"
         : `azure:${conn.authKind === "PAT" ? "pat" : "sp"}:${conn.tokenHint ?? "unknown"}`,
-    p90Minutes: p90 == null ? null : Math.round(p90 / 60),
+    p90Minutes,
   };
+}
+
+/** A definition's p90 build duration of the last 30 days, in minutes (dialogs, quota). */
+async function definitionP90Minutes(
+  installationId: bigint,
+  projectId: string,
+  definitionId: number,
+  now: Date,
+): Promise<number | null> {
+  const durations = await db.$queryRaw<Array<{ d: number }>>`
+    SELECT b."durationS" AS d FROM "AzureBuild" b
+    WHERE b."installationId" = ${installationId} AND b."projectId" = ${projectId}
+      AND b."definitionId" = ${definitionId} AND b."durationS" IS NOT NULL
+      AND b."queuedAt" >= ${new Date(now.getTime() - 30 * DAY_MS)}`;
+  const p90 = percentileExact(
+    durations.map((x) => x.d),
+    0.9,
+  );
+  return p90 == null ? null : Math.round(p90 / 60);
 }
 
 /** Branches known for a repository (stored runs and builds, plus the default). */

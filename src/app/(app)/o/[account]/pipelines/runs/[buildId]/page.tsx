@@ -98,6 +98,7 @@ export default async function AzureRunPage({
     definitionName: r.definitionName,
     status: r.status,
     result: r.result,
+    p90Minutes: detail.p90Minutes,
   };
   const tasksOf = (job: AzureJobDto) =>
     (tasks ?? []).filter((x) => x.jobRecordId === job.recordId);
