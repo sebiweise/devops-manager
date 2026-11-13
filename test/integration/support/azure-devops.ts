@@ -614,9 +614,19 @@ export class FakeAzureDevOps {
         if (!need("hooks")) return forbidden();
         const b = body as {
           eventType: string;
+          resourceVersion?: string;
           publisherInputs: { projectId: string };
           consumerInputs: { url: string };
         };
+        // Mirrors the event reference: the pipelines events use
+        // 5.1-preview.1, build.complete 2.0.
+        const version = b.eventType.startsWith("ms.vss-pipelines.")
+          ? "5.1-preview.1"
+          : "2.0";
+        if (b.resourceVersion !== version)
+          return respond(400, {
+            message: "unsupported resource version",
+          });
         const s = {
           id: uuid(500_000 + this.seq++),
           eventType: b.eventType,
@@ -728,10 +738,28 @@ export class FakeAzureDevOps {
             records: recs,
           });
         }
+        if (tail === "/logs" && method === "GET")
+          return respond(200, {
+            count: b.logs.size,
+            value: [...b.logs].map(([id, text]) => ({
+              id,
+              type: "Container",
+              lineCount: text.replace(/\n$/, "").split("\n").length,
+            })),
+          });
         const log = tail.match(/^\/logs\/(\d+)$/);
         if (log && method === "GET") {
-          const text = b.logs.get(Number(log[1]));
+          let text = b.logs.get(Number(log[1]));
           if (text == null) return respond(404, { message: "log not found" });
+          // startLine/endLine: 1-based and inclusive.
+          const start = Number(url.searchParams.get("startLine") ?? 0);
+          const end = Number(url.searchParams.get("endLine") ?? 0);
+          if (start > 0 || end > 0) {
+            const lines = text.replace(/\n$/, "").split("\n");
+            text = lines
+              .slice(Math.max(0, start - 1), end > 0 ? end : undefined)
+              .join("\n");
+          }
           return new Response(text, {
             status: 200,
             headers: { "content-type": "text/plain" },

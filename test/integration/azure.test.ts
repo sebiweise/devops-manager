@@ -188,6 +188,7 @@ describe.skipIf(!DATABASE_URL)("azure devops (M7)", () => {
   beforeEach(async () => {
     connect.resetAzureEnvAttempts();
     entra.clearEntraCache();
+    hints.clearAzureHintDebounce();
     await resetTables(db);
     await db.$executeRawUnsafe(
       `TRUNCATE "RateLimitBucket", "Session", "Account", "User" CASCADE`,
@@ -621,6 +622,28 @@ describe.skipIf(!DATABASE_URL)("azure devops (M7)", () => {
         expect(dump, t).not.toContain(PII_NAME);
         expect(dump, t).not.toContain("evil.example.com");
       }
+    });
+
+    it("keeps names and e-mail addresses of Azure DevOps error texts out of lastError and the audit rows", async () => {
+      const body = {
+        message: `TF400813: The user '${PII_EMAIL}' is not authorized. Access denied. ${PII_NAME} needs Queue builds permissions.`,
+        typeKey: "AccessCheckException",
+      };
+      az.failNext("/_apis/build/builds", 403, body);
+      az.addBuild({ definitionId: 3, queuedAt: Date.now() - MIN });
+      expect((await runStep()).status).toBe("error");
+      const c = await db.azureDevOpsConnection.findUniqueOrThrow({
+        where: { installationId: B },
+      });
+      expect(c.lastError).toContain("TF400813");
+      for (const v of [PII_EMAIL, PII_NAME, "not authorized"])
+        expect(c.lastError).not.toContain(v);
+      const rows = await db.$queryRawUnsafe<Array<{ t: string }>>(
+        `SELECT row_to_json(x)::text AS t FROM "AuditLog" x`,
+      );
+      const dump = rows.map((r) => r.t).join("\n");
+      expect(dump).not.toContain(PII_EMAIL);
+      expect(dump).not.toContain(PII_NAME);
     });
 
     it("counts a retried build as flaky-recovered and catches the retry of a finished build in the sweep", async () => {
@@ -1363,6 +1386,61 @@ describe.skipIf(!DATABASE_URL)("azure devops (M7)", () => {
       ).toBeNull();
     });
 
+    it("debounces hints for builds that are never stored and resets the definitions at most once in 30 minutes", async () => {
+      // Definition 4 is not linked: its builds are not stored.
+      const b = az.addBuild({
+        definitionId: 4,
+        status: "inProgress",
+        queuedAt: Date.now() - 5 * MIN,
+      });
+      const ghost = { projectId: P1, buildId: 987_654 };
+      const builds = [{ projectId: P1, buildId: b.id }, ghost];
+      const synced = new Date(Date.now() - 2 * 3_600_000);
+      await db.azureDevOpsConnection.updateMany({
+        where: { installationId: B },
+        data: { definitionsSyncedAt: synced },
+      });
+      await db.azurePipelineDefinition.deleteMany({
+        where: { installationId: B, id: 4 },
+      });
+      az.calls.length = 0;
+      await hints.refreshAzureBuilds(B, builds, { fetch: az.fetch() });
+      expect(az.calls.length).toBeGreaterThan(0);
+      expect(
+        await db.azureBuild.count({ where: { installationId: B, id: b.id } }),
+      ).toBe(0);
+      expect(
+        (
+          await db.azureDevOpsConnection.findUniqueOrThrow({
+            where: { installationId: B },
+          })
+        ).definitionsSyncedAt,
+      ).toBeNull();
+      // Every further delivery within 30 s makes no call.
+      az.calls.length = 0;
+      for (let i = 0; i < 5; i++)
+        await hints.refreshAzureBuilds(B, builds, { fetch: az.fetch() });
+      expect(az.calls).toHaveLength(0);
+      // After the window it reads again, but a recent definitions sync is kept.
+      const recent = new Date(Date.now() - 5 * MIN);
+      await db.azureDevOpsConnection.updateMany({
+        where: { installationId: B },
+        data: { definitionsSyncedAt: recent },
+      });
+      await hints.refreshAzureBuilds(B, builds, {
+        fetch: az.fetch(),
+        now: new Date(Date.now() + 31_000),
+      });
+      expect(az.calls.length).toBeGreaterThan(0);
+      expect(
+        (
+          await db.azureDevOpsConnection.findUniqueOrThrow({
+            where: { installationId: B },
+          })
+        ).definitionsSyncedAt,
+      ).toEqual(recent);
+    });
+
     it("creates subscriptions, verifies deliveries with the real store and raises a finding for a disabled one", async () => {
       const r = await mgmt.installAzureHooks(
         actor("ADMIN"),
@@ -1484,6 +1562,50 @@ describe.skipIf(!DATABASE_URL)("azure devops (M7)", () => {
           )
         ).status,
       ).toBe(200);
+      // A manual install after the rotation keeps the secret (not shown
+      // again) and the previous-secret window.
+      const manual = await mgmt.installAzureHooks(
+        actor("ADMIN"),
+        {
+          installationId: B,
+          mode: "manual",
+          confirmed: true,
+          idempotencyKey: randomUUID(),
+        },
+        deps(),
+      );
+      expect(manual).toMatchObject({
+        status: "succeeded",
+        data: { username: setup.username, password: null, mode: "manual" },
+      });
+      const afterManual = await db.azureDevOpsConnection.findUniqueOrThrow({
+        where: { installationId: B },
+      });
+      expect(afterManual.hookSecretPrev).not.toBeNull();
+      expect(afterManual.hookSecretPrevUntil).not.toBeNull();
+      expect(
+        (
+          await hook.handleAzureHook(
+            { hookKey: setup.username, authorization: auth, body: env(41) },
+            hookStore.prismaAzureHookStore,
+          )
+        ).status,
+      ).toBe(200);
+      // A repeated auto install also does not reveal the secret again.
+      const again = await mgmt.installAzureHooks(
+        actor("ADMIN"),
+        {
+          installationId: B,
+          mode: "auto",
+          confirmed: true,
+          idempotencyKey: randomUUID(),
+        },
+        deps(),
+      );
+      expect(again).toMatchObject({
+        status: "succeeded",
+        data: { password: null, mode: "auto" },
+      });
     });
 
     it("converges by polling with hooks and hints off", async () => {
@@ -1743,6 +1865,22 @@ describe.skipIf(!DATABASE_URL)("azure devops (M7)", () => {
       ).toHaveLength(0);
     });
 
+    it("stores only the error key of a refused write, never the identity in its text", async () => {
+      az.failNext(`/_apis/build/builds/${running}`, 403, {
+        message: `Access denied. ${PII_NAME} (${PII_EMAIL}) needs Stop builds permissions for build pipeline 3.`,
+        typeKey: "AccessCheckException",
+      });
+      const r = await act("cancel", running);
+      expect(r).toMatchObject({ status: "failed" });
+      expect(json(r)).not.toContain(PII_NAME);
+      const row = await db.auditLog.findFirstOrThrow({
+        where: { action: "ADO_CANCEL", status: "FAILED" },
+      });
+      expect(row.error).toContain("403");
+      expect(json(row)).not.toContain(PII_NAME);
+      expect(json(row)).not.toContain(PII_EMAIL);
+    });
+
     it("cancels, retries, retries a stage and queues a run, each with one audit row and minimal params", async () => {
       expect(await act("cancel", failed)).toEqual({
         status: "refused",
@@ -1956,6 +2094,82 @@ describe.skipIf(!DATABASE_URL)("azure devops (M7)", () => {
       ).toEqual({ status: "refused", reason: "quota_exhausted" });
     });
 
+    it("turns the toggle on only with the env switch on and a healthy, unpaused connection, without a probe otherwise", async () => {
+      const toggle = (enabled: boolean, over: Record<string, unknown> = {}) =>
+        actions.setAzureManagementEnabled(
+          actor("ADMIN"),
+          {
+            installationId: B,
+            enabled,
+            typed: FAKE_ORG,
+            idempotencyKey: randomUUID(),
+          },
+          deps(over),
+        );
+      // Turning it off never calls Azure DevOps and works with the switch off.
+      expect(
+        await toggle(false, { azureManagementEnabled: false }),
+      ).toMatchObject({ status: "succeeded", data: { enabled: false } });
+      az.calls.length = 0;
+      expect(await toggle(true, { azureManagementEnabled: false })).toEqual({
+        status: "unavailable",
+        reason: "azure_management_disabled_global",
+      });
+      await db.azureDevOpsConnection.updateMany({
+        where: { installationId: B },
+        data: { pausedUntil: new Date(Date.now() + 10 * MIN) },
+      });
+      expect(await toggle(true)).toEqual({
+        status: "unavailable",
+        reason: "azure_rate_limited",
+      });
+      await db.azureDevOpsConnection.updateMany({
+        where: { installationId: B },
+        data: { pausedUntil: null, revokedAt: new Date() },
+      });
+      expect(await toggle(true)).toEqual({
+        status: "unavailable",
+        reason: "azure_revoked",
+      });
+      await db.azureDevOpsConnection.updateMany({
+        where: { installationId: B },
+        data: { revokedAt: null },
+      });
+      await db.installationRateLimit.upsert({
+        where: {
+          installationId_resource: { installationId: B, resource: "azure" },
+        },
+        create: {
+          installationId: B,
+          resource: "azure",
+          limit: 200,
+          remaining: 5,
+          resetAt: new Date(Date.now() + 300_000),
+          updatedAt: new Date(),
+        },
+        update: {
+          limit: 200,
+          remaining: 5,
+          resetAt: new Date(Date.now() + 300_000),
+        },
+      });
+      expect(await toggle(true)).toEqual({
+        status: "unavailable",
+        reason: "azure_rate_limited",
+      });
+      expect(az.callsTo("/_apis/pipelines/")).toHaveLength(0);
+      expect(
+        await db.auditLog.count({
+          where: { action: "ADO_MANAGEMENT_TOGGLE", status: "DENIED" },
+        }),
+      ).toBe(4);
+      await db.installationRateLimit.deleteMany();
+      expect(await toggle(true)).toMatchObject({
+        status: "succeeded",
+        data: { enabled: true },
+      });
+    });
+
     it("keeps the toggle off when the execute probe fails", async () => {
       await actions.setAzureManagementEnabled(
         actor("ADMIN"),
@@ -2047,6 +2261,47 @@ describe.skipIf(!DATABASE_URL)("azure devops (M7)", () => {
         .map((r) => r.t)
         .join("");
       expect(dump).not.toContain("line\\n");
+    });
+
+    it("reads only the last 200 lines of a log larger than the 1 MB cap", async () => {
+      const b = az.builds.find((x) => x.id === failed)!;
+      const lines = Array.from(
+        { length: 40_000 },
+        (_, i) =>
+          `2026-11-13T10:00:01.0000000Z step output ${String(i + 1).padStart(6, "0")} ${"x".repeat(40)}`,
+      );
+      b.logs.set(10, `${lines.join("\n")}\n`);
+      expect(Buffer.byteLength(b.logs.get(10)!)).toBeGreaterThan(1024 * 1024);
+      const job = await db.azureBuildJob.findFirstOrThrow({
+        where: { installationId: B, buildId: failed, type: "Job" },
+      });
+      az.calls.length = 0;
+      const ex = await actions.getAzureLogExcerpt(
+        actor("OPERATOR"),
+        {
+          installationId: B,
+          buildId: failed,
+          recordId: job.recordId,
+          attempt: job.attempt,
+        },
+        { now: () => new Date(), azureFetch: az.fetch() },
+      );
+      expect(ex.status).toBe("ok");
+      const excerpt = (
+        ex as {
+          excerpt: { lines: Array<{ text: string }>; truncated: boolean };
+        }
+      ).excerpt;
+      expect(excerpt.truncated).toBe(true);
+      expect(excerpt.lines).toHaveLength(200);
+      expect(excerpt.lines[0]!.text).toContain("step output 039801");
+      expect(excerpt.lines.at(-1)!.text).toContain("step output 040000");
+      const read = az.callsTo("/logs/10", "GET");
+      expect(read).toHaveLength(1);
+      expect(read[0]!.query).toMatchObject({
+        startLine: "39801",
+        endLine: "40000",
+      });
     });
 
     it("deletes every Azure row on disconnect and keeps the audit rows", async () => {
