@@ -636,6 +636,13 @@ export async function RepoDeployments({
                         label={t("openPreview")}
                       />
                     ) : null}
+                    {ctx ? (
+                      <DeploymentActions
+                        ctx={ctx}
+                        deployment={actionDeployment(c.latestPreview)}
+                        compact
+                      />
+                    ) : null}
                   </>
                 ) : (
                   <span className="text-xs text-muted-foreground">

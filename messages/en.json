@@ -1096,7 +1096,7 @@
       "unsealed": "{count} older entries have no recorded result hash.",
       "title": "Audit log",
       "instanceTitle": "Instance audit log",
-      "description": "Every management action with the app user who triggered it and the GitHub identity that performed it. Entries are hash-chained.",
+      "description": "Every management action with the app user who triggered it and the identity that performed it (the GitHub App or the Vercel token). Entries are hash-chained.",
       "verify": "Verify chain",
       "verifying": "Verifying…",
       "verifyDenied": "The chain could not be verified with your access.",
@@ -1183,7 +1183,8 @@
         "VERCEL_PROMOTE": "Vercel deployment promoted",
         "VERCEL_ROLLBACK": "Vercel production rolled back"
       },
-      "filteredEntry": "Showing one entry."
+      "filteredEntry": "Showing one entry.",
+      "vercelRequestId": "Vercel request {id}"
     },
     "typeToConfirm": "Type {text} to confirm",
     "missingPermission": "The GitHub App has not been granted the permission this needs: {permissions}. An admin can grant it in the App's installation settings on GitHub.",
@@ -2021,7 +2022,7 @@
   },
   "vercelSettings": {
     "title": "Hosting · Vercel",
-    "description": "Connect the Vercel team of this account to see its projects and deployments. Read-only: the app never changes anything at Vercel, never reads environment variable values and stores no Vercel user names.",
+    "description": "Connect the Vercel team of this account to see its projects and deployments. The app changes deployments only through the Vercel actions below (off by default), never reads environment variable values and stores no Vercel user names.",
     "notConnected": "No Vercel team is connected.",
     "connect": "Connect Vercel",
     "connectTitle": "Connect a Vercel team",

@@ -1096,7 +1096,7 @@
       "unsealed": "{count} ältere Einträge haben keinen Ergebnis-Hash.",
       "title": "Audit-Log",
       "instanceTitle": "Audit-Log der Instanz",
-      "description": "Jede Verwaltungsaktion mit dem App-Benutzer, der sie ausgelöst hat, und der GitHub-Identität, die sie ausgeführt hat. Die Einträge sind per Hash verkettet.",
+      "description": "Jede Verwaltungsaktion mit dem App-Benutzer, der sie ausgelöst hat, und der Identität, die sie ausgeführt hat (die GitHub App oder der Vercel-Token). Die Einträge sind per Hash verkettet.",
       "verify": "Kette prüfen",
       "verifying": "Wird geprüft…",
       "verifyDenied": "Die Kette kann mit deinem Zugriff nicht geprüft werden.",
@@ -1183,7 +1183,8 @@
         "VERCEL_PROMOTE": "Vercel-Deployment angehoben",
         "VERCEL_ROLLBACK": "Vercel-Production zurückgerollt"
       },
-      "filteredEntry": "Ein Eintrag wird angezeigt."
+      "filteredEntry": "Ein Eintrag wird angezeigt.",
+      "vercelRequestId": "Vercel-Anfrage {id}"
     },
     "typeToConfirm": "Zur Bestätigung {text} eingeben",
     "missingPermission": "Der GitHub App fehlt die nötige Berechtigung: {permissions}. Ein Admin kann sie in den Installationseinstellungen der App auf GitHub erteilen.",
@@ -2021,7 +2022,7 @@
   },
   "vercelSettings": {
     "title": "Hosting · Vercel",
-    "description": "Verbinde das Vercel-Team dieses Kontos, um seine Projekte und Deployments zu sehen. Nur lesend: Die App ändert nichts bei Vercel, liest keine Werte von Umgebungsvariablen und speichert keine Vercel-Benutzernamen.",
+    "description": "Verbinde das Vercel-Team dieses Kontos, um seine Projekte und Deployments zu sehen. Die App ändert Deployments nur über die Vercel-Aktionen unten (standardmäßig aus), liest keine Werte von Umgebungsvariablen und speichert keine Vercel-Benutzernamen.",
     "notConnected": "Kein Vercel-Team verbunden.",
     "connect": "Vercel verbinden",
     "connectTitle": "Vercel-Team verbinden",
