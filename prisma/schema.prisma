@@ -162,6 +162,7 @@ model Installation {
   updatedAt            DateTime      @updatedAt @db.Timestamptz(3)
 
   repositories Repository[]
+  vercel       VercelConnection?
 }
 
 // ---------- inventory ----------
@@ -198,6 +199,8 @@ model Repository {
   removedAt          DateTime?    @db.Timestamptz(3)
   createdAt          DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
+
+  vercelProjects VercelProject[]
 
   @@unique([installationId, fullName])
   @@index([installationId, removedAt])
@@ -665,6 +668,10 @@ enum AuditAction {
   BILLING_CREDENTIAL_REVOKE
   REPO_IGNORE
   REPO_UNIGNORE
+  VERCEL_CONNECT
+  VERCEL_TOKEN_ROTATE
+  VERCEL_DISCONNECT
+  VERCEL_PROJECT_LINK
 }
 
 enum AuditStatus {
@@ -729,4 +736,239 @@ model AuditChainHead {
   /// were written before results were sealed (M3).
   sealedAfterSeq BigInt
   updatedAt      DateTime @db.Timestamptz(3)
+}
+
+// ---------- hosting: Vercel (M5, read-only) ----------
+//
+// One Vercel team per GitHub installation (1:1). Every table carries
+// installationId and its indexes lead with it. Env var values, Vercel user
+// names and build logs are never stored. Tenant reads go through
+// src/server/data/vercel.ts; see docs/VERCEL.md.
+
+enum VercelTokenSource {
+  DB
+  ENV
+}
+
+model VercelConnection {
+  installationId      BigInt            @id
+  installation        Installation      @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  /// Unique across the instance: a team belongs to one installation only.
+  teamId              String            @unique
+  teamSlug            String
+  teamName            String
+  /// "hobby" | "pro" | "enterprise" (GET /v2/teams/{id} billing.plan)
+  plan                String?
+  tokenSource         VercelTokenSource
+  /// Ciphertext, AAD "VercelConnection:<installationId>:accessToken"; null for ENV.
+  accessToken         String?
+  /// Last 4 characters of the token.
+  tokenHint           String?
+  /// "team" (scoped to this team) | "full" (every team of the user) | null (unknown)
+  tokenScope          String?
+  tokenExpiresAt      DateTime?         @db.Timestamptz(3)
+  /// Separate Vercel management toggle (M6), off by default.
+  managementEnabled   Boolean           @default(false)
+  createdByUserId     String
+  /// Written at most every 10 minutes.
+  lastUsedAt          DateTime?         @db.Timestamptz(3)
+  /// Set on 401 or 403 invalidToken/missingToken; sync stops until a rotate.
+  revokedAt           DateTime?         @db.Timestamptz(3)
+  /// Redacted and truncated; never contains a token.
+  lastError           String?
+  /// ok | partial | rate_limited | credential_error | error
+  lastSyncStatus      String?
+  lastSyncedAt        DateTime?         @db.Timestamptz(3)
+  projectsSyncedAt    DateTime?         @db.Timestamptz(3)
+  /// No Vercel call before this time (the retry time of a 429).
+  pausedUntil         DateTime?         @db.Timestamptz(3)
+  /// ms epoch of the newest deployment createdAt of the last complete pass.
+  deploymentsCursor   BigInt?
+  /// Resume point (pagination.next) inside an unfinished pass.
+  deploymentsPageNext BigInt?
+  /// Newest createdAt seen by the unfinished pass; becomes the cursor when it completes.
+  deploymentsPassTop  BigInt?
+  createdAt           DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime          @updatedAt @db.Timestamptz(3)
+
+  projects    VercelProject[]
+  deployments VercelDeployment[]
+}
+
+model VercelProject {
+  /// prj_...
+  id                     String           @id
+  installationId         BigInt
+  connection             VercelConnection @relation(fields: [installationId], references: [installationId], onDelete: Cascade)
+  name                   String
+  framework              String?
+  /// github | gitlab | bitbucket | null (CLI deployments)
+  linkType               String?
+  /// GitHub repository id from the project link; never joined on its own.
+  linkRepoId             BigInt?
+  /// "owner/name" from the link, display only.
+  linkRepo               String?
+  productionBranch       String?
+  /// Resolved from linkRepoId: same installation, not removed, not ignored.
+  repositoryId           BigInt?
+  repository             Repository?      @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  /// Admin override (VERCEL_PROJECT_LINK), validated like repositoryId.
+  manualRepositoryId     BigInt?
+  /// Newest production-target deployment and its state.
+  latestProdDeploymentId String?
+  latestProdState        String?
+  latestProdReadyAt      DateTime?        @db.Timestamptz(3)
+  /// The deployment production traffic is served from (targets.production).
+  liveProdDeploymentId   String?
+  /// Set while production is pinned to an older deployment (rollback); cleared when the newest one is live.
+  autoAssignPausedAt     DateTime?        @db.Timestamptz(3)
+  /// Set by GitHub deployment_status hints; the next refresh clears it.
+  dirtyAt                DateTime?        @db.Timestamptz(3)
+  /// Last targeted refresh from a hint (debounced to 30 s).
+  hintRefreshedAt        DateTime?        @db.Timestamptz(3)
+  pausedAt               DateTime?        @db.Timestamptz(3)
+  removedAt              DateTime?        @db.Timestamptz(3)
+  createdAt              DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime         @updatedAt @db.Timestamptz(3)
+
+  deployments VercelDeployment[]
+
+  @@index([installationId, removedAt])
+  @@index([installationId, repositoryId])
+  @@index([installationId, manualRepositoryId])
+  @@index([installationId, dirtyAt])
+}
+
+enum VercelDeploymentState {
+  QUEUED
+  INITIALIZING
+  BUILDING
+  READY
+  ERROR
+  CANCELED
+  BLOCKED
+  DELETED
+  UNKNOWN
+}
+
+model VercelDeployment {
+  /// dpl_...
+  id                  String                @id
+  installationId      BigInt
+  connection          VercelConnection      @relation(fields: [installationId], references: [installationId], onDelete: Cascade)
+  projectId           String
+  project             VercelProject         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// production | preview | staging
+  target              String
+  state               VercelDeploymentState
+  /// PROMOTED | ROLLING | STAGED (READY only)
+  readySubstate       String?
+  /// Hostname only.
+  url                 String?
+  branch              String?
+  commitSha           String?
+  /// First line, at most 200 characters.
+  commitMessage       String?
+  /// git | cli | api | redeploy | promote | rollback (never a user name)
+  creatorKind         String?
+  /// Vercel's error code of an ERROR deployment, e.g. BUILD_FAILED.
+  errorCode           String?
+  isRollbackCandidate Boolean               @default(false)
+  /// Links an M6 action with an ambiguous outcome.
+  auditLogId          String?
+  createdAt           DateTime              @db.Timestamptz(3)
+  buildingAt          DateTime?             @db.Timestamptz(3)
+  readyAt             DateTime?             @db.Timestamptz(3)
+  buildMs             Int?
+  syncedAt            DateTime              @db.Timestamptz(3)
+
+  @@index([installationId, createdAt(sort: Desc)])
+  @@index([installationId, projectId, createdAt(sort: Desc)])
+  @@index([installationId, commitSha])
+  @@index([installationId, state])
+}
+
+/// Deployments per project, local day (Installation.timezone) and target.
+model DailyDeploymentStat {
+  installationId BigInt
+  projectId      String
+  day            DateTime @db.Date
+  target         String
+  total          Int
+  ready          Int
+  error          Int
+  canceled       Int
+  buildMsP50     Int?
+  buildMsP90     Int?
+
+  @@id([installationId, projectId, day, target])
+  @@index([installationId, day])
+}
+
+// ---------- findings (shared by the extra tools) ----------
+
+enum FindingSource {
+  DEPENDABOT
+  CODE_SCANNING
+  SECRET_SCANNING
+  COMPLIANCE
+  HYGIENE
+  RUNNER
+  UPTIME
+  VERCEL
+  CREDENTIAL
+}
+
+enum FindingSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum FindingStatus {
+  OPEN
+  DISMISSED
+  FIXED
+}
+
+/// One thing that needs attention. Written by its producer (the Vercel step
+/// from M5 on); `ruleKey` is stable, so a finding is updated, not duplicated.
+model Finding {
+  id             String          @id @default(cuid())
+  installationId BigInt
+  repositoryId   BigInt?
+  source         FindingSource
+  /// e.g. "vercel:prod-failing:<projectId>"
+  ruleKey        String
+  severity       FindingSeverity
+  status         FindingStatus
+  /// Text only.
+  title          String
+  /// github.com or vercel.com only.
+  externalUrl    String?
+  /// Whitelisted fields per source.
+  details        Json
+  firstSeenAt    DateTime        @db.Timestamptz(3)
+  lastSeenAt     DateTime        @db.Timestamptz(3)
+  resolvedAt     DateTime?       @db.Timestamptz(3)
+
+  @@unique([installationId, source, repositoryId, ruleKey])
+  @@index([installationId, status, severity])
+  @@index([installationId, repositoryId, status])
+}
+
+/// Per-repository availability of an optional GitHub feature; "not
+/// available" is never rendered as 0.
+model FeatureAvailability {
+  installationId BigInt
+  repositoryId   BigInt
+  /// code_scanning | secret_scanning | dependabot_alerts | merge_settings ...
+  feature        String
+  /// available | not_enabled | not_available_on_plan | no_permission
+  state          String
+  checkedAt      DateTime @db.Timestamptz(3)
+
+  @@id([installationId, repositoryId, feature])
 }
