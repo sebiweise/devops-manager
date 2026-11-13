@@ -62,7 +62,7 @@ describe("vercel client", () => {
     expect(headers.authorization).toBe(`Bearer ${TOKEN}`);
   });
 
-  it("issues only GET requests (M5 is read-only)", async () => {
+  it("issues only GET requests (the read client never mutates)", async () => {
     const f = fakeFetch((url) => {
       switch (url.pathname) {
         case "/v2/user":
@@ -73,6 +73,10 @@ describe("vercel client", () => {
           return { body: { teams: [] } };
         case "/v7/deployments":
           return { body: { deployments: [], pagination: { next: null } } };
+        case "/v9/projects/prj_test1":
+          return { body: { id: "prj_test1", name: "project-a" } };
+        case "/v3/deployments/dpl_test1/events":
+          return { body: [] };
         default:
           return url.pathname.startsWith("/v2/teams/")
             ? { body: { id: "team_test1", slug: "team-a" } }
@@ -93,7 +97,9 @@ describe("vercel client", () => {
     await api.listProjects().catch(() => undefined);
     await api.listDeployments({});
     await api.getDeployment("dpl_test1");
-    expect(f.calls.length).toBeGreaterThanOrEqual(7);
+    await api.getProject("prj_test1");
+    await api.getBuildLog("dpl_test1");
+    expect(f.calls.length).toBeGreaterThanOrEqual(9);
     expect(f.calls.every((c) => c.init.method === "GET")).toBe(true);
     // No mutating method anywhere in the client's source.
     const source = readFileSync(
@@ -245,6 +251,7 @@ describe("vercel client", () => {
     expect(res.projects[0]).toEqual({
       id: "prj_test1",
       name: "project-a",
+      aliasRequest: null,
       framework: "nextjs",
       linkType: "github",
       linkRepoId: 201n,

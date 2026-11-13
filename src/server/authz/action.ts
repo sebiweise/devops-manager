@@ -19,7 +19,22 @@ import {
 } from "@/server/github/purposes";
 import type { GitHubApi, GitHubClients } from "@/server/ingest/github-client";
 import { githubClients } from "@/server/ingest/triggers";
-import { redactError } from "@/server/ingest/webhook";
+import {
+  markVercelRevoked,
+  vercelCredentialFor,
+} from "@/server/ingest/vercel-credential";
+import { redactError, scrubKnown } from "@/server/ingest/webhook";
+import {
+  createVercelClient,
+  VercelError,
+  type Fetch,
+  type VercelReadApi,
+} from "@/server/vercel/client";
+import {
+  createVercelWriteClient,
+  vercelWriteErrorInfo,
+  type VercelWriteApi,
+} from "@/server/vercel/write";
 import { consumeActionTokens } from "./rate-limit";
 import { hasRole, type Role } from "./roles";
 import { currentRole, type TenantScope } from "./scope";
@@ -83,6 +98,8 @@ export type ActionDeps = {
   /** Adds `DevOps-Manager-Audit: <auditId>` to merge commits. */
   mergeAuditTrailer: boolean;
   revalidate: (installationId: bigint) => void;
+  /** The fetch of Vercel calls (tests inject an in-memory Vercel). */
+  vercelFetch?: Fetch;
 };
 
 export function defaultActionDeps(
@@ -640,6 +657,72 @@ export class ActionSession {
   ): Promise<Outcome<T>> {
     return this.perform(auditId, async () =>
       fn(await this.api(purpose, repoIds)),
+    );
+  }
+
+  /**
+   * Vercel provider (design addendum §8.1): the read and write clients of
+   * the installation's connection. The token is decrypted here, so this is
+   * only called inside `executeVercel` (i.e. inside `perform`).
+   */
+  private async vercel(): Promise<{
+    read: VercelReadApi;
+    write: VercelWriteApi;
+    token: string;
+  }> {
+    const cred = await vercelCredentialFor(this.installation.id);
+    if (cred.kind !== "token") throw new Error("vercel_unavailable");
+    const opts = {
+      token: cred.token,
+      teamId: cred.teamId,
+      fetch: this.deps.vercelFetch,
+      now: () => this.deps.now().getTime(),
+    };
+    return {
+      read: createVercelClient(opts),
+      write: createVercelWriteClient(opts),
+      token: cred.token,
+    };
+  }
+
+  /**
+   * Step 8 and 9 for Vercel: decrypt the token, call Vercel, record the
+   * result with Vercel's status, message and `x-vercel-id`, scrubbed of
+   * the token. A rejected token (401, or 403 naming the token) also marks
+   * the connection revoked, so the sync stops calling.
+   */
+  async executeVercel<T>(
+    auditId: string,
+    fn: (api: {
+      read: VercelReadApi;
+      write: VercelWriteApi;
+    }) => Promise<Done<T>>,
+  ): Promise<Outcome<T>> {
+    let token: string | null = null;
+    return this.perform(
+      auditId,
+      async () => {
+        const api = await this.vercel();
+        token = api.token;
+        try {
+          return await fn(api);
+        } catch (error) {
+          if (error instanceof VercelError && error.revoked)
+            await markVercelRevoked(
+              this.installation.id,
+              `${error.status ?? ""} ${error.message}`.trim(),
+              this.deps.now(),
+              api.token,
+            );
+          throw error;
+        }
+      },
+      {
+        mapError: (error) => {
+          const info = vercelWriteErrorInfo(error);
+          return { ...info, message: scrubKnown(info.message, [token], 500) };
+        },
+      },
     );
   }
 

@@ -1,15 +1,17 @@
 import { z } from "zod";
 
 /**
- * Read-only Vercel REST client (design addendum §6, M5). Pure: no database,
+ * Read-only Vercel REST client (design addendum §6, M5; build log and
+ * project alias status added in M6). Pure: no database,
  * no logging, `fetch` injected, so every branch is unit-tested and the
  * integration tests run against an in-memory Vercel.
  *
  * - The base URL is a constant and never configurable; requests for team
  *   resources always carry `teamId`.
- * - Every request is a GET (M5 has no mutation; a unit test asserts it).
- *   A `decrypt` parameter is refused at type level and at runtime, so env
- *   var values can never be requested.
+ * - Every request of this read client is a GET (a unit test asserts it).
+ *   The four M6 mutations live in write.ts and share only the transport
+ *   (`vercelRequest`). A `decrypt` parameter is refused at type level
+ *   and at runtime, so env var values can never be requested.
  * - Responses pass zod schemas that whitelist the fields the app stores:
  *   user names, e-mail addresses, avatars, env arrays and every other field
  *   are dropped at this boundary.
@@ -137,6 +139,16 @@ export const projectSchema = z.object({
   framework: str.nullish(),
   link: linkSchema,
   paused: z.boolean().nullish(),
+  /** Only in GET /v9/projects/{id}?rollbackInfo=true (M6). */
+  lastAliasRequest: z
+    .object({
+      type: str.nullish(),
+      jobStatus: str.nullish(),
+      requestedAt: optMs,
+      toDeploymentId: str.nullish(),
+      fromDeploymentId: str.nullish(),
+    })
+    .nullish(),
   targets: z
     .object({
       production: z
@@ -166,6 +178,13 @@ export type VercelProjectInfo = {
   productionBranch: string | null;
   paused: boolean;
   liveProductionId: string | null;
+  /** The last promote or rollback (single project read only). */
+  aliasRequest: {
+    type: "promote" | "rollback";
+    status: string | null;
+    at: Date | null;
+    toDeploymentId: string | null;
+  } | null;
 };
 
 const STATES = [
@@ -192,6 +211,8 @@ const metaSchema = z
     bitbucketCommitSha: str.nullish(),
     bitbucketCommitRef: str.nullish(),
     bitbucketCommitMessage: z.string().nullish(),
+    /** Set by M6 redeploys: the audit row id (links ambiguous outcomes). */
+    devopsManagerAudit: str.nullish(),
   })
   .nullish();
 
@@ -226,6 +247,48 @@ export const deploymentsSchema = z.object({
   pagination: z.object({ next: z.number().nullish() }).nullish(),
 });
 
+/** Build log events (GET /v3/deployments/{id}/events, M6); text only. */
+const eventSchema = z
+  .object({
+    type: str.nullish(),
+    created: optMs,
+    date: optMs,
+    text: z.string().nullish(),
+    level: str.nullish(),
+    payload: z.object({ text: z.string().nullish(), date: optMs }).nullish(),
+  })
+  .nullable();
+export const eventsSchema = z.array(eventSchema).max(5000).nullable();
+
+/** Event types that carry build output. */
+const LOG_TYPES = new Set(["command", "stdout", "stderr", "exit", "fatal"]);
+export const BUILD_LOG_LINES = 200;
+/** Response cap of the log request (the rendered excerpt is capped again). */
+export const BUILD_LOG_MAX_BYTES = 1024 * 1024;
+
+export type VercelLogLine = {
+  at: Date | null;
+  /** stdout | stderr | command | exit | fatal */
+  type: string;
+  text: string;
+};
+
+/** Build output lines, oldest first, at most the newest 200 (raw; callers sanitise). */
+export function mapEvents(
+  events: z.infer<typeof eventsSchema>,
+): VercelLogLine[] {
+  const out: VercelLogLine[] = [];
+  for (const e of events ?? []) {
+    if (!e || !e.type || !LOG_TYPES.has(e.type)) continue;
+    const text = e.payload?.text ?? e.text;
+    if (typeof text !== "string") continue;
+    const at = e.payload?.date ?? e.date ?? e.created;
+    out.push({ at: at ? new Date(at) : null, type: e.type, text });
+  }
+  out.sort((a, b) => (a.at?.getTime() ?? 0) - (b.at?.getTime() ?? 0));
+  return out.slice(-BUILD_LOG_LINES);
+}
+
 export type VercelDeploymentInfo = {
   id: string;
   projectId: string;
@@ -240,6 +303,8 @@ export type VercelDeploymentInfo = {
   creatorKind: string | null;
   errorCode: string | null;
   isRollbackCandidate: boolean;
+  /** `meta.devopsManagerAudit` when it is an audit row id. */
+  auditRef: string | null;
   createdAt: Date;
   buildingAt: Date | null;
   readyAt: Date | null;
@@ -251,6 +316,9 @@ export type VercelDeploymentInfo = {
 const HOSTNAME =
   /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)+$/i;
 const SHA = /^[0-9a-f]{7,64}$/i;
+/** Audit row ids are UUIDs (src/server/audit/log.ts). */
+const AUDIT_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** `deployment.source` to the stored creator kind (never a user name). */
 export function creatorKindOf(
@@ -337,6 +405,10 @@ export function mapDeployment(
     errorCode:
       state === "ERROR" && d.errorCode ? d.errorCode.slice(0, 64) : null,
     isRollbackCandidate: d.isRollbackCandidate === true,
+    auditRef:
+      m.devopsManagerAudit && AUDIT_ID.test(m.devopsManagerAudit)
+        ? m.devopsManagerAudit.toLowerCase()
+        : null,
     createdAt: new Date(created),
     buildingAt,
     readyAt,
@@ -368,6 +440,18 @@ export function mapProject(
     productionBranch: link?.productionBranch ?? null,
     paused: p.paused === true,
     liveProductionId: p.targets?.production?.id ?? null,
+    aliasRequest:
+      p.lastAliasRequest?.type === "promote" ||
+      p.lastAliasRequest?.type === "rollback"
+        ? {
+            type: p.lastAliasRequest.type,
+            status: p.lastAliasRequest.jobStatus ?? null,
+            at: p.lastAliasRequest.requestedAt
+              ? new Date(p.lastAliasRequest.requestedAt)
+              : null,
+            toDeploymentId: p.lastAliasRequest.toDeploymentId ?? null,
+          }
+        : null,
   };
 }
 
@@ -453,6 +537,10 @@ export interface VercelReadApi {
     limit?: number;
   }): Promise<{ deployments: VercelDeploymentInfo[]; next: number | null }>;
   getDeployment(id: string): Promise<VercelDeploymentInfo | null>;
+  /** One project with its last promote or rollback request (M6). */
+  getProject(id: string): Promise<VercelProjectInfo>;
+  /** The newest build log lines (M6, never stored). */
+  getBuildLog(id: string): Promise<VercelLogLine[]>;
 }
 
 /**
@@ -498,102 +586,146 @@ async function readCapped(res: Response, max: number): Promise<string | null> {
 
 const num = (v: string | null) => (v == null || v === "" ? NaN : Number(v));
 
-export function createVercelClient(opts: VercelClientOptions): VercelReadApi {
+/** The methods of the Vercel transport; the read client uses GET only. */
+export type VercelMethod = "GET" | "POST" | "PATCH";
+
+export type VercelRequest<T> = {
+  method: VercelMethod;
+  path: string;
+  query: Query;
+  schema: z.ZodType<T>;
+  /** Team resources carry `teamId`. */
+  team: boolean;
+  /** JSON body (POST/PATCH). */
+  body?: Record<string, unknown>;
+  /** Response cap (default 5 MB). */
+  maxBytes?: number;
+};
+
+export type VercelResponse<T> = {
+  data: T;
+  status: number;
+  requestId: string | null;
+};
+
+/**
+ * One request to the fixed Vercel origin: bearer token, timeout, response
+ * cap, rate-limit headers, error mapping and the zod whitelist. Shared by
+ * the read client below and the write client (write.ts, M6).
+ */
+export async function vercelRequest<T>(
+  opts: VercelClientOptions,
+  req: VercelRequest<T>,
+): Promise<VercelResponse<T>> {
   const doFetch: Fetch = opts.fetch ?? ((input, init) => fetch(input, init));
   const now = opts.now ?? Date.now;
-  const timeoutOf = () =>
+  const timeout =
     typeof opts.timeoutMs === "function"
       ? opts.timeoutMs()
       : (opts.timeoutMs ?? REQUEST_TIMEOUT_MS);
+  const { path } = req;
+  const maxBytes = req.maxBytes ?? MAX_RESPONSE_BYTES;
+  const url = vercelUrl(path, req.query, req.team ? opts.teamId : null);
+  opts.beforeRequest?.();
+  const signal = AbortSignal.timeout(Math.max(1, timeout));
+  let res: Response;
+  try {
+    res = await doFetch(url.toString(), {
+      method: req.method,
+      headers: {
+        authorization: `Bearer ${opts.token}`,
+        accept: "application/json",
+        ...(req.body ? { "content-type": "application/json" } : {}),
+      },
+      ...(req.body ? { body: JSON.stringify(req.body) } : {}),
+      signal,
+      redirect: "error",
+      cache: "no-store",
+    });
+  } catch (error) {
+    if (signal.aborted) throw new VercelTimeout(path);
+    throw new VercelError(
+      null,
+      "network",
+      error instanceof Error ? error.message : "network error",
+      null,
+      path,
+    );
+  }
+  const requestId = res.headers.get("x-vercel-id");
+  opts.onRequestId?.(requestId);
+  const limit = num(res.headers.get("x-ratelimit-limit"));
+  const remaining = num(res.headers.get("x-ratelimit-remaining"));
+  const reset = num(res.headers.get("x-ratelimit-reset"));
+  if (opts.onRate && Number.isFinite(limit) && Number.isFinite(remaining))
+    opts.onRate({
+      limit,
+      remaining,
+      resetAt: new Date(Number.isFinite(reset) ? reset * 1000 : now() + 60_000),
+    });
+  const text = await readCapped(res, maxBytes);
+  if (text === null)
+    throw new VercelError(
+      res.status,
+      "too_large",
+      `Vercel response larger than ${Math.round(maxBytes / 1024)} KB`,
+      requestId,
+      path,
+    );
+  let body: unknown = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = null;
+  }
+  if (!res.ok) {
+    const err = (body as { error?: Record<string, unknown> } | null)?.error;
+    const code = typeof err?.code === "string" ? err.code : null;
+    const message =
+      typeof err?.message === "string"
+        ? err.message.slice(0, 300)
+        : `HTTP ${res.status}`;
+    throw new VercelError(
+      res.status,
+      code,
+      message,
+      requestId,
+      path,
+      res.status === 429
+        ? retryAtOf(body, res.headers.get("retry-after"), now())
+        : null,
+      err?.invalidToken === true || err?.missingToken === true,
+    );
+  }
+  const parsed = req.schema.safeParse(body);
+  if (!parsed.success)
+    throw new VercelError(
+      res.status,
+      "unexpected_response",
+      "Unexpected response from Vercel",
+      requestId,
+      path,
+    );
+  return { data: parsed.data, status: res.status, requestId };
+}
 
+export function createVercelClient(opts: VercelClientOptions): VercelReadApi {
   async function get<T>(
     path: string,
     query: Query,
     schema: z.ZodType<T>,
     team: boolean,
+    maxBytes?: number,
   ): Promise<T> {
-    const url = vercelUrl(path, query, team ? opts.teamId : null);
-    opts.beforeRequest?.();
-    const signal = AbortSignal.timeout(Math.max(1, timeoutOf()));
-    let res: Response;
-    try {
-      res = await doFetch(url.toString(), {
-        method: "GET",
-        headers: {
-          authorization: `Bearer ${opts.token}`,
-          accept: "application/json",
-        },
-        signal,
-        redirect: "error",
-        cache: "no-store",
-      });
-    } catch (error) {
-      if (signal.aborted) throw new VercelTimeout(path);
-      throw new VercelError(
-        null,
-        "network",
-        error instanceof Error ? error.message : "network error",
-        null,
-        path,
-      );
-    }
-    const requestId = res.headers.get("x-vercel-id");
-    opts.onRequestId?.(requestId);
-    const limit = num(res.headers.get("x-ratelimit-limit"));
-    const remaining = num(res.headers.get("x-ratelimit-remaining"));
-    const reset = num(res.headers.get("x-ratelimit-reset"));
-    if (opts.onRate && Number.isFinite(limit) && Number.isFinite(remaining))
-      opts.onRate({
-        limit,
-        remaining,
-        resetAt: new Date(
-          Number.isFinite(reset) ? reset * 1000 : now() + 60_000,
-        ),
-      });
-    const text = await readCapped(res, MAX_RESPONSE_BYTES);
-    if (text === null)
-      throw new VercelError(
-        res.status,
-        "too_large",
-        "Vercel response larger than 5 MB",
-        requestId,
-        path,
-      );
-    let body: unknown = null;
-    try {
-      body = text ? JSON.parse(text) : null;
-    } catch {
-      body = null;
-    }
-    if (!res.ok) {
-      const err = (body as { error?: Record<string, unknown> } | null)?.error;
-      const code = typeof err?.code === "string" ? err.code : null;
-      const message =
-        typeof err?.message === "string"
-          ? err.message.slice(0, 300)
-          : `HTTP ${res.status}`;
-      throw new VercelError(
-        res.status,
-        code,
-        message,
-        requestId,
-        path,
-        res.status === 429
-          ? retryAtOf(body, res.headers.get("retry-after"), now())
-          : null,
-        err?.invalidToken === true || err?.missingToken === true,
-      );
-    }
-    const parsed = schema.safeParse(body);
-    if (!parsed.success)
-      throw new VercelError(
-        res.status,
-        "unexpected_response",
-        "Unexpected response from Vercel",
-        requestId,
-        path,
-      );
-    return parsed.data;
+    const res = await vercelRequest(opts, {
+      method: "GET",
+      path,
+      query,
+      schema,
+      team,
+      maxBytes,
+    });
+    return res.data;
   }
 
   return {
@@ -673,6 +805,27 @@ export function createVercelClient(opts: VercelClientOptions): VercelReadApi {
           {},
           deploymentSchema,
           true,
+        ),
+      );
+    },
+    async getProject(id) {
+      return mapProject(
+        await get(
+          `/v9/projects/${encodeURIComponent(id)}`,
+          { rollbackInfo: true },
+          projectSchema,
+          true,
+        ),
+      );
+    },
+    async getBuildLog(id) {
+      return mapEvents(
+        await get(
+          `/v3/deployments/${encodeURIComponent(id)}/events`,
+          { follow: 0, direction: "backward", limit: BUILD_LOG_LINES },
+          eventsSchema,
+          true,
+          BUILD_LOG_MAX_BYTES,
         ),
       );
     },
