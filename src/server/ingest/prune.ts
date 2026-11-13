@@ -12,6 +12,9 @@ import type { Deadline } from "./budget";
  * | RunnerSample                 | 30 days                                       |
  * | Installations past purgeAfter| every row of the installation                 |
  * | VercelDeployment             | older than rawRetentionDays, except each project's latest production and latest preview per branch |
+ * | AzureBuild (+ jobs)          | older than rawRetentionDays, except each definition's latest default-branch build |
+ * | AzureJobRequest              | older than max(rawRetentionDays, 35 days) (DailyAzureUsage keeps the figures) |
+ * | AzurePoolSample              | 30 days                                       |
  * | Findings FIXED               | 90 days after they were resolved              |
  * | Daily stats, BillingUsageItem| kept forever                                  |
  */
@@ -56,6 +59,7 @@ export async function pruneInstallation(
   runs: number;
   samples: number;
   deployments?: number;
+  azureBuilds?: number;
 }> {
   const samples = await deleteInBatches(
     deadline,
@@ -65,6 +69,16 @@ export async function pruneInstallation(
         SELECT ctid FROM "RunnerSample"
         WHERE "installationId" = ${installationId}
           AND "sampledAt" < ${new Date(deadline.now() - SAMPLE_RETENTION_DAYS * DAY_MS)}
+        LIMIT ${BATCH})`,
+  );
+  await deleteInBatches(
+    deadline,
+    () =>
+      db.$executeRaw`
+      DELETE FROM "AzurePoolSample" WHERE ctid IN (
+        SELECT ctid FROM "AzurePoolSample"
+        WHERE "installationId" = ${installationId}
+          AND "at" < ${new Date(deadline.now() - SAMPLE_RETENTION_DAYS * DAY_MS)}
         LIMIT ${BATCH})`,
   );
   if (retentionDays == null) return { jobs: 0, runs: 0, samples };
@@ -107,6 +121,39 @@ export async function pruneInstallation(
                    k."createdAt" DESC)
         LIMIT ${BATCH})`,
   );
+  // Azure Pipelines builds and their job rows: each definition's latest
+  // default-branch build stays (the failing finding and the cards).
+  const azureCutoff = cutoff;
+  const azureBuilds = await deleteInBatches(
+    deadline,
+    () =>
+      db.$executeRaw`
+      WITH doomed AS (
+        SELECT b."id" FROM "AzureBuild" b
+        WHERE b."installationId" = ${installationId} AND b."queuedAt" < ${azureCutoff}
+          AND b."id" NOT IN (
+            SELECT DISTINCT ON (k."projectId", k."definitionId") k."id"
+            FROM "AzureBuild" k
+            WHERE k."installationId" = ${installationId} AND k."isDefaultBranch"
+            ORDER BY k."projectId", k."definitionId", k."queuedAt" DESC)
+        LIMIT ${BATCH}
+      ), jobs AS (
+        DELETE FROM "AzureBuildJob" j USING doomed d
+        WHERE j."installationId" = ${installationId} AND j."buildId" = d."id"
+      )
+      DELETE FROM "AzureBuild" b USING doomed d
+      WHERE b."installationId" = ${installationId} AND b."id" = d."id"`,
+  );
+  await deleteInBatches(
+    deadline,
+    () =>
+      db.$executeRaw`
+      DELETE FROM "AzureJobRequest" WHERE ctid IN (
+        SELECT ctid FROM "AzureJobRequest"
+        WHERE "installationId" = ${installationId}
+          AND "queueTime" < ${new Date(deadline.now() - Math.max(retentionDays, 35) * DAY_MS)}
+        LIMIT ${BATCH})`,
+  );
   await db.finding.deleteMany({
     where: {
       installationId,
@@ -114,11 +161,11 @@ export async function pruneInstallation(
       resolvedAt: { lt: new Date(deadline.now() - 90 * DAY_MS) },
     },
   });
-  return { jobs, runs, samples, deployments };
+  return { jobs, runs, samples, deployments, azureBuilds };
 }
 
 /** Tenant tables of an installation, children first; Installation goes last. */
-const PURGE_TABLES = [
+export const PURGE_TABLES = [
   "WorkflowJob",
   "WorkflowRun",
   "RollupDirty",
@@ -138,6 +185,20 @@ const PURGE_TABLES = [
   "Finding",
   "FeatureAvailability",
   "VercelConnection",
+  "AzureBuildJob",
+  "AzureBuild",
+  "AzurePipelineDefinition",
+  "AzureDevOpsProject",
+  "AzureAgent",
+  "AzurePoolSample",
+  "AzurePool",
+  "AzureJobRequest",
+  "DailyAzureUsage",
+  "AzureUsageSnapshot",
+  "AzureHookSubscription",
+  "PipelineRollupDirty",
+  "DailyPipelineStat",
+  "AzureDevOpsConnection",
   "Repository",
 ] as const;
 

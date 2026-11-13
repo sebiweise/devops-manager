@@ -11,6 +11,7 @@ import { AlertsTable, SeverityMatrix } from "./dependabot-table";
 import { OrgVariablesTable } from "./org-variables";
 import { PullsTable } from "./pulls-table";
 import { deploymentsForShas } from "@/server/data/vercel";
+import { azureBuildsForPulls } from "@/server/data/azure";
 import {
   NewVariableButton,
   RepoVariablesList,
@@ -56,6 +57,7 @@ async function Unavailable() {
 export async function PullsSection({
   scope,
   installationId,
+  accountLogin,
   state,
   repositoryId,
 }: SectionProps) {
@@ -78,6 +80,16 @@ export async function PullsSection({
       pulls.map((p) => p.headSha),
     ).catch(() => new Map()),
   );
+  const azureBuilds = await azureBuildsForPulls(
+    scope,
+    installationId,
+    pulls.map((p) => ({
+      repositoryId: p.repositoryId,
+      number: p.number,
+      headSha: p.headSha,
+    })),
+    (id) => accountPath(accountLogin, `/pipelines/runs/${id}`),
+  ).catch(() => ({}));
   const mergeMethods = Object.fromEntries(
     repos.map((r) => [r.repositoryId, r.mergeMethods]),
   );
@@ -109,6 +121,7 @@ export async function PullsSection({
         showRepo={!repositoryId}
         caption={t("title")}
         previews={previews}
+        azureBuilds={azureBuilds}
       />
       {unavailable.length > 0 ? (
         <p className="text-xs text-muted-foreground">

@@ -9,6 +9,11 @@
  *  - something that looks like a real Vercel token (`vcp_…`) or team id
  *    (`team_` + 20 or more characters) and is not a placeholder (one that
  *    contains "test", "example", "demo" or "fake"), or
+ *  - an Azure DevOps PAT: the 84-character form with the `AZDO` signature,
+ *    or the legacy 52-character base32 form on a line that mentions a PAT
+ *    or Azure, or
+ *  - a `dev.azure.com/<organisation>` URL whose organisation is not a
+ *    placeholder (fabrikam, contoso…, example…, or a template), or
  *  - a term from PRIVACY_DENYLIST (newline- or comma-separated, kept in a CI
  *    secret so the list itself is not published). Matching is
  *    case-insensitive.
@@ -73,6 +78,12 @@ function emailDomain(raw) {
 }
 const VERCEL_IDS = /\b(vc[a-z]_[A-Za-z0-9_]{16,}|team_[A-Za-z0-9]{20,})\b/g;
 const PLACEHOLDER = /test|example|demo|fake/i;
+const AZURE_PAT = /\b[A-Za-z0-9]{76}AZDO[A-Za-z0-9]{4}\b/g;
+const AZURE_LEGACY_PAT = /\b[a-z2-7]{52}\b/g;
+const AZURE_CONTEXT = /pat|azure|azdo|devops/i;
+const AZURE_ORG_URL = /dev\.azure\.com\/([^/\s"'`)<>\]]+)/gi;
+const AZURE_ORG_PLACEHOLDER =
+  /^(fabrikam|contoso[-\w]*|example[-\w]*|organi[sz]ation|ORGANISATION|_apis|\{|<|\$|%7B)/i;
 const SKIP_FILES = [/^pnpm-lock\.yaml$/, /\.(png|jpe?g|gif|ico|webp|woff2?)$/i];
 
 const denylist = (process.env.PRIVACY_DENYLIST ?? "")
@@ -108,6 +119,23 @@ function scan(label, text) {
     for (const match of line.matchAll(VERCEL_IDS)) {
       if (!PLACEHOLDER.test(match[0]))
         findings.push(`${label}:${i + 1}: Vercel token or team id`);
+    }
+    for (const match of line.matchAll(AZURE_PAT)) {
+      if (!PLACEHOLDER.test(match[0]))
+        findings.push(`${label}:${i + 1}: Azure DevOps personal access token`);
+    }
+    if (AZURE_CONTEXT.test(line)) {
+      for (const match of line.matchAll(AZURE_LEGACY_PAT)) {
+        if (!PLACEHOLDER.test(match[0]))
+          findings.push(
+            `${label}:${i + 1}: Azure DevOps personal access token (legacy)`,
+          );
+      }
+    }
+    for (const match of line.matchAll(AZURE_ORG_URL)) {
+      const org = decodeURIComponent(match[1] ?? "");
+      if (!AZURE_ORG_PLACEHOLDER.test(org))
+        findings.push(`${label}:${i + 1}: Azure DevOps organisation URL`);
     }
     const lower = line.toLowerCase();
     for (const term of denylist) {

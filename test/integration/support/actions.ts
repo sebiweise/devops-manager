@@ -51,6 +51,11 @@ export async function resetTables(db: Db) {
       "InstallationRateLimit", "AppState", "AuditLog", "AuditChainHead",
       "VercelDeployment", "VercelProject", "VercelConnection",
       "DailyDeploymentStat", "Finding", "FeatureAvailability",
+      "AzureBuildJob", "AzureBuild", "AzurePipelineDefinition",
+      "AzureDevOpsProject", "AzureAgent", "AzurePoolSample", "AzurePool",
+      "AzureJobRequest", "DailyAzureUsage", "AzureUsageSnapshot",
+      "AzureHookSubscription", "PipelineRollupDirty", "DailyPipelineStat",
+      "AzureDevOpsConnection",
       "Repository",
       "Installation" CASCADE`);
 }

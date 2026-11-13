@@ -14,6 +14,8 @@ import {
 import { Pagination } from "@/components/data/pagination";
 import { workflowColumns } from "@/components/insights/workflow-columns";
 import { PageHeader } from "@/components/shell/page-header";
+import Link from "next/link";
+import { hasAzurePipelines } from "@/server/data/ci-runs";
 import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
 import { accountMeta } from "@/lib/page-meta";
 import { pageRange } from "@/lib/page-range";
@@ -45,6 +47,7 @@ export default async function WorkflowsPage({
   const { account } = await params;
   const sp = (await searchParams) as SearchParamsLike;
   const { scope, installation } = await loadAccount(account);
+  const azure = await orNotFound(hasAzurePipelines(scope, installation.id));
   const range = await pageRange(sp);
   const query = parseTableQuery(sp, WORKFLOW_TABLE);
   const repo = first(sp, "repo");
@@ -160,6 +163,16 @@ export default async function WorkflowsPage({
           points: w.sparkline,
         }))}
       />
+      {azure ? (
+        <p className="text-sm">
+          <Link
+            href={`/o/${encodeURIComponent(installation.accountLogin)}/pipelines`}
+            className="underline-offset-2 hover:underline"
+          >
+            {t("ci.azure.githubOnly")}
+          </Link>
+        </p>
+      ) : null}
     </div>
   );
 }

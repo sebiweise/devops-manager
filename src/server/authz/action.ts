@@ -32,6 +32,14 @@ import {
   vercelWriteErrorInfo,
   type VercelWriteApi,
 } from "@/server/vercel/write";
+import { createAzureClient, type AzureReadApi } from "@/server/azure/client";
+import {
+  azureErrorInfo,
+  createAzureWriteClient,
+  type AzureWriteApi,
+} from "@/server/azure/write";
+import { azureCredentialFor } from "@/server/ingest/azure-credential";
+import { noteAzureFailure } from "@/server/ingest/azure-reconcile";
 import { consumeActionTokens } from "./rate-limit";
 import { hasRole, type Role } from "./roles";
 import { currentRole, type TenantScope } from "./scope";
@@ -77,7 +85,10 @@ import { currentRole, type TenantScope } from "./scope";
  * and answers every closed gate with `unavailable` plus a DENIED row;
  * `actingAs` names the identity when it is not the App; `perform` takes a
  * `mapError` for the provider's error shape; `auditChain: "instance"` sends
- * the rows to chain 0. GitHub actions behave exactly as before.
+ * the rows to chain 0. M7b adds `provider: "azure"` through the same
+ * table-driven `providerGate` (env AZURE_MANAGEMENT_ENABLED, the
+ * installation toggle, the connection, its rate headroom, its own toggle
+ * and the execute scope). GitHub actions behave exactly as before.
  */
 
 export type ActionActor = {
@@ -97,6 +108,10 @@ export type ActionDeps = {
   revalidate: (installationId: bigint) => void;
   /** The fetch of Vercel calls (tests inject an in-memory Vercel). */
   vercelFetch?: Fetch;
+  /** The Azure Pipelines kill switch (AZURE_MANAGEMENT_ENABLED, default off). */
+  azureManagementEnabled?: boolean;
+  /** The fetch of Azure DevOps (and Entra) calls (tests inject a fake). */
+  azureFetch?: Fetch;
 };
 
 export function defaultActionDeps(
@@ -107,6 +122,7 @@ export function defaultActionDeps(
     now: () => new Date(),
     managementEnabled: env.MANAGEMENT_ENABLED,
     mergeAuditTrailer: env.MERGE_AUDIT_TRAILER,
+    azureManagementEnabled: env.AZURE_MANAGEMENT_ENABLED,
     revalidate: (id) => revalidateTag(`inst:${id}`, "max"),
     ...overrides,
   };
@@ -157,6 +173,12 @@ export const UNAVAILABLE_REASONS = [
   "vercel_not_connected",
   "vercel_revoked",
   "vercel_management_disabled",
+  "azure_management_disabled_global",
+  "azure_not_connected",
+  "azure_revoked",
+  "azure_rate_limited",
+  "azure_management_disabled",
+  "azure_scope_missing",
 ] as const;
 export type UnavailableReason = (typeof UNAVAILABLE_REASONS)[number];
 
@@ -195,7 +217,13 @@ export type GateSpec = {
    * switch and the installation toggle answer the same way there
    * (`unavailable` plus a DENIED row).
    */
-  provider?: "github" | "vercel";
+  provider?: "github" | "vercel" | "azure";
+  /**
+   * Azure only: the action turns the connection's own toggle on, so the
+   * gate stops after the env switch, the connection, revoked, paused and
+   * headroom checks (the toggle and the execute scope are what it sets).
+   */
+  azureToggle?: boolean;
   /**
    * Who performs the action when it is not the App (e.g.
    * "vercel:token:<hint>"); used by `record()` when the row gives none.
@@ -385,6 +413,70 @@ async function vercelGate(
   return null;
 }
 
+/** Azure DevOps rate headroom below which actions wait (TSTU share). */
+const AZURE_MIN_HEADROOM = 0.1;
+
+/**
+ * The Azure Pipelines gate (design addendum M7 §7.1), in this order:
+ * MANAGEMENT_ENABLED and AZURE_MANAGEMENT_ENABLED (env, default off), the
+ * installation toggle, a connection, not revoked, not paused and at least
+ * 10 % of the rate budget (TSTU) left, the connection's own toggle, and the
+ * execute scope (probed when the toggle was turned on). Turning the toggle
+ * on (`azureToggle`) stops before the last two.
+ */
+async function azureGate(
+  inst: ActionInstallation,
+  spec: GateSpec,
+  deps: ActionDeps,
+): Promise<UnavailableReason | null> {
+  if (!deps.managementEnabled) return "management_disabled_global";
+  if (deps.azureManagementEnabled !== true)
+    return "azure_management_disabled_global";
+  if (spec.requiresManagement !== false && !inst.managementEnabled)
+    return "management_disabled_installation";
+  const conn = await db.azureDevOpsConnection.findUnique({
+    where: { installationId: inst.id },
+    select: {
+      revokedAt: true,
+      pausedUntil: true,
+      managementEnabled: true,
+      scopes: true,
+    },
+  });
+  if (!conn) return "azure_not_connected";
+  if (conn.revokedAt) return "azure_revoked";
+  const now = deps.now();
+  if (conn.pausedUntil && conn.pausedUntil > now) return "azure_rate_limited";
+  const rate = await db.installationRateLimit.findUnique({
+    where: {
+      installationId_resource: { installationId: inst.id, resource: "azure" },
+    },
+    select: { limit: true, remaining: true, resetAt: true },
+  });
+  if (
+    rate &&
+    rate.limit > 0 &&
+    rate.resetAt > now &&
+    rate.remaining < rate.limit * AZURE_MIN_HEADROOM
+  )
+    return "azure_rate_limited";
+  if (spec.azureToggle) return null;
+  if (!conn.managementEnabled) return "azure_management_disabled";
+  const scopes = (conn.scopes ?? {}) as Record<string, unknown>;
+  if (scopes.execute !== "ok") return "azure_scope_missing";
+  return null;
+}
+
+/** The provider gates, table-driven (GitHub has none: its toggles answer earlier). */
+const providerGate: Record<
+  "vercel" | "azure",
+  (
+    inst: ActionInstallation,
+    spec: GateSpec,
+    deps: ActionDeps,
+  ) => Promise<UnavailableReason | null>
+> = { vercel: vercelGate, azure: azureGate };
+
 /** The permissions a purpose lacks on this installation, or null when granted. */
 export const missingPermissions = missingOf;
 
@@ -401,15 +493,16 @@ export async function beginAction(
   const inst = await loadInstallation(spec.installationId);
   if (!inst) throw new NotFoundError();
 
-  const vercel = spec.provider === "vercel";
+  const provider = spec.provider ?? "github";
+  const external = provider !== "github";
   // GitHub actions: the toggles answer before anything is recorded (M3).
-  // Vercel actions check them after the role, as a DENIED row (§8.1).
-  if (!vercel && !deps.managementEnabled)
+  // Vercel and Azure actions check them after the role, as a DENIED row (§8.1).
+  if (!external && !deps.managementEnabled)
     return {
       ok: false,
       result: { status: "management_disabled", level: "global" },
     };
-  if (!vercel && spec.requiresManagement !== false && !inst.managementEnabled)
+  if (!external && spec.requiresManagement !== false && !inst.managementEnabled)
     return {
       ok: false,
       result: { status: "management_disabled", level: "installation" },
@@ -425,8 +518,15 @@ export async function beginAction(
     await db.session.deleteMany({ where: { userId: actor.user.id } });
     return { ok: false, result: { status: "unauthorized" } };
   }
-  const provider = await actorProviderOf(actor.user.id);
-  const session = new ActionSession(actor, spec, inst, role, provider, deps);
+  const actorProvider = await actorProviderOf(actor.user.id);
+  const session = new ActionSession(
+    actor,
+    spec,
+    inst,
+    role,
+    actorProvider,
+    deps,
+  );
 
   if (!hasRole(role, spec.role)) {
     // A denial spends a rate-limit token before its audit row is written, so
@@ -442,8 +542,8 @@ export async function beginAction(
     return { ok: false, result: { status: "forbidden" } };
   }
 
-  if (vercel) {
-    const reason = await vercelGate(inst, spec, deps);
+  if (provider !== "github") {
+    const reason = await providerGate[provider](inst, spec, deps);
     if (reason) {
       const denied = await consumeActionTokens(actor.user.id, 1, deps.now());
       if (!denied.ok)
@@ -721,6 +821,75 @@ export class ActionSession {
         mapError: (error) => {
           const info = vercelWriteErrorInfo(error);
           return { ...info, message: scrubKnown(info.message, [token], 500) };
+        },
+      },
+    );
+  }
+
+  /**
+   * Step 8 and 9 for Azure DevOps (design addendum M7 §7.1): resolve the
+   * credential (a service principal's secret becomes a token here), call
+   * Azure DevOps, record the result with its status, message and activity
+   * id (stored as the request id), scrubbed of the credential and the
+   * organisation name. A rejected credential also revokes the connection;
+   * a rate stop on a write does not pause the sync.
+   */
+  async executeAzure<T>(
+    auditId: string,
+    fn: (api: {
+      read: AzureReadApi;
+      write: AzureWriteApi;
+      org: string;
+      secrets: string[];
+    }) => Promise<Done<T>>,
+  ): Promise<Outcome<T>> {
+    let secrets: string[] = [];
+    return this.perform(
+      auditId,
+      async () => {
+        const cred = await azureCredentialFor(this.installation.id, {
+          fetch: this.deps.azureFetch,
+        }).catch(async (error: unknown) => {
+          await noteAzureFailure(
+            this.installation.id,
+            error,
+            this.deps.now(),
+            [],
+            { pause: false },
+          );
+          throw error;
+        });
+        if (cred.kind !== "token") throw new Error("azure_unavailable");
+        secrets = [...cred.secrets, cred.org];
+        const opts = {
+          org: cred.org,
+          auth: cred.auth,
+          fetch: this.deps.azureFetch,
+          now: () => this.deps.now().getTime(),
+        };
+        const api = {
+          read: createAzureClient(opts),
+          write: createAzureWriteClient(opts),
+          org: cred.org,
+          secrets,
+        };
+        try {
+          return await fn(api);
+        } catch (error) {
+          await noteAzureFailure(
+            this.installation.id,
+            error,
+            this.deps.now(),
+            secrets,
+            { pause: false },
+          );
+          throw error;
+        }
+      },
+      {
+        mapError: (error) => {
+          const info = azureErrorInfo(error);
+          return { ...info, message: scrubKnown(info.message, secrets, 500) };
         },
       },
     );

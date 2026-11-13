@@ -163,6 +163,7 @@ model Installation {
 
   repositories Repository[]
   vercel       VercelConnection?
+  azure        AzureDevOpsConnection?
 }
 
 // ---------- inventory ----------
@@ -200,7 +201,9 @@ model Repository {
   createdAt          DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
 
-  vercelProjects VercelProject[]
+  vercelProjects         VercelProject[]
+  azureDefinitions       AzurePipelineDefinition[] @relation("AzureDefinitionRepo")
+  azureManualDefinitions AzurePipelineDefinition[] @relation("AzureDefinitionManualRepo")
 
   @@unique([installationId, fullName])
   @@index([installationId, removedAt])
@@ -608,8 +611,10 @@ enum DeliveryStatus {
 }
 
 model WebhookDelivery {
-  /// X-GitHub-Delivery
+  /// X-GitHub-Delivery; Azure DevOps service hook deliveries use "azure:<notificationId>".
   id             String         @id
+  /// github | azure. Together with the id prefix the dedupe key is (provider, deliveryId).
+  provider       String         @default("github")
   event          String
   action         String?
   installationId BigInt?
@@ -677,6 +682,20 @@ enum AuditAction {
   VERCEL_CANCEL
   VERCEL_PROMOTE
   VERCEL_ROLLBACK
+  ADO_CONNECT
+  ADO_TOKEN_ROTATE
+  ADO_DISCONNECT
+  ADO_PROJECTS_SELECT
+  ADO_DEFINITION_LINK
+  ADO_DEFINITION_OS_SET
+  ADO_LIMITS_UPDATE
+  ADO_HOOKS_INSTALL
+  ADO_HOOK_SECRET_ROTATE
+  ADO_MANAGEMENT_TOGGLE
+  ADO_QUEUE_RUN
+  ADO_CANCEL
+  ADO_RETRY
+  ADO_STAGE_RETRY
 }
 
 enum AuditStatus {
@@ -921,6 +940,436 @@ model DailyDeploymentStat {
   @@index([installationId, day])
 }
 
+// ---------- CI: Azure DevOps / Azure Pipelines (M7, M7b actions, M7c SP) ----------
+//
+// One Azure DevOps organisation per GitHub installation (1:1, orgId unique).
+// New tables only: the GitHub run, job, rollup, runner and cost tables are
+// untouched. Every table carries installationId and its indexes lead with
+// it. Identities, e-mail addresses and logs are never stored. Tenant reads
+// go through src/server/data/azure.ts; see docs/AZURE-DEVOPS.md.
+
+enum AzureAuthKind {
+  /// Organisation-scoped personal access token (encrypted).
+  PAT
+  /// AZURE_DEVOPS_PAT or the AZURE_DEVOPS_* service principal from env (never stored).
+  ENV
+  /// Microsoft Entra service principal, client credentials (secret encrypted).
+  ENTRA_SP
+}
+
+enum AzureBuildStatus {
+  NOT_STARTED
+  POSTPONED
+  IN_PROGRESS
+  CANCELLING
+  COMPLETED
+  UNKNOWN
+}
+
+enum AzureBuildResult {
+  SUCCEEDED
+  PARTIALLY_SUCCEEDED
+  FAILED
+  CANCELED
+  NONE
+}
+
+enum AzureJobResult {
+  SUCCEEDED
+  SUCCEEDED_WITH_ISSUES
+  FAILED
+  CANCELED
+  SKIPPED
+  ABANDONED
+  NONE
+}
+
+enum AzureOs {
+  LINUX
+  WINDOWS
+  MACOS
+  UNKNOWN
+}
+
+model AzureDevOpsConnection {
+  installationId          BigInt        @id
+  installation            Installation  @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  /// Organisation GUID (connectionData instanceId), or "name:<org>" when it is not readable.
+  orgId                   String        @unique
+  /// Plaintext (URL building, display); never in logs, error texts or audit params.
+  orgName                 String
+  authKind                AzureAuthKind
+  /// Ciphertext: the PAT (PAT) or the client secret (ENTRA_SP), AAD "AzureDevOpsConnection:<id>:accessToken"; null for ENV.
+  accessToken             String?
+  /// Last 4 characters of the PAT or client secret.
+  tokenHint               String?
+  /// Admin-entered expiry of the PAT or client secret.
+  tokenExpiresAt          DateTime?     @db.Timestamptz(3)
+  /// ENTRA_SP: the directory (tenant) id and the application (client) id.
+  tenantId                String?
+  clientId                String?
+  /// Capability probes: { projects, pools, builds, execute, hooks } = ok | missing | unknown.
+  scopes                  Json          @default("{}")
+  /// Separate Azure management toggle (M7b), off by default.
+  managementEnabled       Boolean       @default(false)
+  /// Random public route key of the service hook (/api/azure/hooks/<hookKey>).
+  hookKey                 String?       @unique
+  /// Ciphertext of the Basic-auth password of the service hook.
+  hookSecret              String?
+  hookSecretPrev          String?
+  hookSecretPrevUntil     DateTime?     @db.Timestamptz(3)
+  hookFailures            Int           @default(0)
+  hookFailuresSince       DateTime?     @db.Timestamptz(3)
+  hookBlockedUntil        DateTime?     @db.Timestamptz(3)
+  /// GitHub App slug whose check runs are hints (the Azure Pipelines app).
+  checkAppSlug            String        @default("azure-pipelines")
+  /// Limits (admin-editable, ADO_LIMITS_UPDATE); the stored values are the source of truth.
+  hostedParallelJobs      Int           @default(1)
+  /// null = paid tier, no monthly minute limit.
+  includedMinutes         Int?          @default(1800)
+  /// 60 on the free tier, 360 on the paid tier.
+  maxJobMinutes           Int           @default(60)
+  /// Day of the month the minutes reset (assumed: calendar month).
+  monthResetDay           Int           @default(1)
+  blockWhenQuotaExhausted Boolean       @default(false)
+  /// What resourceusage reported last: { totalMinutes, totalCount, isPremium }.
+  detectedLimits          Json?
+  createdByUserId         String
+  /// Set on 401 or 203; sync stops until a rotate.
+  revokedAt               DateTime?     @db.Timestamptz(3)
+  /// No Azure DevOps call before this time (Retry-After, 429, TF400733, low headroom).
+  pausedUntil             DateTime?     @db.Timestamptz(3)
+  /// Redacted and truncated; never a token or the organisation name.
+  lastError               String?
+  /// ok | partial | rate_limited | credential_error | error
+  lastSyncStatus          String?
+  lastSyncedAt            DateTime?     @db.Timestamptz(3)
+  /// Written at most every 10 minutes.
+  lastUsedAt              DateTime?     @db.Timestamptz(3)
+  definitionsSyncedAt     DateTime?     @db.Timestamptz(3)
+  poolsSampledAt          DateTime?     @db.Timestamptz(3)
+  usageSyncedAt           DateTime?     @db.Timestamptz(3)
+  hooksCheckedAt          DateTime?     @db.Timestamptz(3)
+  /// Last z2c finished-retry sweep (every 30 minutes).
+  sweepAt                 DateTime?     @db.Timestamptz(3)
+  /// The job request feed answered (false: usage is estimated from builds, labelled partial).
+  jobRequestsAvailable    Boolean?
+  createdAt               DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime      @updatedAt @db.Timestamptz(3)
+
+  projects    AzureDevOpsProject[]
+  definitions AzurePipelineDefinition[]
+  builds      AzureBuild[]
+}
+
+model AzureDevOpsProject {
+  installationId     BigInt
+  connection         AzureDevOpsConnection @relation(fields: [installationId], references: [installationId], onDelete: Cascade)
+  /// Project GUID.
+  id                 String
+  name               String
+  /// private | public (separate free tiers)
+  visibility         String
+  selected           Boolean               @default(false)
+  /// queueTime high-water mark of the last complete pass (z2b).
+  buildsCursor       DateTime?             @db.Timestamptz(3)
+  /// x-ms-continuationtoken inside an unfinished pass.
+  buildsContinuation String?
+  /// Newest queueTime seen by the unfinished pass; becomes the cursor when it completes.
+  buildsPassTop      DateTime?             @db.Timestamptz(3)
+  /// Backfill (z2d) continues below this queueTime.
+  backfillBefore     DateTime?             @db.Timestamptz(3)
+  backfillDone       Boolean               @default(false)
+  removedAt          DateTime?             @db.Timestamptz(3)
+  createdAt          DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime              @updatedAt @db.Timestamptz(3)
+
+  @@id([installationId, id])
+}
+
+model AzurePipelineDefinition {
+  installationId     BigInt
+  connection         AzureDevOpsConnection @relation(fields: [installationId], references: [installationId], onDelete: Cascade)
+  projectId          String
+  id                 Int
+  name               String
+  /// Folder path of the definition.
+  path               String?
+  yamlPath           String?
+  /// GitHub | TfsGit | ... (repository.type)
+  repoType           String
+  /// "owner/name" from the definition's repository, display only.
+  linkRepoFullName   String?
+  /// Resolved from linkRepoFullName: same installation, not removed, not ignored.
+  repositoryId       BigInt?
+  repository         Repository?           @relation("AzureDefinitionRepo", fields: [repositoryId], references: [id], onDelete: SetNull)
+  /// Admin override (ADO_DEFINITION_LINK), validated like repositoryId.
+  manualRepositoryId BigInt?
+  manualRepository   Repository?           @relation("AzureDefinitionManualRepo", fields: [manualRepositoryId], references: [id], onDelete: SetNull)
+  defaultBranch      String?
+  /// enabled | paused | disabled
+  queueStatus        String?
+  /// Admin override of the OS of every job (ADO_DEFINITION_OS_SET).
+  osOverride         AzureOs?
+  /// Set by hints; the next pass reads its newest builds.
+  dirtyAt            DateTime?             @db.Timestamptz(3)
+  hintRefreshedAt    DateTime?             @db.Timestamptz(3)
+  removedAt          DateTime?             @db.Timestamptz(3)
+  createdAt          DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime              @updatedAt @db.Timestamptz(3)
+
+  @@id([installationId, projectId, id])
+  @@index([installationId, repositoryId])
+  @@index([installationId, manualRepositoryId])
+}
+
+model AzureBuild {
+  installationId     BigInt
+  connection         AzureDevOpsConnection @relation(fields: [installationId], references: [installationId], onDelete: Cascade)
+  /// Build (run) id, unique within the organisation.
+  id                 Int
+  projectId          String
+  definitionId       Int
+  /// The effective repository of its definition at write time.
+  repositoryId       BigInt?
+  buildNumber        String
+  status             AzureBuildStatus
+  result             AzureBuildResult
+  /// Normalised: push | pull_request | schedule | workflow_dispatch | other (never a user name).
+  reason             String
+  headBranch         String?
+  headSha            String?
+  /// Pull request number from triggerInfo (secondary PR join).
+  prNumber           Int?
+  isDefaultBranch    Boolean               @default(false)
+  queuedAt           DateTime              @db.Timestamptz(3)
+  startedAt          DateTime?             @db.Timestamptz(3)
+  finishedAt         DateTime?             @db.Timestamptz(3)
+  durationS          Int?
+  /// First job start minus queue time (or the job request's assign - queue).
+  queueS             Int?
+  queuePosition      Int?
+  maxAttempt         Int                   @default(1)
+  /// Result of attempt 1 (from the attempt-1 job records), for first-try and flakiness.
+  firstAttemptResult AzureBuildResult?
+  /// A job hit the job time limit.
+  timedOut           Boolean               @default(false)
+  /// lastChangedDate; snapshots older than the stored one are ignored.
+  lastChangedAt      DateTime?             @db.Timestamptz(3)
+  timelineSyncedAt   DateTime?             @db.Timestamptz(3)
+  timelineChangeId   Int?
+  /// Set by hints and hooks; z3 reads the timeline first.
+  dirtyAt            DateTime?             @db.Timestamptz(3)
+  hintRefreshedAt    DateTime?             @db.Timestamptz(3)
+  /// The audit row of the M7b queue that created it.
+  auditLogId         String?
+  /// exact (dm-audit tag) | probable (definition, manual, ref, 2-minute window)
+  auditLinkKind      String?
+  syncedAt           DateTime              @db.Timestamptz(3)
+
+  @@id([installationId, id])
+  @@index([installationId, repositoryId, queuedAt(sort: Desc)])
+  @@index([installationId, headSha])
+  @@index([installationId, status])
+  @@index([installationId, definitionId, queuedAt])
+  @@index([installationId, queuedAt(sort: Desc)])
+}
+
+/// One row per timeline record and attempt (type Job or Stage).
+model AzureBuildJob {
+  installationId  BigInt
+  buildId         Int
+  recordId        String
+  attempt         Int
+  /// Job | Stage
+  type            String
+  projectId       String
+  repositoryId    BigInt?
+  identifier      String?
+  stageIdentifier String?
+  name            String
+  /// Matrix and attempt suffixes stripped.
+  baseName        String
+  /// pending | inProgress | completed
+  state           String
+  result          AzureJobResult
+  poolId          Int?
+  isHosted        Boolean?
+  /// e.g. "macOS-14", "ubuntu-latest" (job request agentSpecification).
+  hostedImage     String?
+  os              AzureOs        @default(UNKNOWN)
+  /// The agent name (hosted: "Azure Pipelines <n>", self-hosted: the agent's name).
+  workerName      String?
+  /// Log id of the record (read live for the excerpt, never stored).
+  logId           Int?
+  queuedAt        DateTime?      @db.Timestamptz(3)
+  startedAt       DateTime?      @db.Timestamptz(3)
+  finishedAt      DateTime?      @db.Timestamptz(3)
+  durationS       Int?
+  queueS          Int?
+  hitJobCap       Boolean        @default(false)
+
+  @@id([installationId, buildId, recordId, attempt])
+  @@index([installationId, startedAt])
+  @@index([installationId, repositoryId])
+}
+
+model AzurePool {
+  installationId BigInt
+  id             Int
+  name           String
+  isHosted       Boolean
+  /// automation | deployment
+  poolType       String
+  size           Int?
+  sampledAt      DateTime  @db.Timestamptz(3)
+  removedAt      DateTime? @db.Timestamptz(3)
+
+  @@id([installationId, id])
+}
+
+/// Self-hosted agents only. Names are stored (the docs advise against personal names).
+model AzureAgent {
+  installationId  BigInt
+  poolId          Int
+  id              Int
+  name            String
+  /// online | offline
+  status          String
+  enabled         Boolean
+  version         String?
+  osDescription   String?
+  busy            Boolean
+  statusChangedAt DateTime? @db.Timestamptz(3)
+  sampledAt       DateTime  @db.Timestamptz(3)
+
+  @@id([installationId, poolId, id])
+}
+
+/// One observation of a pool (30 days retention).
+model AzurePoolSample {
+  installationId BigInt
+  poolId         Int
+  at             DateTime @db.Timestamptz(3)
+  running        Int
+  queued         Int
+  onlineAgents   Int?
+
+  @@id([installationId, poolId, at])
+}
+
+/// Org-wide job requests (every project, linked or not): what the free tier counts.
+model AzureJobRequest {
+  installationId BigInt
+  poolId         Int
+  requestId      BigInt
+  projectId      String?
+  isHosted       Boolean
+  /// From the project's visibility; null when the project is not known.
+  isPrivate      Boolean?
+  os             AzureOs   @default(UNKNOWN)
+  hostedImage    String?
+  queueTime      DateTime  @db.Timestamptz(3)
+  assignTime     DateTime? @db.Timestamptz(3)
+  finishTime     DateTime? @db.Timestamptz(3)
+  /// Equals the timeline record id of the job (verify, docs/AZURE-DEVOPS.md).
+  jobId          String?
+  /// The owning run id (owner.id).
+  buildId        Int?
+  result         String?
+
+  @@id([installationId, requestId])
+  @@index([installationId, queueTime])
+  @@index([installationId, jobId])
+}
+
+/// Hosted usage per local day, from org-wide job requests (or builds as a labelled fallback).
+model DailyAzureUsage {
+  installationId       BigInt
+  day                  DateTime @db.Date
+  hostedMinutesPrivate Int
+  hostedMinutesPublic  Int
+  hostedMinutesMacos   Int
+  hostedMinutesLinux   Int
+  hostedMinutesWindows Int
+  peakParallel         Int
+  saturatedS           Int
+  jobsQueuedOver10m    Int
+  /// Queue seconds of hosted jobs while every parallel job was busy.
+  saturationQueueS     Int      @default(0)
+  /// jobrequests | builds (fallback, partial)
+  source               String   @default("jobrequests")
+
+  @@id([installationId, day])
+}
+
+model AzureUsageSnapshot {
+  installationId BigInt
+  /// "YYYY-MM" of the billing month start (from monthResetDay).
+  month          String
+  /// api | estimate
+  source         String
+  usedMinutes    Int
+  totalMinutes   Int?
+  usedParallel   Int
+  totalParallel  Int
+  isPremium      Boolean?
+  capturedAt     DateTime @db.Timestamptz(3)
+
+  @@id([installationId, month, source])
+}
+
+model AzureHookSubscription {
+  installationId BigInt
+  id             String
+  eventType      String
+  projectId      String?
+  /// enabled | onProbation | disabledBySystem | disabledByUser | ...
+  status         String
+  checkedAt      DateTime @db.Timestamptz(3)
+
+  @@id([installationId, id])
+}
+
+/// A local day of an installation whose pipeline stats must be recomputed.
+model PipelineRollupDirty {
+  installationId BigInt
+  day            DateTime @db.Date
+  markedAt       DateTime @db.Timestamptz(3)
+
+  @@id([installationId, day])
+}
+
+/// Completed builds per definition, local day and branch class (histograms as DailyWorkflowStat).
+model DailyPipelineStat {
+  installationId          BigInt
+  projectId               String
+  definitionId            Int
+  day                     DateTime @db.Date
+  defaultBranch           Boolean
+  repositoryId            BigInt?
+  builds                  Int
+  succeeded               Int
+  partial                 Int
+  failed                  Int
+  canceled                Int
+  timedOut                Int
+  firstTrySuccess         Int
+  flakyRecovered          Int
+  durSumS                 BigInt
+  durationHist            Int[]
+  queueHist               Int[]
+  jobSecondsHostedLinux   Int
+  jobSecondsHostedWindows Int
+  jobSecondsHostedMacos   Int
+  jobSecondsSelfHosted    Int
+  jobsNearCap             Int
+
+  @@id([installationId, projectId, definitionId, day, defaultBranch])
+  @@index([installationId, day])
+  @@index([installationId, repositoryId, day])
+}
+
 // ---------- findings (shared by the extra tools) ----------
 
 enum FindingSource {
@@ -933,6 +1382,7 @@ enum FindingSource {
   UPTIME
   VERCEL
   CREDENTIAL
+  AZURE_PIPELINES
 }
 
 enum FindingSeverity {

@@ -44,10 +44,22 @@ import { getManagementState } from "@/server/data/management";
 import { listIgnoredRepositories } from "@/server/data/repos";
 import { getRepoDeployments, getVercelActionState } from "@/server/data/vercel";
 import { RepoDeployments } from "@/components/hosting/hosting";
+import { CiRunsSection } from "@/components/azure/ci-runs-section";
+import { pipelineColumns } from "@/components/azure/azure-views";
+import { env } from "@/env";
+import { getAzureActionState, getRepoPipelines } from "@/server/data/azure";
+import { hasAzurePipelines } from "@/server/data/ci-runs";
 
 export const generateMetadata = accountMeta("repo");
 
-const TABS = ["workflows", "runs", "pulls", "dependabot", "variables"] as const;
+const TABS = [
+  "workflows",
+  "runs",
+  "pipelines",
+  "pulls",
+  "dependabot",
+  "variables",
+] as const;
 type Tab = (typeof TABS)[number];
 
 /**
@@ -189,27 +201,45 @@ export default async function RepoPage({
   }
 
   const base = repoHref(login, repo.fullName);
+  const azure = await orNotFound(hasAzurePipelines(scope, installation.id));
+  const tabs = TABS.filter((k) => k !== "pipelines" || azure);
   const requested = param(sp, "tab");
-  const tab: Tab = (TABS as readonly string[]).includes(requested ?? "")
+  const tab: Tab = (tabs as readonly string[]).includes(requested ?? "")
     ? (requested as Tab)
     : "workflows";
   const insightRange = await pageRange(sp);
   const repositoryId = BigInt(repo.id);
-  const [summary, workflows, deployments, vercelActions] = await Promise.all([
-    orNotFound(
-      getRepositorySummary(scope, installation.id, repositoryId, insightRange),
-    ),
-    orNotFound(
-      listWorkflowStats(scope, installation.id, {
-        repositoryId,
-        range: insightRange,
-      }),
-    ),
-    orNotFound(getRepoDeployments(scope, installation.id, repositoryId)),
-    orNotFound(
-      getVercelActionState(scope, installation.id, state.globalEnabled),
-    ),
-  ]);
+  const [summary, workflows, deployments, vercelActions, pipelines] =
+    await Promise.all([
+      orNotFound(
+        getRepositorySummary(
+          scope,
+          installation.id,
+          repositoryId,
+          insightRange,
+        ),
+      ),
+      orNotFound(
+        listWorkflowStats(scope, installation.id, {
+          repositoryId,
+          range: insightRange,
+        }),
+      ),
+      orNotFound(getRepoDeployments(scope, installation.id, repositoryId)),
+      orNotFound(
+        getVercelActionState(scope, installation.id, state.globalEnabled),
+      ),
+      azure
+        ? orNotFound(
+            getRepoPipelines(
+              scope,
+              installation.id,
+              BigInt(repo.id),
+              insightRange,
+            ),
+          )
+        : Promise.resolve(null),
+    ]);
   const s = summary.summary;
   const rangeLabel = t(`filters.ranges.${insightRange}`);
   const section = {
@@ -228,6 +258,7 @@ export default async function RepoPage({
         : null;
   const tabCount: Partial<Record<Tab, string>> = {
     workflows: formatNumber(workflows.length, locale),
+    ...(pipelines ? { pipelines: formatNumber(pipelines.length, locale) } : {}),
     ...(summary.openPrCount != null
       ? { pulls: formatNumber(summary.openPrCount, locale) }
       : {}),
@@ -330,7 +361,7 @@ export default async function RepoPage({
 
       <nav aria-label={t("repo.tabs")} className="overflow-x-auto border-b">
         <ul className="flex w-max gap-1">
-          {TABS.map((key) => (
+          {tabs.map((key) => (
             <li key={key}>
               <Link
                 href={withParams(base, {
@@ -389,6 +420,25 @@ export default async function RepoPage({
           base={base}
           sp={sp}
           rangeLabel={t(`filters.short.${insightRange}`)}
+        />
+      ) : tab === "pipelines" && pipelines ? (
+        <PipelinesTab
+          rows={pipelines}
+          login={login}
+          installationId={installation.id}
+          scope={scope}
+        />
+      ) : azure ? (
+        <CiRunsSection
+          scope={scope}
+          installationId={installation.id}
+          repositoryId={repositoryId}
+          login={login}
+          base={base}
+          sp={sp}
+          hidden={{ tab: "runs" }}
+          canOperate={state.canOperate}
+          title={t("repo.tab.runs")}
         />
       ) : (
         <RunsSection
@@ -453,6 +503,55 @@ async function WorkflowsTab({
           label: w.workflowName,
           points: w.sparkline,
         }))}
+      />
+    </section>
+  );
+}
+
+async function PipelinesTab({
+  rows,
+  login,
+  installationId,
+  scope,
+}: {
+  rows: NonNullable<Awaited<ReturnType<typeof getRepoPipelines>>>;
+  login: string;
+  installationId: bigint;
+  scope: Parameters<typeof getAzureActionState>[0];
+}) {
+  const t = await getTranslations();
+  const actionState = await orNotFound(
+    getAzureActionState(
+      scope,
+      installationId,
+      env.MANAGEMENT_ENABLED,
+      env.AZURE_MANAGEMENT_ENABLED,
+    ),
+  );
+  const ctx = actionState?.canAct
+    ? {
+        installationId: String(installationId),
+        minutesLeft: actionState.minutesLeft,
+        maxJobMinutes: actionState.maxJobMinutes,
+        running: actionState.running,
+        limit: actionState.hostedParallelJobs,
+        blockWhenQuotaExhausted: actionState.blockWhenQuotaExhausted,
+      }
+    : null;
+  const columns = await pipelineColumns({
+    login,
+    showRepo: false,
+    actions: ctx,
+  });
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="font-medium">{t("repo.tab.pipelines")}</h2>
+      <DataTable
+        caption={t("repo.tab.pipelines")}
+        columns={columns}
+        rows={rows}
+        rowKey={(p) => `${p.projectId}:${p.id}`}
+        empty={<EmptyState quiet message={t("ci.azure.pipelines.repoEmpty")} />}
       />
     </section>
   );
