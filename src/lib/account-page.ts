@@ -1,3 +1,4 @@
+import { describeError } from "@/lib/describe-error";
 import "server-only";
 import { notFound } from "next/navigation";
 import { cache } from "react";
@@ -46,10 +47,7 @@ export async function orUnavailable<T>(promise: Promise<T>): Promise<T | null> {
     return await promise;
   } catch (error) {
     if (error instanceof NotFoundError) notFound();
-    console.error(
-      "live read failed",
-      error instanceof Error ? error.name : "unknown",
-    );
+    console.error("live read failed", describeError(error));
     return null;
   }
 }
