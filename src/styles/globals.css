@@ -1,12 +1,18 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/*
+ * Tailwind v4 variant: `&` is the element the variant applies to and @slot
+ * its rules, so these selectors need no scoping root (reviewed: css:S8776).
+ */
 @custom-variant dark {
-  &:where(.dark, .dark *) {
+  /* prettier-ignore */
+  &:where(.dark, .dark *) { /* NOSONAR */
     @slot;
   }
   @media (prefers-color-scheme: dark) {
-    &:where(:root:not(.light), :root:not(.light) *) {
+    /* prettier-ignore */
+    &:where(:root:not(.light), :root:not(.light) *) { /* NOSONAR */
       @slot;
     }
   }

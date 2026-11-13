@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { first, hrefWith, toggleFilter } from "@/lib/url-state";
+import { compareCodeUnits } from "@/lib/compare";
 
 /**
  * Search, filter chips, sort select and quick views of a paged table (UI
@@ -213,7 +214,10 @@ export function QuickViews({
   const sp = useSearchParams();
   const href = useHref();
   const params = new URLSearchParams(sp.toString());
-  const f = (first(params, "f") ?? "").split(",").filter(Boolean).sort();
+  const f = (first(params, "f") ?? "")
+    .split(",")
+    .filter(Boolean)
+    .sort(compareCodeUnits);
   return (
     <div
       role="group"
@@ -224,7 +228,7 @@ export function QuickViews({
         const on =
           first(params, "sort") === v.sort &&
           (first(params, "dir") ?? "desc") === v.dir &&
-          f.join(",") === [...v.filters].sort().join(",");
+          f.join(",") === [...v.filters].sort(compareCodeUnits).join(",");
         return (
           <Link
             key={v.id}
@@ -233,7 +237,7 @@ export function QuickViews({
               dir: v.dir,
               f:
                 v.filters.length > 0
-                  ? [...v.filters].sort().join(",")
+                  ? [...v.filters].sort(compareCodeUnits).join(",")
                   : undefined,
             })}
             role="button"

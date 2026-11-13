@@ -584,7 +584,8 @@ async function readCapped(res: Response, max: number): Promise<string | null> {
   return Buffer.concat(chunks, total).toString("utf8");
 }
 
-const num = (v: string | null) => (v == null || v === "" ? NaN : Number(v));
+const num = (v: string | null) =>
+  v == null || v === "" ? Number.NaN : Number(v);
 
 /** The methods of the Vercel transport; the read client uses GET only. */
 export type VercelMethod = "GET" | "POST" | "PATCH";

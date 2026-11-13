@@ -16,7 +16,7 @@ describe("build log excerpt", () => {
   it("removes the call's token, known token patterns, ANSI and control characters", () => {
     expect(
       sanitizeLogLine(
-        `${ESC}[31mfetch failed${ESC}[0m with ${TOKEN}${BEL} and vcp_abcdefghijklmnop1234`,
+        `${ESC}[31mfetch failed${ESC}[0m with ${TOKEN}${BEL} and vcp_fakeabcdefghijkl1234`,
         [TOKEN],
       ),
     ).toBe("fetch failed with [redacted] and [redacted]");

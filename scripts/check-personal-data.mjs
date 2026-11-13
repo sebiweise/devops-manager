@@ -27,9 +27,8 @@ const ALLOWED_EMAIL_DOMAINS = [
 // GitHub commits merges and squashes as `GitHub <noreply@github.com>`;
 // Dependabot signs off its commits with `dependabot[bot] <support@github.com>`.
 const ALLOWED_ADDRESSES = new Set(["noreply@github.com", "support@github.com"]);
-const EMAIL =
-  /[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})/g;
-const VERCEL_IDS = /(vc[a-z]_[A-Za-z0-9_]{16,}|team_[A-Za-z0-9]{20,})/g;
+const EMAIL = /[A-Za-z0-9._%+-]+@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})/g;
+const VERCEL_IDS = /\b(vc[a-z]_[A-Za-z0-9_]{16,}|team_[A-Za-z0-9]{20,})\b/g;
 const PLACEHOLDER = /test|example|demo|fake/i;
 const SKIP_FILES = [/^pnpm-lock\.yaml$/, /\.(png|jpe?g|gif|ico|webp|woff2?)$/i];
 
@@ -40,7 +39,8 @@ const denylist = (process.env.PRIVACY_DENYLIST ?? "")
 
 /** @param {string[]} args */
 const git = (...args) =>
-  execFileSync("git", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  // A local and CI developer tool: it runs the git on PATH, like any git hook.
+  execFileSync("git", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }); // NOSONAR(javascript:S4036)
 
 /** @type {string[]} */
 const findings = [];

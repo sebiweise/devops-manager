@@ -15,14 +15,16 @@ const RANK: Record<UpdateType, number> = { patch: 0, minor: 1, major: 2 };
 
 function largest(types: UpdateType[]): UpdateType | null {
   if (types.length === 0) return null;
-  return types.reduce((a, b) => (RANK[b] > RANK[a] ? b : a));
+  return types.reduce((a, b) => (RANK[b] > RANK[a] ? b : a), types[0]!);
 }
 
 /** From Dependabot's commit metadata; null when it has none. */
 export function updateTypeFromCommit(message: string): UpdateType | null {
   const types: UpdateType[] = [];
   let unknown = false;
-  for (const m of message.matchAll(/^\s*update-type:\s*(\S+)\s*$/gim)) {
+  for (const m of message.matchAll(
+    /^[^\S\n]*update-type:[^\S\n]*(\S+)[^\S\n]*$/gim,
+  )) {
     const t = /^version-update:semver-(patch|minor|major)$/i.exec(m[1]!);
     if (t) types.push(t[1]!.toLowerCase() as UpdateType);
     else unknown = true;

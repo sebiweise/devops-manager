@@ -22,6 +22,7 @@ import {
 } from "./vercel-credential";
 import { ensureEnvConnection } from "./vercel-connect";
 import { scrubKnown } from "./webhook";
+import { compareCodeUnits } from "@/lib/compare";
 
 /**
  * Reconcile step "v" (design addendum §7): the Vercel inventory of one
@@ -974,7 +975,7 @@ export async function rollupDeploymentDays(
   days: ReadonlyArray<string>,
 ): Promise<void> {
   if (days.length === 0) return;
-  const list = [...new Set(days)].sort();
+  const list = [...new Set(days)].sort(compareCodeUnits);
   await db.$transaction([
     db.$executeRaw`
       DELETE FROM "DailyDeploymentStat"

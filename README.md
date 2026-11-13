@@ -1,5 +1,7 @@
 # DevOps Manager
 
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=sebiweise_devops-manager&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=sebiweise_devops-manager)
+
 Self-hosted GitHub Actions insights and management for a personal account and
 any number of organisations, through **one least-privilege GitHub App**.
 

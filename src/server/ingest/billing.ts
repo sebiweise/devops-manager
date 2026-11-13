@@ -21,6 +21,7 @@ import {
   type GitHubClients,
 } from "./github-client";
 import { redactError } from "./webhook";
+import { compareCodeUnits } from "@/lib/compare";
 
 /**
  * Reconcile step h, billing (design §5.3 h, §6.6). Once a day per
@@ -107,7 +108,7 @@ async function recordSyncedMonths(
   const all = [
     ...new Set([...(await syncedBillingMonths(installationId)), ...months]),
   ]
-    .sort()
+    .sort(compareCodeUnits)
     .slice(-SYNCED_MONTHS_KEPT);
   const value = { months: all };
   await db.appState.upsert({
