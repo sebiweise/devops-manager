@@ -805,7 +805,9 @@ export function HookForm({
       <p className="text-sm">{t(`text.${op}`)}</p>
       {data ? (
         <div className="flex flex-col gap-1 rounded-md border bg-muted/40 p-2 text-sm">
-          <p className="font-medium">{t("onceTitle")}</p>
+          <p className="font-medium">
+            {data.password === null ? t("keptTitle") : t("onceTitle")}
+          </p>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
             <dt className="text-muted-foreground">{t("url")}</dt>
             <dd className="font-mono text-xs break-all">{data.url}</dd>

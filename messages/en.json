@@ -2644,6 +2644,7 @@
           "description": "Polling and the GitHub check run hints keep the data fresh. A service hook can add near-instant updates: it only marks runs to re-read, its payload is never used as state.",
           "previousUntil": "The previous secret works until",
           "onceTitle": "Shown once: copy it now",
+          "keptTitle": "Service hook details",
           "url": "URL",
           "username": "User name",
           "password": "Password",

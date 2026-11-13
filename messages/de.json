@@ -2644,6 +2644,7 @@
           "description": "Abfragen und die GitHub-Check-Run-Hinweise halten die Daten aktuell. Ein Service Hook kann fast sofortige Updates ergänzen: er markiert nur Läufe zum Neulesen, sein Inhalt wird nie als Zustand verwendet.",
           "previousUntil": "Das vorige Secret gilt noch bis",
           "onceTitle": "Wird nur einmal angezeigt: jetzt kopieren",
+          "keptTitle": "Angaben zum Service Hook",
           "url": "URL",
           "username": "Benutzername",
           "password": "Passwort",
