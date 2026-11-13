@@ -184,12 +184,15 @@ export async function handleAzureHook(
   const env = parsed.data;
   if (!HOOK_EVENTS.has(env.eventType))
     return json(202, { result: "ignored event" });
-  const org = (
-    env.resourceContainers?.account?.id ??
-    env.resourceContainers?.collection?.id ??
-    ""
-  ).toLowerCase();
-  if (!org || org !== conn.orgId.toLowerCase()) {
+  // The envelope carries both an account id and a collection id, which are
+  // different GUIDs; the stored org id (connectionData instanceId) may be
+  // either one (open M7.0 probe), so a match on either is accepted.
+  const orgId = conn.orgId.toLowerCase();
+  const containers = [
+    env.resourceContainers?.account?.id,
+    env.resourceContainers?.collection?.id,
+  ].map((id) => (id ?? "").toLowerCase());
+  if (!orgId || !containers.includes(orgId)) {
     store.security("security: Azure DevOps hook for another organisation", {
       installationId: String(conn.installationId),
     });

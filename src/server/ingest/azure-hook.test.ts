@@ -194,6 +194,49 @@ describe("service hook route", () => {
     expect(s.dirty).toEqual([]);
   });
 
+  it("accepts a delivery whose account id or collection id is the organisation", async () => {
+    const OTHER = "00000000-0000-4000-8000-000000000002";
+    for (const [i, containers] of [
+      { account: { id: OTHER }, collection: { id: ORG } },
+      { account: { id: ORG }, collection: { id: OTHER } },
+      { collection: { id: ORG.toUpperCase() } },
+    ].entries()) {
+      const s = store();
+      const r = await handleAzureHook(
+        {
+          hookKey: KEY,
+          authorization: basic(KEY, SECRET),
+          body: envelope({
+            notificationId: 50 + i,
+            resourceContainers: { ...containers, project: { id: P1 } },
+          }),
+        },
+        s,
+        { now: () => NOW },
+      );
+      expect(r.status).toBe(200);
+      expect(s.security).not.toHaveBeenCalled();
+    }
+    const s = store();
+    const neither = await handleAzureHook(
+      {
+        hookKey: KEY,
+        authorization: basic(KEY, SECRET),
+        body: envelope({
+          resourceContainers: {
+            account: { id: OTHER },
+            collection: { id: "00000000-0000-4000-8000-000000000003" },
+            project: { id: P1 },
+          },
+        }),
+      },
+      s,
+      { now: () => NOW },
+    );
+    expect(neither.status).toBe(403);
+    expect(s.dirty).toEqual([]);
+  });
+
   it("dedupes on the notification id", async () => {
     const s = store();
     const req = {
