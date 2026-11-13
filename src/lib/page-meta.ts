@@ -31,7 +31,11 @@ export type MetaKey =
   | "onboarding"
   | "billingAccess"
   | "deployments"
-  | "projects";
+  | "projects"
+  | "pipelines"
+  | "pipelineRuns"
+  | "pipelineRun"
+  | "pipelineUsage";
 
 type Params = Promise<Record<string, string | string[] | undefined>>;
 

@@ -359,7 +359,8 @@
       "runs": "Runs",
       "pulls": "Pull requests",
       "variables": "Variables",
-      "dependabot": "Dependabot"
+      "dependabot": "Dependabot",
+      "pipelines": "Pipelines"
     },
     "openAlerts": "Open alerts",
     "alertsTab": "{count} · {high} high"
@@ -1181,7 +1182,21 @@
         "VERCEL_REDEPLOY": "Vercel redeploy",
         "VERCEL_CANCEL": "Vercel deployment cancelled",
         "VERCEL_PROMOTE": "Vercel deployment promoted",
-        "VERCEL_ROLLBACK": "Vercel production rolled back"
+        "VERCEL_ROLLBACK": "Vercel production rolled back",
+        "ADO_CONNECT": "Azure DevOps connected",
+        "ADO_TOKEN_ROTATE": "Azure DevOps credential rotated",
+        "ADO_DISCONNECT": "Azure DevOps disconnected",
+        "ADO_PROJECTS_SELECT": "Azure DevOps projects selected",
+        "ADO_DEFINITION_LINK": "Azure pipeline linked",
+        "ADO_DEFINITION_OS_SET": "Azure pipeline OS set",
+        "ADO_LIMITS_UPDATE": "Azure Pipelines limits changed",
+        "ADO_HOOKS_INSTALL": "Azure DevOps service hook set up",
+        "ADO_HOOK_SECRET_ROTATE": "Azure DevOps hook secret rotated",
+        "ADO_MANAGEMENT_TOGGLE": "Azure Pipelines actions switched",
+        "ADO_QUEUE_RUN": "Azure pipeline run queued",
+        "ADO_CANCEL": "Azure pipeline run canceled",
+        "ADO_RETRY": "Azure pipeline run retried",
+        "ADO_STAGE_RETRY": "Azure pipeline stage retried"
       },
       "filteredEntry": "Showing one entry.",
       "vercelRequestId": "Vercel request {id}"
@@ -1671,6 +1686,10 @@
     "autoAssignPaused": {
       "label": "Auto-assign paused",
       "info": "Production is served from an older deployment (a rollback). New pushes do not go live until a deployment is promoted in Vercel."
+    },
+    "PARTIAL": {
+      "label": "Partial",
+      "info": "Partially succeeded: the run finished with errors in some tasks; it does not count as a success."
     }
   },
   "breadcrumbs": {
@@ -1688,8 +1707,14 @@
       "settings": "Settings & sync",
       "audit": "Audit log",
       "deployments": "Deployments",
-      "projects": "Projects"
-    }
+      "projects": "Projects",
+      "pipelines": "Azure Pipelines"
+    },
+    "pipelineSections": {
+      "runs": "Runs",
+      "usage": "Usage"
+    },
+    "azureRun": "Run #{number}"
   },
   "gettingStarted": {
     "title": "Getting started",
@@ -1770,7 +1795,11 @@
     "onboarding": "GitHub App installations",
     "billingAccess": "Billing access",
     "deployments": "Deployments",
-    "projects": "Vercel projects"
+    "projects": "Vercel projects",
+    "pipelines": "Azure Pipelines",
+    "pipelineRuns": "Pipeline runs",
+    "pipelineRun": "Pipeline run",
+    "pipelineUsage": "Azure Pipelines usage"
   },
   "settingsPage": {
     "sections": "Sections of this page",
@@ -1784,7 +1813,8 @@
     "problems": "Repositories with problems",
     "allOk": "All {count} repositories are in sync. Show the list",
     "diagnosticsSummary": "Webhook deliveries, rate limits and delays · data shows up after about {lag} · {dirty} daily summaries waiting",
-    "hosting": "Hosting · Vercel"
+    "hosting": "Hosting · Vercel",
+    "azure": "CI · Azure DevOps"
   },
   "hosting": {
     "production": "Production",
@@ -1931,8 +1961,18 @@
         "prod_failing": "{project}: production deployment failed",
         "auto_assign_paused": "{project}: production auto-assignment paused",
         "token_expiring": "Vercel token expires soon",
-        "credential_revoked": "Vercel rejected the token"
-      }
+        "credential_revoked": "Vercel rejected the token",
+        "azure_default_failing": "{project}: default branch pipeline failing",
+        "azure_job_cap": "{project}: jobs near the job time limit",
+        "azure_minutes": "Azure Pipelines minutes running out",
+        "azure_parallel_saturated": "Azure Pipelines jobs waited for a parallel job",
+        "azure_pool_offline": "{project}: no agent online while jobs wait",
+        "azure_hook_disabled": "Azure DevOps service hook disabled",
+        "azure_definition_unlinked": "{project}: repository not in this installation",
+        "azure_token_expiring": "Azure DevOps credential expires soon",
+        "azure_credential_revoked": "Azure DevOps rejected the credential"
+      },
+      "openInAzure": "Open in Azure DevOps"
     },
     "dashboard": {
       "title": "Hosting",
@@ -2125,6 +2165,585 @@
       "disableTitle": "Turn off Vercel actions",
       "enableText": "Operators can then change deployments of this Vercel team, including production. Every action is audited.",
       "disableText": "Deployment buttons disappear; data keeps syncing read-only."
+    }
+  },
+  "ci": {
+    "source": {
+      "label": "Source: {source}",
+      "github": "GitHub Actions",
+      "azure": "Azure Pipelines",
+      "short": {
+        "github": "GH",
+        "azure": "AZ"
+      }
+    },
+    "facet": {
+      "label": "CI provider",
+      "all": "All",
+      "github": "GitHub Actions",
+      "azure": "Azure Pipelines"
+    },
+    "recent": {
+      "title": "Recent CI runs",
+      "showAzure": "Azure pipeline runs"
+    },
+    "azure": {
+      "nav": {
+        "group": "CI · Azure Pipelines",
+        "pipelines": "Pipelines",
+        "runs": "Pipeline runs",
+        "usage": "Usage"
+      },
+      "openInAzure": "Open in Azure DevOps",
+      "githubOnly": "This page covers GitHub Actions. Azure Pipelines definitions are on the Pipelines page →",
+      "auditLink": {
+        "exact": "Queued by an audit entry",
+        "probable": "Probably queued by an audit entry"
+      },
+      "reason": {
+        "push": "push",
+        "pull_request": "pull request",
+        "schedule": "schedule",
+        "workflow_dispatch": "manual",
+        "pipeline_trigger": "pipeline trigger",
+        "other": "other"
+      },
+      "result": {
+        "succeeded": "Done. Azure DevOps accepted the request.",
+        "outcomeUnknown": "The request may or may not have reached Azure DevOps; the next sync links the run if it was created.",
+        "failed": "Azure DevOps refused: {message}"
+      },
+      "banner": {
+        "revoked": "Azure DevOps rejected the credential of {org}; Azure Pipelines data is not updated.",
+        "reconnect": "Go to the settings",
+        "expiring": "The Azure DevOps credential of {org} expires on {date}.",
+        "inactivity": "A PAT that is not used for 90 days becomes inactive; the regular sync keeps it active.",
+        "rotate": "Rotate now",
+        "paused": "Azure DevOps asked to slow down; the sync resumes at {when} UTC.",
+        "backfilling": "Importing the Azure Pipelines history… {days, plural, one {# day} other {# days}} left."
+      },
+      "card": {
+        "title": "Azure Pipelines · {org}",
+        "pipelines": "Pipelines",
+        "usage": "Usage",
+        "minutes": "Hosted minutes this month",
+        "minutesInfo": "Microsoft-hosted minutes of private projects against the free tier (1,800 minutes a month).",
+        "over": "Over the free tier",
+        "source": {
+          "api": "reported by Azure DevOps",
+          "estimate": "estimate"
+        },
+        "unlimited": "paid tier, no monthly limit",
+        "projection": "Projected this month",
+        "limitAround": "limit reached around day {day}",
+        "withinLimit": "within the limit",
+        "parallel": "Parallel jobs in use",
+        "queued": "{count} waiting",
+        "noneQueued": "nothing waiting",
+        "failing": "Failing default branches",
+        "attention": "Azure Pipelines: needs attention"
+      },
+      "pipelines": {
+        "title": "Azure Pipelines",
+        "subtitle": "{org} · {range}",
+        "kpiLabel": "Azure Pipelines key figures",
+        "kpi": {
+          "definitions": "Linked pipelines",
+          "ofTotal": "of {total} definitions",
+          "success": "Success rate",
+          "successInfo": "Succeeded / (succeeded + failed + partially succeeded + timed out). Partially succeeded counts as not successful.",
+          "partial": "{count} partially succeeded",
+          "duration": "Duration p50",
+          "durationInfo": "Queue to finish of a run; unlike GitHub it includes the gaps between stages. From the daily histograms (approximate).",
+          "p90": "p90 {p90}",
+          "minutes": "Hosted minutes",
+          "minutesInfo": "Job time of Microsoft-hosted jobs of the linked pipelines in the range. The free tier counts every project: see Usage.",
+          "macos": "macOS share",
+          "macosMinutes": "{n} macOS minutes",
+          "failing": "Failing default branch"
+        },
+        "search": "Search pipelines",
+        "chips": "Filter pipelines",
+        "filter": {
+          "linked": "Linked",
+          "unlinked": "Not linked",
+          "failing": "Failing",
+          "macos": "macOS"
+        },
+        "allProjects": "All projects",
+        "col": {
+          "name": "Pipeline",
+          "project": "Project",
+          "repo": "Repository",
+          "last": "Last run",
+          "success": "Success",
+          "duration": "p50 / p90",
+          "minutes": "Minutes",
+          "macos": "macOS",
+          "cap": "Near limit",
+          "links": "Links and actions"
+        },
+        "manual": "linked by hand",
+        "outside": "{repo} (not in this installation)",
+        "unlinked": "not linked",
+        "lastBuild": "Last run of {pipeline}",
+        "partialCount": "{count} partial",
+        "openInAzure": "Open in Azure DevOps",
+        "empty": "No pipelines in the selected projects.",
+        "repoEmpty": "No Azure pipeline is linked to this repository.",
+        "note": "Only YAML pipelines of the selected projects whose GitHub repository belongs to this account are synced; admins link others in the settings."
+      },
+      "runs": {
+        "title": "Pipeline runs",
+        "subtitle": "{org} · {range} · {open} open",
+        "search": "Search branch, SHA or run number",
+        "chips": "Filter runs",
+        "filter": {
+          "failed": "Failed",
+          "running": "Running",
+          "queued": "Queued",
+          "retried": "Retried",
+          "default": "Default branch"
+        },
+        "col": {
+          "run": "Run",
+          "status": "Status",
+          "repo": "Repository",
+          "trigger": "Trigger",
+          "queue": "Queue wait",
+          "duration": "Duration",
+          "minutes": "Minutes",
+          "queued": "Queued",
+          "actions": "Actions and links",
+          "definition": "Pipeline"
+        },
+        "allDefinitions": "All pipelines",
+        "empty": "No pipeline runs in this range.",
+        "note": "Queue wait includes waiting for a free parallel job. Minutes are hosted job minutes, rounded up per job."
+      },
+      "run": {
+        "subtitle": "{reason} · {branch} · queued {when}",
+        "hosted": "Microsoft-hosted",
+        "selfHosted": "self-hosted",
+        "capMeter": "{job}: duration against the {minutes}-minute job limit",
+        "hitCap": "hit the {minutes}-minute limit",
+        "ofCap": "of the {minutes}-minute limit",
+        "tasks": "Tasks ({count})",
+        "repo": "Repository",
+        "commit": "Commit",
+        "pr": "Pull request #{number}",
+        "timing": "Timing",
+        "timingValue": "waited {queue} · ran {duration} · {minutes} hosted minutes",
+        "attempts": "Attempts",
+        "attemptsValue": "{n} attempts (retried)",
+        "audit": "Audit",
+        "durationNote": "The duration includes the gaps between stages; queue wait includes waiting for the parallel job.",
+        "noTimeline": "The jobs of this run are read with the next sync.",
+        "stage": "Stage {name}",
+        "otherJobs": "Jobs",
+        "tasksUnavailable": "The live tasks could not be read right now."
+      },
+      "usage": {
+        "title": "Azure Pipelines usage",
+        "subtitle": "{org} · billing month from {from}, resets on {reset}",
+        "partial": "The job request feed of Azure DevOps is not available: the figures are estimated from the synced pipelines only (partial, unlinked pipelines are missing).",
+        "paidTitle": "Paid tier: {parallel} parallel jobs, no monthly minute limit",
+        "minutesTitle": "{used} of {included} hosted minutes",
+        "paidText": "Jobs can run up to {cap} minutes.",
+        "projectionLimit": "Projected {projected} minutes; the limit is reached around {day} (estimate).",
+        "projection": "Projected {projected} minutes this month (estimate).",
+        "differs": "Azure DevOps reports {api} minutes; the estimate from the job requests is {estimate}.",
+        "resetsIn": "Resets in {days, plural, one {# day} other {# days}} (assumed: a calendar month from the reset day).",
+        "estimateNote": "Azure DevOps has no billing API: every figure is an API value or an estimate, labelled as such.",
+        "kpiLabel": "Usage key figures",
+        "macos": "macOS minutes",
+        "linux": "Linux minutes",
+        "windows": "Windows minutes",
+        "share": "{share} of the hosted minutes",
+        "parallelNow": "Parallel jobs in use",
+        "parallelInfo": "Microsoft-hosted jobs running now against the parallel job limit.",
+        "queuedNow": "{count} waiting",
+        "noneQueued": "nothing waiting",
+        "saturation": "Saturated (7 days)",
+        "saturationInfo": "Share of time in which every parallel job was busy.",
+        "saturationQueue": "{minutes} min of queue time caused by parallelism",
+        "public": "Public project minutes",
+        "publicInfo": "Public projects have their own grant and do not count against the private free tier.",
+        "nearCapTitle": "Jobs near the {cap}-minute limit (7 days)",
+        "nearCapNone": "No pipeline comes close to the job time limit.",
+        "p90": "job p90 {minutes} min",
+        "hits": "{count, plural, one {# job} other {# jobs}} hit the limit",
+        "detectedTitle": "Detected from Azure DevOps",
+        "detected": "Azure DevOps reports {minutes} included minutes, {parallel} parallel jobs, paid: {premium}.",
+        "detectedNone": "Azure DevOps has not reported its limits (preview route, see the docs). The stored limits apply.",
+        "yes": "yes",
+        "no": "no",
+        "toSettings": "Edit the limits in the settings",
+        "paidNoLimit": "No monthly minute limit (paid tier).",
+        "gaugeLabel": "{used} of {included} minutes used, projected {projected}",
+        "legendUsed": "Used ({source})",
+        "legendProjected": "Projected",
+        "legendIncluded": "Included",
+        "source": {
+          "api": "Azure DevOps",
+          "estimate": "estimate"
+        },
+        "os": {
+          "LINUX": "Linux",
+          "WINDOWS": "Windows",
+          "MACOS": "macOS"
+        },
+        "perDayTitle": "Hosted minutes per day",
+        "perDayDescription": "Private projects, by operating system, this billing month.",
+        "perDayLabel": "Hosted minutes per day, {n} days, {total} minutes in total",
+        "day": "Day",
+        "total": "Total",
+        "publicMinutes": "Public",
+        "noUsage": "No hosted minutes yet this month.",
+        "parallelTitle": "Parallel jobs, last 24 hours",
+        "parallelDescription": "Hosted jobs running and waiting; limit {limit}.",
+        "parallelLabel": "Running and waiting hosted jobs, {n} samples, limit {limit}",
+        "running": "Running",
+        "queued": "Waiting",
+        "limit": "Limit",
+        "time": "Time",
+        "noSamples": "Not enough samples yet."
+      },
+      "pools": {
+        "title": "Azure agent pools",
+        "toUsage": "Azure Pipelines usage →",
+        "empty": "No agent pools read yet.",
+        "hosted": "Microsoft-hosted",
+        "selfHosted": "self-hosted",
+        "state": "{running} running · {queued} waiting",
+        "online": "{online} of {total} agents online",
+        "offlineWaiting": "No agent online while jobs wait",
+        "agent": {
+          "busy": "busy",
+          "idle": "idle",
+          "offline": "offline",
+          "disabled": "disabled"
+        }
+      },
+      "queue": {
+        "title": "Azure Pipelines queue",
+        "slots": "{running}/{limit} parallel jobs busy",
+        "empty": "No Azure pipeline run is waiting.",
+        "waitingParallel": "waiting for a parallel job, {running}/{limit} busy",
+        "waiting": "waiting for an agent"
+      },
+      "costs": {
+        "title": "Azure Pipelines",
+        "toUsage": "Usage →",
+        "macosTitle": "macOS minutes this month",
+        "github": "GitHub macOS (counted)",
+        "githubInfo": "Raw macOS minutes × {multiplier} (the stored SkuRate), counted against GitHub's included minutes.",
+        "githubHint": "{raw} raw minutes · {included} included",
+        "azure": "Azure Pipelines macOS",
+        "azureInfo": "Raw macOS minutes × 1 against the shared free tier.",
+        "azureHint": "{used} of {included} free-tier minutes used",
+        "azureUnlimited": "paid tier, no monthly limit",
+        "equivalent": "GitHub-equivalent minutes",
+        "equivalentInfo": "The Azure macOS minutes × {multiplier}: what they would count on GitHub.",
+        "savings": "≈ {amount} estimated savings by running macOS on Azure",
+        "note": "Estimate at the GitHub macOS rate of the stored SkuRate; Azure DevOps has no billing API, so no Azure amount is shown. These figures never enter the GitHub estimates above."
+      },
+      "pr": {
+        "title": "Azure Pipelines {pipeline}: {state}",
+        "short": "Azure"
+      },
+      "log": {
+        "show": "Show log",
+        "reload": "Reload log",
+        "hide": "Hide",
+        "loading": "Loading…",
+        "failed": "The log could not be read (HTTP {status}).",
+        "forbidden": "Only operators and admins can read logs.",
+        "unauthorized": "Sign in again.",
+        "unavailable": "Azure DevOps is not available right now.",
+        "rate_limited": "Too many requests; try again in a minute.",
+        "not_found": "This job has no log.",
+        "error": "The log could not be read.",
+        "truncated": "Older lines were cut off (64 KB).",
+        "note": "The newest {count} lines, read live and not stored.",
+        "empty": "The log is empty.",
+        "label": "Job log excerpt",
+        "viewerNote": "Logs are shown to operators and admins; open the run in Azure DevOps to read it."
+      },
+      "actions": {
+        "minutesLeft": "Free-tier minutes left",
+        "unlimited": "unlimited (paid tier)",
+        "p90": "Duration p90 of this pipeline",
+        "minutes": "{n} min",
+        "parallel": "Parallel jobs",
+        "slots": "{running}/{limit} busy",
+        "willQueue": "Every parallel job is busy: the run will wait in the queue.",
+        "quotaBlock": "The run may not fit into the free-tier minutes left; an admin turned on blocking.",
+        "quotaWarning": "The run may not fit into the free-tier minutes left.",
+        "jobCapWarning": "The p90 comes within 10 minutes of the {cap}-minute job limit.",
+        "confirm": {
+          "queue": "Queue a new run of {pipeline}? It runs without template parameters.",
+          "cancel": "Cancel run {build} of {pipeline}?",
+          "retry": "Retry the failed jobs of run {build} of {pipeline}?",
+          "retryStage": "Retry stage {stage} of run {build}?"
+        },
+        "branch": "Branch",
+        "noParameters": "Template parameters and variables are not supported here; use Azure DevOps for those.",
+        "pending": "Sending…",
+        "op": {
+          "queue": "Queue run",
+          "cancel": "Cancel",
+          "retry": "Retry",
+          "retryStage": "Retry stage"
+        },
+        "opFor": "{op}: {target}",
+        "title": {
+          "queue": "Queue {pipeline}",
+          "cancel": "Cancel {build}",
+          "retry": "Retry {build}",
+          "retryStage": "Retry stage {stage}"
+        },
+        "cancelNote": "Canceling stops the use of minutes right away.",
+        "actingAsNote": "Azure DevOps runs it with the connected credential; the audit log records you.",
+        "blocked": {
+          "management_disabled_global": "Actions are off: management is turned off for this instance.",
+          "azure_management_disabled_global": "Actions are off: AZURE_MANAGEMENT_ENABLED is not set for this instance.",
+          "management_disabled_installation": "Actions are off: management is turned off for this account.",
+          "azure_management_disabled": "Actions are off: Azure Pipelines actions are turned off in the settings.",
+          "azure_revoked": "Actions are off: Azure DevOps rejected the credential.",
+          "azure_scope_missing": "Actions are off: the credential lacks Build (Read & execute).",
+          "azure_rate_limited": "Actions wait: Azure DevOps asked to slow down."
+        },
+        "refused": {
+          "not_cancelable": "This run can no longer be canceled.",
+          "not_retryable": "Only finished runs that failed, partially succeeded or were canceled can be retried.",
+          "stage_not_retryable": "Only a stage that failed or was canceled can be retried.",
+          "definition_unlinked": "The pipeline is not linked to an active repository of this account.",
+          "branch_unknown": "The branch is not known for this repository.",
+          "quota_exhausted": "The run would not fit into the remaining free-tier minutes; an admin turned on blocking.",
+          "invalid_stage": "This stage is not part of the stored timeline."
+        },
+        "unavailable": {
+          "management_disabled_global": "Management is turned off for this instance (MANAGEMENT_ENABLED).",
+          "management_disabled_installation": "Management is turned off for this account.",
+          "azure_management_disabled_global": "Azure Pipelines actions are turned off for this instance (AZURE_MANAGEMENT_ENABLED).",
+          "azure_not_connected": "No Azure DevOps organisation is connected.",
+          "azure_revoked": "Azure DevOps rejected the credential; an admin has to rotate it.",
+          "azure_rate_limited": "Azure DevOps asked to slow down; try again later.",
+          "azure_management_disabled": "Azure Pipelines actions are turned off for this organisation.",
+          "azure_scope_missing": "The credential lacks Build (Read & execute); an admin has to grant it and turn the actions on again."
+        }
+      },
+      "settings": {
+        "title": "CI · Azure DevOps",
+        "description": "Shows the Azure Pipelines runs of one Azure DevOps organisation next to GitHub Actions: pipelines, runs, usage against the free tier, findings and, when an admin turns them on, queue, cancel and retry. Reading is the default; logs, identities and e-mail addresses are never stored.",
+        "syncRow": "Azure Pipelines",
+        "status": {
+          "never": "not synced yet",
+          "ok": "ok",
+          "partial": "partly (continues)",
+          "rate_limited": "paused (rate limit)",
+          "credential_error": "credential rejected",
+          "error": "error"
+        },
+        "rateLimitValue": "{remaining} of {limit} TSTU left",
+        "backfillRow": "history imported for {done}/{total} projects",
+        "hookRow": "{count, plural, one {# service hook subscription} other {# service hook subscriptions}}",
+        "noHookRow": "no service hook (polling and check runs)",
+        "prereq": {
+          "title": "Before you connect",
+          "pat": "Either an organisation-scoped PAT owned by a dedicated user in a dedicated Azure DevOps group…",
+          "read": "…with Build (Read), Agent Pools (Read) and Project and Team (Read).",
+          "optional": "Optional: Build (Read & execute) for the actions, Service Hooks (Read & write) for creating the service hook.",
+          "sp": "Or a Microsoft Entra service principal (client secret), added to the organisation by the Object ID of its Enterprise application, in a dedicated group with the same permissions.",
+          "inactivity": "A PAT not used for 90 days becomes inactive; the regular sync keeps it active."
+        },
+        "notConnected": "No Azure DevOps organisation is connected.",
+        "revoked": "Azure DevOps rejected the credential on {when}. Rotate it to resume the sync.",
+        "org": "Organisation",
+        "orgHint": "The name in https://dev.azure.com/ORGANISATION (the old ORGANISATION.visualstudio.com works too).",
+        "authKind": "Credential",
+        "kind": {
+          "PAT": "Personal access token (organisation-scoped)",
+          "ENV": "From the environment",
+          "ENTRA_SP": "Microsoft Entra service principal"
+        },
+        "kindHint": {
+          "PAT": "Simple; tied to a user, expires, becomes inactive after 90 days without use.",
+          "ENTRA_SP": "No user; short-lived tokens through client credentials. Recommended by Microsoft."
+        },
+        "clientIdShort": "client {id}",
+        "expires": "Expires",
+        "noExpiry": "no expiry entered",
+        "lastSync": "Last sync",
+        "lastError": "Last error",
+        "pausedUntil": "Paused until",
+        "rateLimit": "Rate budget",
+        "freshness": "Freshness",
+        "freshnessHints": "polling plus GitHub check run hints",
+        "freshnessPolling": "polling only",
+        "freshnessHook": "service hook",
+        "usageFeed": "Usage data",
+        "usagePartial": "estimated from synced pipelines (job requests not available)",
+        "usageFull": "org-wide job requests",
+        "hintsMissing": "The App receives no check_run events (accept the updated permissions on the installation: Checks: read and the check run events). The data still refreshes by polling.",
+        "scopes": {
+          "title": "Capabilities",
+          "projects": "Projects (Project and Team: Read)",
+          "pools": "Agent pools (Agent Pools: Read)",
+          "builds": "Builds (Build: Read)",
+          "execute": "Run pipelines (Build: Read & execute)",
+          "hooks": "Service hooks (Service Hooks: Read & write)"
+        },
+        "scopeState": {
+          "ok": "available",
+          "missing": "missing",
+          "unknown": "not probed yet"
+        },
+        "projectsTitle": "Projects",
+        "projectsEdit": "Choose projects",
+        "projectsText": "The pipelines of the selected projects are synced. Private and public projects have separate free tiers.",
+        "noProjects": "The credential sees no project.",
+        "visibility": {
+          "private": "private",
+          "public": "public"
+        },
+        "selected": "synced",
+        "notSelected": "not synced",
+        "backfillDone": "history imported",
+        "backfilling": "importing history",
+        "cursor": "up to",
+        "limits": {
+          "title": "Limits",
+          "edit": "Edit limits",
+          "text": "Azure DevOps does not publish these reliably through an API: the values entered here are the source of truth.",
+          "parallel": "Microsoft-hosted parallel jobs",
+          "paid": "Paid tier (no monthly minute limit)",
+          "included": "Included minutes per month",
+          "maxJob": "Job time limit (minutes)",
+          "resetDay": "Day the minutes reset",
+          "resetDayHint": "Assumed: the 1st (calendar month); Azure DevOps does not document it.",
+          "block": "Block queue and retry when the minutes are exhausted",
+          "save": "Save",
+          "adopt": "Adopt detected limits",
+          "paidValue": "paid tier, no limit",
+          "minutes": "{n} min",
+          "resetValue": "day {day} of the month (assumed)",
+          "blockOn": "block (queue and retry are refused)",
+          "blockOff": "warn only",
+          "detected": "Detected from Azure DevOps: {minutes} minutes, {parallel} parallel jobs, paid: {premium}.",
+          "yes": "yes",
+          "no": "no"
+        },
+        "hooks": {
+          "title": {
+            "auto": "Create the service hook subscriptions",
+            "manual": "Set up the service hook by hand",
+            "rotate": "Rotate the service hook secret"
+          },
+          "description": "Polling and the GitHub check run hints keep the data fresh. A service hook can add near-instant updates: it only marks runs to re-read, its payload is never used as state.",
+          "previousUntil": "The previous secret works until",
+          "onceTitle": "Shown once: copy it now",
+          "url": "URL",
+          "username": "User name",
+          "password": "Password",
+          "created": "{count, plural, one {# subscription} other {# subscriptions}} created.",
+          "manualSteps": "In Azure DevOps: Project settings → Service hooks → Web Hooks, events “Run state changed” and “Run job state changed”, this URL, Basic authentication with this user name and password, resource details “Minimal”, messages “None”.",
+          "op": {
+            "auto": "Create subscriptions",
+            "manual": "Manual setup",
+            "rotate": "Rotate secret"
+          },
+          "text": {
+            "auto": "Creates subscriptions for the selected projects in Azure DevOps (needs Service Hooks: Read & write) and replaces the ones this app made before.",
+            "manual": "Creates the URL and the Basic-auth credentials for a subscription you add in Azure DevOps yourself.",
+            "rotate": "Creates a new secret; the previous one keeps working for 7 days. Update the subscriptions (or create them again) within that time."
+          },
+          "heading": "Service hook (optional)"
+        },
+        "management": {
+          "title": "Azure Pipelines actions",
+          "on": "on",
+          "off": "off",
+          "description": "Lets operators queue, cancel and retry runs and retry stages. Needs MANAGEMENT_ENABLED, AZURE_MANAGEMENT_ENABLED and the account's management switch; turning it on first runs an execute probe (a preview run that starts nothing).",
+          "envOff": "AZURE_MANAGEMENT_ENABLED is not set for this instance: the actions stay off.",
+          "enable": "Turn on",
+          "disable": "Turn off",
+          "enableTitle": "Turn on Azure Pipelines actions",
+          "disableTitle": "Turn off Azure Pipelines actions",
+          "enableText": "Runs the execute probe on one linked pipeline first; if it fails, the actions stay off.",
+          "disableText": "Operators can no longer queue, cancel or retry runs."
+        },
+        "linksTitle": "Pipeline links",
+        "linksDescription": "YAML pipelines of GitHub repositories of this account link on their own. Link others by hand (only to repositories of this account) and set the OS when it is not detected.",
+        "linkOutside": "{repo} (not in this installation)",
+        "linkNone": "no GitHub repository ({type})",
+        "linkEdit": "Edit",
+        "linkEditFor": "Edit the link of {pipeline}",
+        "linkTitle": "Link {pipeline}",
+        "linkText": "Which repository does {pipeline} build, and on which OS do its jobs run?",
+        "linkRepository": "Repository",
+        "linkAutomatic": "Automatic (from the pipeline)",
+        "osOverride": "Operating system",
+        "osAutomatic": "Automatic (from the jobs)",
+        "os": {
+          "LINUX": "Linux",
+          "WINDOWS": "Windows",
+          "MACOS": "macOS",
+          "UNKNOWN": "unknown OS"
+        },
+        "save": "Save",
+        "rbacNote": "The app roles are the only authorisation layer: every user sees the organisation through the one credential, limited by their role here.",
+        "never": "never",
+        "steps": {
+          "pat1": "In Azure DevOps, sign in as the dedicated user and open User settings → Personal access tokens.",
+          "pat2": "Create a token for this one organisation with Build (Read), Agent Pools (Read), Project and Team (Read) and an expiry.",
+          "pat3": "Paste it here. It is checked, stored encrypted and shown only as its last 4 characters.",
+          "sp1": "In Microsoft Entra, register an app and create a client secret.",
+          "sp2": "In Azure DevOps, add the service principal (Object ID of its Enterprise application) to the organisation and a dedicated group with the read permissions.",
+          "sp3": "Enter the tenant id, client id and client secret. The secret is stored encrypted; tokens are requested per call."
+        },
+        "pat": "Personal access token",
+        "tenantId": "Directory (tenant) id",
+        "clientId": "Application (client) id",
+        "clientSecret": "Client secret",
+        "expiresAt": "Expires on (optional)",
+        "expiresAtHint": "Shown as a warning 14 days before.",
+        "connect": "Connect Azure DevOps",
+        "rotate": "Rotate credential",
+        "connectTitle": "Connect an Azure DevOps organisation",
+        "rotateTitle": "Rotate the credential (or switch PAT and service principal)",
+        "disconnect": "Disconnect",
+        "disconnectTitle": "Disconnect Azure DevOps",
+        "disconnectText": "Deletes every stored Azure Pipelines run, job, statistic, pool, usage figure and finding of this account. The audit entries stay. Revoke the credential in Azure DevOps as well.",
+        "disconnectHooks": "Also delete the service hook subscriptions this app created",
+        "errors": {
+          "invalid_org": "Not a valid Azure DevOps organisation name.",
+          "org_not_allowed": "This organisation is not allowed (ALLOWED_AZURE_ORGS).",
+          "invalid_token": "Azure DevOps rejected the PAT (or answered with a sign-in page).",
+          "invalid_secret": "Microsoft Entra rejected the tenant, client id or client secret.",
+          "entra_unavailable": "Microsoft Entra could not be reached; try again.",
+          "scope_missing_projects": "The credential lacks Project and Team (Read).",
+          "scope_missing_pools": "The credential lacks Agent Pools (Read).",
+          "scope_missing_build": "The credential lacks Build (Read).",
+          "rate_limited": "Azure DevOps asked to slow down; try again in a few minutes.",
+          "azure_unavailable": "Azure DevOps could not be reached; try again.",
+          "invalid_input": "Check the entered values.",
+          "org_changed": "The credential belongs to another organisation; disconnect first.",
+          "already_connected": "An organisation is already connected.",
+          "already_connected_elsewhere": "This organisation is already connected elsewhere.",
+          "not_connected": "No organisation is connected.",
+          "env_managed": "The credential is managed by the environment.",
+          "invalid_repository": "Only an active repository of this account can be linked.",
+          "invalid_definition": "This pipeline is not known.",
+          "unchanged": "Nothing changed.",
+          "scope_missing_hooks": "The credential lacks Service Hooks (Read & write); use the manual setup.",
+          "public_url_required": "Service hooks need a public HTTPS address (NEXT_PUBLIC_APP_URL).",
+          "execute_probe_failed": "The execute probe failed: the credential cannot run pipelines.",
+          "no_linked_definition": "Link at least one pipeline to a repository first (the probe needs one).",
+          "other": "Refused ({code})."
+        }
+      }
     }
   }
 }

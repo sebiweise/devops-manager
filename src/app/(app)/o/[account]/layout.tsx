@@ -1,4 +1,4 @@
-import { KeyRound, Settings } from "lucide-react";
+import { History, KeyRound, PauseCircle, Settings } from "lucide-react";
 import Link from "next/link";
 import { after } from "next/server";
 import { getTranslations } from "next-intl/server";
@@ -12,7 +12,9 @@ import { cookieRange } from "@/lib/page-range";
 import { hasRole } from "@/server/authz/roles";
 import { getFreshness } from "@/server/data/insights";
 import { getVercelSummary } from "@/server/data/vercel";
+import { getAzureSummary } from "@/server/data/azure";
 import {
+  maybeLazyAzureRefresh,
   maybeLazyReconcile,
   maybeLazyVercelRefresh,
 } from "@/server/ingest/triggers";
@@ -50,8 +52,12 @@ export default async function AccountLayout({
     );
     // The GitHub pass includes step v; otherwise Vercel data older than
     // 5 minutes gets its own fast path (v2 to v5, 20 s).
-    if (!refreshing)
-      await maybeLazyVercelRefresh(installation.id, (task) => after(task));
+    // Only one stale provider per page view: Vercel first, else Azure DevOps.
+    if (
+      !refreshing &&
+      !(await maybeLazyVercelRefresh(installation.id, (task) => after(task)))
+    )
+      await maybeLazyAzureRefresh(installation.id, (task) => after(task));
   } catch (error) {
     // Freshness is best effort; the page renders from stored data.
     console.error(
@@ -61,11 +67,12 @@ export default async function AccountLayout({
   }
 
   const now = new Date();
-  const [t, freshness, range, vercel] = await Promise.all([
+  const [t, freshness, range, vercel, azure] = await Promise.all([
     getTranslations(),
     getFreshness(scope, installation.id, now),
     cookieRange(),
     getVercelSummary(scope, installation.id),
+    getAzureSummary(scope, installation.id, now),
   ]);
   const base = accountPath(installation.accountLogin);
   const isAdmin = hasRole(scope.role, "ADMIN");
@@ -146,6 +153,28 @@ export default async function AccountLayout({
                   },
                 ]
               : []),
+            ...(azure
+              ? [
+                  {
+                    label: t("ci.azure.nav.group"),
+                    items: [
+                      {
+                        href: `${base}/pipelines`,
+                        label: t("ci.azure.nav.pipelines"),
+                        exact: true,
+                      },
+                      {
+                        href: `${base}/pipelines/runs`,
+                        label: t("ci.azure.nav.runs"),
+                      },
+                      {
+                        href: `${base}/pipelines/usage`,
+                        label: t("ci.azure.nav.usage"),
+                      },
+                    ],
+                  },
+                ]
+              : []),
             {
               label: t("accountNav.groups.manage"),
               items: [
@@ -205,6 +234,77 @@ export default async function AccountLayout({
                 {t("hosting.rotateNow")}
               </Link>
             ) : null}
+          </p>
+        ) : null}
+        {azure?.revoked ? (
+          <p
+            role="status"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-status-critical/50 bg-status-critical/10 p-2 text-sm"
+          >
+            <KeyRound
+              aria-hidden="true"
+              className="size-4 text-status-critical"
+            />
+            {t("ci.azure.banner.revoked", { org: azure.orgName })}
+            {isAdmin ? (
+              <Link
+                href={`${base}/settings#azure`}
+                className="font-medium underline underline-offset-2"
+              >
+                {t("ci.azure.banner.reconnect")}
+              </Link>
+            ) : null}
+          </p>
+        ) : azure?.tokenExpiresAt &&
+          Date.parse(azure.tokenExpiresAt) - now.getTime() < 14 * 86_400_000 ? (
+          <p
+            role="status"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-status-warning/60 bg-status-warning/10 p-2 text-sm"
+          >
+            <KeyRound
+              aria-hidden="true"
+              className="size-4 text-status-warning"
+            />
+            {t("ci.azure.banner.expiring", {
+              org: azure.orgName,
+              date: new Date(azure.tokenExpiresAt).toISOString().slice(0, 10),
+            })}
+            {azure.authKind === "PAT"
+              ? ` ${t("ci.azure.banner.inactivity")}`
+              : ""}
+            {isAdmin ? (
+              <Link
+                href={`${base}/settings#azure`}
+                className="font-medium underline underline-offset-2"
+              >
+                {t("ci.azure.banner.rotate")}
+              </Link>
+            ) : null}
+          </p>
+        ) : null}
+        {azure?.pausedUntil ? (
+          <p
+            role="status"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-status-warning/60 bg-status-warning/10 p-2 text-sm"
+          >
+            <PauseCircle
+              aria-hidden="true"
+              className="size-4 text-status-warning"
+            />
+            {t("ci.azure.banner.paused", {
+              when: new Date(azure.pausedUntil).toISOString().slice(11, 16),
+            })}
+          </p>
+        ) : null}
+        {azure && azure.backfilling > 0 && azure.backfillDaysLeft ? (
+          <p
+            role="status"
+            className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
+          >
+            <History aria-hidden="true" className="size-4" />
+            {t("ci.azure.banner.backfilling", {
+              days: azure.backfillDaysLeft,
+            })}
           </p>
         ) : null}
         {stale ? (

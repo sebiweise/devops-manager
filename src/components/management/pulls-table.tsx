@@ -3,6 +3,10 @@
 import { useFormatter, useNow, useTranslations } from "next-intl";
 import { useId, useState, useTransition } from "react";
 import { PreviewBadge } from "@/components/hosting/preview-badge";
+import {
+  PrAzureBadge,
+  type PrAzureBuild,
+} from "@/components/azure/azure-badges";
 import { Badge } from "@/components/ui/badge";
 import type { ShaDeployment } from "@/server/data/vercel";
 import { Button } from "@/components/ui/button";
@@ -193,6 +197,7 @@ export function PullsTable({
   showRepo = true,
   caption,
   previews,
+  azureBuilds,
 }: {
   installationId: string;
   pulls: PullRow[];
@@ -205,6 +210,8 @@ export function PullsTable({
   caption: string;
   /** Vercel deployments of each PR's head SHA (lowercase), when connected. */
   previews?: Record<string, ShaDeployment[]>;
+  /** Azure Pipelines builds per "<repositoryId>:<number>" (head SHA or PR number). */
+  azureBuilds?: Record<string, PrAzureBuild[]>;
 }) {
   const t = useTranslations("management.pulls");
   const format = useFormatter();
@@ -248,6 +255,11 @@ export function PullsTable({
                 </span>
                 <span className="flex flex-wrap items-center gap-1.5">
                   <PullChips pull={p} />
+                  {azureBuilds?.[`${p.repositoryId}:${p.number}`] ? (
+                    <PrAzureBadge
+                      builds={azureBuilds[`${p.repositoryId}:${p.number}`]!}
+                    />
+                  ) : null}
                   {previews?.[p.headSha.toLowerCase()] ? (
                     <PreviewBadge
                       deployments={previews[p.headSha.toLowerCase()]!}

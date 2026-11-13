@@ -27,6 +27,8 @@ import {
   PoolHeatmap,
 } from "@/components/runners/runner-charts";
 import { PageHeader } from "@/components/shell/page-header";
+import { PoolsSection } from "@/components/azure/azure-views";
+import { getAzureUsage } from "@/server/data/azure";
 import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
 import {
   formatDuration,
@@ -146,6 +148,7 @@ export default async function RunnersPage({
   const { account } = await params;
   const sp = (await searchParams) as SearchParamsLike;
   const { scope, installation } = await loadAccount(account);
+  const azureUsage = await orNotFound(getAzureUsage(scope, installation.id));
   const range = await pageRange(sp);
   const rawView = first(sp, "view");
   const view: View = (VIEWS as readonly string[]).includes(rawView ?? "")
@@ -358,6 +361,12 @@ export default async function RunnersPage({
           locale={locale}
         />
       )}
+      {azureUsage ? (
+        <PoolsSection
+          pools={azureUsage.pools}
+          usageHref={`/o/${encodeURIComponent(installation.accountLogin)}/pipelines/usage`}
+        />
+      ) : null}
     </div>
   );
 }

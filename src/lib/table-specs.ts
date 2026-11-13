@@ -186,3 +186,41 @@ export const PROJECT_TABLE: TableSpec<ProjectSortKey, ProjectFilter> = {
   defaultDir: { name: "asc" },
   filters: PROJECT_FILTERS,
 };
+
+// ---------- Azure Pipelines (M7) ----------
+
+export const PIPELINE_SORTS = ["name"] as const;
+export type PipelineSortKey = (typeof PIPELINE_SORTS)[number];
+
+export const PIPELINE_FILTERS = [
+  "linked",
+  "unlinked",
+  "failing",
+  "macos",
+] as const;
+export type PipelineFilterKey = (typeof PIPELINE_FILTERS)[number];
+
+export const PIPELINE_TABLE: TableSpec<PipelineSortKey, PipelineFilterKey> = {
+  sorts: PIPELINE_SORTS,
+  defaultSort: "name",
+  defaultDir: { name: "asc" },
+  filters: PIPELINE_FILTERS,
+};
+
+export const AZURE_RUN_SORTS = ["queued"] as const;
+export type AzureRunSortKey = (typeof AZURE_RUN_SORTS)[number];
+
+export const AZURE_RUN_FILTERS = [
+  "failed",
+  "running",
+  "queued",
+  "retried",
+  "default",
+] as const;
+export type AzureRunFilterKey = (typeof AZURE_RUN_FILTERS)[number];
+
+export const AZURE_RUN_TABLE: TableSpec<AzureRunSortKey, AzureRunFilterKey> = {
+  sorts: AZURE_RUN_SORTS,
+  defaultSort: "queued",
+  filters: AZURE_RUN_FILTERS,
+};

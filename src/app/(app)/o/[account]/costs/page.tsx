@@ -20,6 +20,8 @@ import { Pagination } from "@/components/data/pagination";
 import { StatusBadge } from "@/components/data/status-badge";
 import { repoHref, workflowHref } from "@/components/insights/workflow-link";
 import { PageHeader } from "@/components/shell/page-header";
+import { AzureCostsSection } from "@/components/azure/azure-views";
+import { getAzureCosts } from "@/server/data/azure";
 import { accountPath, loadAccount, orNotFound } from "@/lib/account-page";
 import { adjacentMonths, currentMonth } from "@/lib/costs-view";
 import {
@@ -88,6 +90,9 @@ export default async function CostsPage({
     getFormatter(),
     orNotFound(getCosts(scope, installation.id, month, now)),
   ]);
+  const azureCosts = await orNotFound(
+    getAzureCosts(scope, installation.id, month, now),
+  );
   const login = installation.accountLogin;
   const base = accountPath(login, "/costs");
   const { prev, next } = adjacentMonths(costs.month);
@@ -329,6 +334,13 @@ export default async function CostsPage({
           <RunnerTypesTab costs={costs} locale={locale} />
         )}
       </section>
+      {azureCosts ? (
+        <AzureCostsSection
+          costs={azureCosts}
+          githubIncluded={costs.included.included}
+          login={login}
+        />
+      ) : null}
     </div>
   );
 }
