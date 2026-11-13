@@ -96,6 +96,17 @@ export const HOOK_PUBLISHERS: Record<string, string> = {
   "build.complete": "tfs",
 };
 
+/**
+ * Resource version per event, from the Microsoft service hook events
+ * reference (the pipelines publisher samples carry 5.1-preview.1,
+ * build.complete 2.0). Still an open M7.0 probe item.
+ */
+export const HOOK_RESOURCE_VERSIONS: Record<string, string> = {
+  "ms.vss-pipelines.run-state-changed-event": "5.1-preview.1",
+  "ms.vss-pipelines.job-state-changed-event": "5.1-preview.1",
+  "build.complete": "2.0",
+};
+
 export function createAzureWriteClient(
   opts: AzureClientOptions,
 ): AzureWriteApi {
@@ -188,7 +199,9 @@ export function createAzureWriteClient(
     },
     async createHook(input) {
       const publisherId = HOOK_PUBLISHERS[input.eventType];
-      if (!publisherId) throw new Error("event type not allowed");
+      const resourceVersion = HOOK_RESOURCE_VERSIONS[input.eventType];
+      if (!publisherId || !resourceVersion)
+        throw new Error("event type not allowed");
       if (!/^https:\/\//.test(input.url))
         throw new Error("service hooks need HTTPS");
       const res = await t.request({
@@ -198,7 +211,7 @@ export function createAzureWriteClient(
         body: {
           publisherId,
           eventType: input.eventType,
-          resourceVersion: "1.0",
+          resourceVersion,
           consumerId: "webHooks",
           consumerActionId: "httpRequest",
           publisherInputs: { projectId: input.projectId },

@@ -54,6 +54,13 @@ describe("write client", () => {
       username: "k",
       password: "p",
     });
+    await w.createHook({
+      projectId: P,
+      eventType: "ms.vss-pipelines.run-state-changed-event",
+      url: "https://devops.example.com/api/azure/hooks/k",
+      username: "k",
+      password: "p",
+    });
     const seen = r.calls.map(
       (c) =>
         `${c.method} ${c.url.pathname}${c.url.searchParams.get("retry") ? "?retry" : ""}`,
@@ -65,6 +72,7 @@ describe("write client", () => {
       `PATCH /contoso-ci/${P}/_apis/build/builds/77?retry`,
       `PATCH /contoso-ci/${P}/_apis/build/builds/77/stages/Build`,
       `PUT /contoso-ci/${P}/_apis/build/builds/77/tags/dm-audit-5c0c2d8e-1f4a-4b6c-9d2e-3a4b5c6d7e01`,
+      "POST /contoso-ci/_apis/hooks/subscriptions",
       "POST /contoso-ci/_apis/hooks/subscriptions",
     ]);
     expect(r.calls[0]!.body).toEqual({
@@ -82,7 +90,13 @@ describe("write client", () => {
     expect(JSON.stringify(r.calls[1]!.body)).not.toMatch(
       /templateParameters|variables|yamlOverride|stagesToSkip/,
     );
+    expect(r.calls[7]!.body).toMatchObject({
+      publisherId: "pipelines",
+      resourceVersion: "5.1-preview.1",
+    });
     expect(r.calls[6]!.body).toMatchObject({
+      publisherId: "tfs",
+      resourceVersion: "2.0",
       consumerId: "webHooks",
       consumerInputs: {
         basicAuthUsername: "k",
