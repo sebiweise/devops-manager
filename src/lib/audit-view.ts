@@ -37,6 +37,15 @@ export const AUDIT_ACTIONS = [
   "BILLING_CREDENTIAL_REVOKE",
   "REPO_IGNORE",
   "REPO_UNIGNORE",
+  "VERCEL_CONNECT",
+  "VERCEL_TOKEN_ROTATE",
+  "VERCEL_DISCONNECT",
+  "VERCEL_PROJECT_LINK",
+  "VERCEL_MANAGEMENT_TOGGLE",
+  "VERCEL_REDEPLOY",
+  "VERCEL_CANCEL",
+  "VERCEL_PROMOTE",
+  "VERCEL_ROLLBACK",
 ] as const satisfies readonly AuditAction[];
 
 export const AUDIT_STATUSES = [
@@ -67,6 +76,7 @@ export type AuditQuery = {
     repo?: string;
     status?: string;
     batch?: string;
+    entry?: string;
     from?: string;
     to?: string;
   };
@@ -81,6 +91,7 @@ export function parseAuditQuery(sp: SearchParams): AuditQuery {
   const repo = param(sp, "repo");
   const status = param(sp, "status");
   const batch = param(sp, "batch");
+  const entry = param(sp, "entry");
   const from = param(sp, "from");
   const to = param(sp, "to");
   const before = param(sp, "before");
@@ -105,6 +116,10 @@ export function parseAuditQuery(sp: SearchParams): AuditQuery {
   if (batch && UUID.test(batch)) {
     values.batch = batch;
     filter.batchId = batch;
+  }
+  if (entry && UUID.test(entry)) {
+    values.entry = entry;
+    filter.id = entry;
   }
   const fromDate = day(from);
   if (fromDate) {

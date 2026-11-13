@@ -49,6 +49,8 @@ export async function resetTables(db: Db) {
       "DailyJobStat", "DailyRunnerStat", "RunnerSample", "Runner",
       "BillingUsageItem", "GitHubCredential", "SyncState", "WebhookDelivery",
       "InstallationRateLimit", "AppState", "AuditLog", "AuditChainHead",
+      "VercelDeployment", "VercelProject", "VercelConnection",
+      "DailyDeploymentStat", "Finding", "FeatureAvailability",
       "Repository",
       "Installation" CASCADE`);
 }

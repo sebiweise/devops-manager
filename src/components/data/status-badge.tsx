@@ -11,8 +11,11 @@ import {
   EyeOff,
   GitFork,
   Hourglass,
+  Link2,
   LoaderCircle,
   Lock,
+  Eye,
+  Rocket,
   TrendingDown,
   TrendingUp,
   TriangleAlert,
@@ -71,6 +74,18 @@ const DEFS = {
   successDrop: { icon: TrendingDown, tone: "warning", info: true },
   // costs
   deviation: { icon: TriangleAlert, tone: "warning", info: true },
+  // hosting (Vercel deployments)
+  deployReady: { icon: CircleCheck, tone: "good" },
+  deployError: { icon: CircleX, tone: "critical" },
+  deployBuilding: { icon: LoaderCircle, tone: "info" },
+  deployQueued: { icon: Hourglass, tone: "info" },
+  deployCanceled: { icon: CircleSlash, tone: "neutral" },
+  deployBlocked: { icon: Ban, tone: "warning" },
+  deployUnknown: { icon: CircleDot, tone: "muted", info: true },
+  production: { icon: Rocket, tone: "muted" },
+  preview: { icon: Eye, tone: "muted" },
+  manualLink: { icon: Link2, tone: "muted", info: true },
+  autoAssignPaused: { icon: CirclePause, tone: "warning", info: true },
 } as const satisfies Record<string, BadgeDef>;
 
 export type BadgeKind = keyof typeof DEFS;

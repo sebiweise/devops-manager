@@ -52,6 +52,8 @@ any number of organisations, through **one least-privilege GitHub App**.
 | **M1** Actions insights          | Workflow runs and jobs with an order-independent fold, reconcile (replay, redelivery, incremental sync, backfill), lazy reconcile on page view and Sync now, daily rollups with histograms, success rate, p50/p95 durations, queue times, flaky-run and regression detection, estimated minutes (minutes only). Pages: installation overview (KPI tiles, runs per day, duration and queue charts, regressions, flaky jobs, success drops), repositories (sortable, filterable, 14-day sparklines), repository detail (workflows, runs with filters), workflow detail (trends, job breakdown by pool, hosted vs self-hosted), run detail (job timeline with queue, approval wait and execution, critical path, steps loaded live), workflow leaderboards, sync health (admin), freshness banner. Every chart has an aria-label, a caption and a table view (sparklines: one trend-table toggle per table); the chart components are checked with axe-core in the unit tests                                                                   |
 | **M2** Runners and costs         | Runner cache with sampling on reconcile and lazily on the runner and queue pages, daily discovery of repository and organisation runners, utilisation (busy / online, with the sample interval shown and "insufficient samples" below 50% coverage), speed index, infrastructure failures, concurrency timeline, pools with a weekday × hour queue heatmap, hosted vs self-hosted comparison; live queue with STUCK and no-matching-runner flags and a separate approvals section; daily billing sync for organisations (installation token) and personal accounts (optional billing credential: token or "Connect GitHub"); costs page with month picker, used vs included gauge with projection, by SKU, repository, day and workflow (estimated, scaled), estimate vs billed with flags, estimate-only fallback with the reason; `/admin/github` for the billing credential. Charts have an aria-label, a caption and a table view and are checked with axe-core                                                                          |
 | **M3** Management (this release) | Action pipeline (kill switch, per-installation toggle, live role check, App permission check, idempotency, rate limit, typed confirmations, hash-chained audit with the app user and the App identity, installation tokens narrowed per action and repository). Re-run, re-run failed, cancel and force cancel on the run page and in run lists (operator); repository and organisation variables with a name × repo matrix, inline edit with diff, the `LINUX_RUNNER` / `MACOS_RUNNER` presets, bulk set with preview diff and per-repo results, batch revert, optional value redaction (admin); open PRs per installation and per repository with checks, mergeable state, review decision and chips, SHA-pinned merge as the App including workflow-changing PRs, GitHub's 405/409 shown verbatim (admin); read-only Dependabot alerts by severity × repo with the matching Dependabot PR; audit log with filters, chain Verify, CSV export and Revert batch links; management disabled banner; the guarded Dependabot bulk merge (admin) |
+| **M5** Vercel, read-only         | One Vercel team per installation, connected with a team-scoped token (stored encrypted) or `VERCEL_TOKEN`; reconcile step "v" with its own budget, resumable cursors, a 5-minute lazy fast path and GitHub `deployment_status` hints; Deployments page (KPIs incl. deploys in 24 h against the Hobby allotment, deployments per day by state, filters), Projects page, Deployments card on the repository page, preview badges on pull requests and runs, Hosting card with "Needs attention" (failing production, auto-assign paused, token expiring or rejected) on the overview and the dashboard. See [docs/VERCEL.md](docs/VERCEL.md)                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **M6** Vercel actions            | Redeploy, cancel, promote and roll back through the action pipeline (operator; typed project name for production; a separate Vercel actions toggle, off by default; one audit row each with the token identity and `x-vercel-id`; ambiguous outcomes linked to the deployment they created), the auto-assign-paused banner with Promote, the Hobby rollback limit, a live build log excerpt for operators (scrubbed, never stored). See [docs/VERCEL.md](docs/VERCEL.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | **M4** Polish, v0.1.0            | Complete German translation, user and role management, `/admin/ops`, setup wizard, full docs, signed GHCR image                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ## Screenshots
@@ -160,28 +162,30 @@ Two manifests are shipped: [`github-app-manifest.json`](github-app-manifest.json
 installation actually granted and shows a "permission not granted" note instead
 of failing.
 
-| Permission                        | Manage | Read-only | Used for                                                                                                          | Feature (milestone)             |
-| --------------------------------- | ------ | --------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| Repository: Metadata              | read   | read      | repository list                                                                                                   | dashboard (M0)                  |
-| Repository: Actions               | write  | read      | runs and jobs, `workflow_run`/`workflow_job` webhooks; re-run and cancel                                          | insights (M1), run actions (M3) |
-| Repository: Contents              | write  | read      | `PUT /pulls/{n}/merge`                                                                                            | PR merge (M3)                   |
-| Repository: Pull requests         | write  | read      | PR list, merge state, merge                                                                                       | PRs (M3)                        |
-| Repository: Workflows             | write  | —         | merging PRs that change `.github/workflows` (e.g. Dependabot updates of Actions); only requested for those merges | PR merge (M3)                   |
-| Repository: Checks                | read   | read      | check rollup in the PR list (optional)                                                                            | PRs (M3)                        |
-| Repository: Commit statuses       | read   | read      | status rollup in the PR list (optional)                                                                           | PRs (M3)                        |
-| Repository: Variables             | write  | read      | repository Actions variables and the runs-on presets                                                              | variables (M3)                  |
-| Repository: Dependabot alerts     | read   | read      | alert overview (optional)                                                                                         | Dependabot (M3)                 |
-| Repository: Administration        | read   | read      | repository-level self-hosted runners (without it, runners are known from job data only)                           | runners (M2)                    |
-| Organization: Self-hosted runners | read   | read      | organisation runners and runner groups (optional)                                                                 | runners (M2)                    |
-| Organization: Variables           | write  | read      | organisation Actions variables (optional)                                                                         | variables (M3)                  |
-| Organization: Administration      | read   | read      | organisation billing usage (optional; without it costs are estimates)                                             | costs (M2)                      |
-| Account: Email addresses          | read   | read      | verified email for the optional GitHub login (removable)                                                          | login (M0)                      |
-| Account: Plan                     | read   | read      | personal-account billing via "Connect GitHub" (removable; option A needs it on the token instead)                 | costs (M2)                      |
+| Permission                        | Manage | Read-only | Used for                                                                                                              | Feature (milestone)             |
+| --------------------------------- | ------ | --------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Repository: Metadata              | read   | read      | repository list                                                                                                       | dashboard (M0)                  |
+| Repository: Actions               | write  | read      | runs and jobs, `workflow_run`/`workflow_job` webhooks; re-run and cancel                                              | insights (M1), run actions (M3) |
+| Repository: Contents              | write  | read      | `PUT /pulls/{n}/merge`                                                                                                | PR merge (M3)                   |
+| Repository: Pull requests         | write  | read      | PR list, merge state, merge                                                                                           | PRs (M3)                        |
+| Repository: Workflows             | write  | —         | merging PRs that change `.github/workflows` (e.g. Dependabot updates of Actions); only requested for those merges     | PR merge (M3)                   |
+| Repository: Checks                | read   | read      | check rollup in the PR list (optional)                                                                                | PRs (M3)                        |
+| Repository: Commit statuses       | read   | read      | status rollup in the PR list (optional)                                                                               | PRs (M3)                        |
+| Repository: Variables             | write  | read      | repository Actions variables and the runs-on presets                                                                  | variables (M3)                  |
+| Repository: Dependabot alerts     | read   | read      | alert overview (optional)                                                                                             | Dependabot (M3)                 |
+| Repository: Administration        | read   | read      | repository-level self-hosted runners (without it, runners are known from job data only)                               | runners (M2)                    |
+| Organization: Self-hosted runners | read   | read      | organisation runners and runner groups (optional)                                                                     | runners (M2)                    |
+| Organization: Variables           | write  | read      | organisation Actions variables (optional)                                                                             | variables (M3)                  |
+| Organization: Administration      | read   | read      | organisation billing usage (optional; without it costs are estimates)                                                 | costs (M2)                      |
+| Repository: Deployments           | read   | read      | `deployment_status` events as freshness hints for linked Vercel projects (optional; without it Vercel data is polled) | hosting (M5)                    |
+| Account: Email addresses          | read   | read      | verified email for the optional GitHub login (removable)                                                              | login (M0)                      |
+| Account: Plan                     | read   | read      | personal-account billing via "Connect GitHub" (removable; option A needs it on the token instead)                     | costs (M2)                      |
 
-Webhook events: `workflow_run`, `workflow_job`, `repository` (subscribed);
+Webhook events: `workflow_run`, `workflow_job`, `repository`,
+`deployment_status` (subscribed);
 `installation`, `installation_repositories`, `github_app_authorization`
 (delivered automatically). Not requested: secrets, environments, issues,
-deployments, members, codespaces.
+members, codespaces.
 
 Because the App acts as itself, GitHub shows `<app-slug>[bot]` as the actor of
 re-runs, variable changes and merges. Branch rulesets apply to the App like to
@@ -204,7 +208,19 @@ any actor; add it to a ruleset's bypass list yourself if you want it to bypass.
   logged or shown again.
 - Webhook deliveries for 14 days; payloads are dropped once processed.
 - Audit entries (from M3) for 400 days; IP addresses only as a salted hash.
+- From M5 (only with a Vercel connection): the team, the encrypted Vercel
+  token and its last 4 characters, projects, deployments (target, state,
+  hostname, branch, commit SHA and the first line of its message, creator
+  kind, build time) for the raw retention, daily deployment stats and
+  findings; from M6 the last promote or rollback request per project and the
+  audit entry of a redeploy. Never: environment variable values, Vercel user
+  names or e-mail addresses, deploy hook URLs, build logs (the build log
+  excerpt of M6 is read live and not stored). Details in
+  [docs/VERCEL.md](docs/VERCEL.md).
 - Never stored: logs, job steps, Actions secrets.
+
+Outbound hosts: `api.github.com` and `github.com`; with a Vercel
+connection also `api.vercel.com` (fixed, not configurable).
 
 An installation's data is hidden immediately after uninstall and deleted
 after 30 days.
@@ -342,6 +358,16 @@ shows estimates and says why. Configure one per personal installation:
 
 Details, the verified endpoints and the refresh rules are in
 [docs/BILLING.md](docs/BILLING.md).
+
+### 6. Optional: Vercel
+
+To see the deployments of a Vercel team, open the account's **Settings &
+sync → Hosting · Vercel** as an admin and paste a Vercel token scoped to that
+team (or set `VERCEL_TOKEN` and `VERCEL_ACCOUNT`). Accept the App's
+**Deployments: read** permission on the installation for near-real-time
+status. To redeploy, cancel, promote and roll back from the app, an admin
+also turns on **Vercel actions** there (off by default). See
+[docs/VERCEL.md](docs/VERCEL.md).
 
 ## Sync and freshness
 

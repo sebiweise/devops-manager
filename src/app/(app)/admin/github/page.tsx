@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
 import {
   ConnectButton,
@@ -16,6 +17,8 @@ import { orNotFound } from "@/lib/account-page";
 import { param, type SearchParams } from "@/lib/insights-view";
 import { requireScope } from "@/server/better-auth/session";
 import { listBillingCredentials } from "@/server/data/personal-billing";
+import { listInstallations } from "@/server/data/installations";
+import { vercelConnectedIds } from "@/server/data/vercel";
 import { pageTitle } from "@/lib/page-meta";
 
 export async function generateMetadata() {
@@ -31,6 +34,11 @@ const CONNECT_STATUSES = [
   "login_mismatch",
   "not_configured",
   "forbidden",
+  "unauthorized",
+  "management_disabled",
+  "rate_limited",
+  "conflict",
+  "replayed",
 ] as const;
 type ConnectStatus = (typeof CONNECT_STATUSES)[number];
 
@@ -53,7 +61,11 @@ export default async function AdminGitHubPage({
 }) {
   const { scope } = await requireScope();
   const sp = await searchParams;
-  const overview = await orNotFound(listBillingCredentials(scope));
+  const [overview, installations, vercelIds] = await Promise.all([
+    orNotFound(listBillingCredentials(scope)),
+    listInstallations(scope),
+    vercelConnectedIds(scope),
+  ]);
   const [t, format] = await Promise.all([getTranslations(), getFormatter()]);
   const connect = connectStatus(param(sp, "connect"));
   const now = new Date();
@@ -241,6 +253,51 @@ export default async function AdminGitHubPage({
           );
         })
       )}
+
+      {installations.length > 0 ? (
+        <section
+          aria-labelledby="hosting-overview"
+          className="flex flex-col gap-2"
+        >
+          <h2 id="hosting-overview" className="text-lg font-semibold">
+            {t("adminGithub.hosting.title")}
+          </h2>
+          <table className="w-full max-w-xl text-sm">
+            <caption className="sr-only">
+              {t("adminGithub.hosting.title")}
+            </caption>
+            <thead className="text-xs text-muted-foreground">
+              <tr>
+                <th scope="col" className="py-1 text-left font-normal">
+                  {t("adminGithub.hosting.account")}
+                </th>
+                <th scope="col" className="py-1 text-left font-normal">
+                  {t("adminGithub.hosting.vercel")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {installations.map((i) => (
+                <tr key={String(i.id)} className="border-t">
+                  <td className="py-1.5 pr-2">
+                    <Link
+                      href={`/o/${encodeURIComponent(i.accountLogin)}/settings#hosting`}
+                      className="font-medium underline-offset-2 hover:underline"
+                    >
+                      {i.accountLogin}
+                    </Link>
+                  </td>
+                  <td className="py-1.5">
+                    {vercelIds.has(String(i.id))
+                      ? t("adminGithub.hosting.connected")
+                      : t("adminGithub.hosting.notConnected")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
     </div>
   );
 }

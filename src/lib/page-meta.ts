@@ -29,7 +29,9 @@ export type MetaKey =
   | "run"
   | "userSettings"
   | "onboarding"
-  | "billingAccess";
+  | "billingAccess"
+  | "deployments"
+  | "projects";
 
 type Params = Promise<Record<string, string | string[] | undefined>>;
 

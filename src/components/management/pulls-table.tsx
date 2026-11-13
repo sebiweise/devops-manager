@@ -2,7 +2,9 @@
 
 import { useFormatter, useNow, useTranslations } from "next-intl";
 import { useId, useState, useTransition } from "react";
+import { PreviewBadge } from "@/components/hosting/preview-badge";
 import { Badge } from "@/components/ui/badge";
+import type { ShaDeployment } from "@/server/data/vercel";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -190,6 +192,7 @@ export function PullsTable({
   mergeAuditTrailer,
   showRepo = true,
   caption,
+  previews,
 }: {
   installationId: string;
   pulls: PullRow[];
@@ -200,6 +203,8 @@ export function PullsTable({
   mergeAuditTrailer: boolean;
   showRepo?: boolean;
   caption: string;
+  /** Vercel deployments of each PR's head SHA (lowercase), when connected. */
+  previews?: Record<string, ShaDeployment[]>;
 }) {
   const t = useTranslations("management.pulls");
   const format = useFormatter();
@@ -241,7 +246,14 @@ export function PullsTable({
                 <span className="block text-xs text-muted-foreground">
                   {p.author ?? "—"} · {p.headRef} → {p.baseRef}
                 </span>
-                <PullChips pull={p} />
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <PullChips pull={p} />
+                  {previews?.[p.headSha.toLowerCase()] ? (
+                    <PreviewBadge
+                      deployments={previews[p.headSha.toLowerCase()]!}
+                    />
+                  ) : null}
+                </span>
               </TableCell>
               <TableCell className="text-xs">
                 {t(`checksState.${checksKey(p.checks)}`)}

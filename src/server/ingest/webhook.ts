@@ -17,6 +17,8 @@ export const HANDLED_EVENTS = new Set([
   "installation",
   "installation_repositories",
   "github_app_authorization",
+  // Freshness hints for Vercel projects (needs the optional deployments: read).
+  "deployment_status",
 ]);
 
 /**
@@ -31,6 +33,7 @@ export const REPO_DATA_EVENTS = new Set([
   "pull_request",
   "pull_request_review",
   "dependabot_alert",
+  "deployment_status",
 ]);
 
 export const REPO_IGNORED_REASON = "repo_ignored";
@@ -131,18 +134,40 @@ const json = (
   body: Record<string, unknown>,
 ): WebhookResponse => ({ status, body });
 
-/** Removes token-like strings and truncates, for error columns. */
+/**
+ * Removes token-like strings and truncates, for error columns and logs:
+ * GitHub tokens (`ghs_`, `github_pat_`, ...), Vercel tokens (`vcp_`, ...)
+ * and any `Authorization`/`Bearer`/`token` value.
+ */
 export function redactError(message: string, max = 500): string {
   return message
     .replace(
-      /\b(gh[pousr]_[A-Za-z0-9_]{10,}|github_pat_[A-Za-z0-9_]{10,})\b/g,
+      /\b(gh[pousr]_[A-Za-z0-9_]{10,}|github_pat_[A-Za-z0-9_]{10,}|vc[a-z]_[A-Za-z0-9_]{8,})\b/g,
       "[redacted]",
     )
+    .replace(/\bBearer\s+[^\s"',]+/gi, "Bearer [redacted]")
     .replace(
-      /(authorization|bearer|token)(["'\s:=]+)(?:(?:bearer|token)\s+)?[^\s"',]+/gi,
+      /(authorization|bearer|token)(["'\s:=]+)(?:(?:bearer|token)\s+)?(?!\[redacted\])[^\s"',]+/gi,
       "$1$2[redacted]",
     )
     .slice(0, max);
+}
+
+/**
+ * Replaces every exact occurrence of the given secrets (e.g. the plaintext
+ * Vercel token of the current call) before redactError's patterns run, so a
+ * token without a known prefix is removed as well.
+ */
+export function scrubKnown(
+  message: string,
+  secrets: ReadonlyArray<string | null | undefined>,
+  max = 500,
+): string {
+  let out = message;
+  for (const s of secrets) {
+    if (s && s.length >= 4) out = out.split(s).join("[redacted]");
+  }
+  return redactError(out, max);
 }
 
 export async function handleWebhook(

@@ -6,6 +6,9 @@
  * commit's author and committer name and email) contains
  *  - an email address outside the documentation domains (example.com,
  *    example.org, example.net) and GitHub noreply addresses, or
+ *  - something that looks like a real Vercel token (`vcp_…`) or team id
+ *    (`team_` + 20 or more characters) and is not a placeholder (one that
+ *    contains "test", "example", "demo" or "fake"), or
  *  - a term from PRIVACY_DENYLIST (newline- or comma-separated, kept in a CI
  *    secret so the list itself is not published). Matching is
  *    case-insensitive.
@@ -26,6 +29,8 @@ const ALLOWED_EMAIL_DOMAINS = [
 const ALLOWED_ADDRESSES = new Set(["noreply@github.com", "support@github.com"]);
 const EMAIL =
   /[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})/g;
+const VERCEL_IDS = /(vc[a-z]_[A-Za-z0-9_]{16,}|team_[A-Za-z0-9]{20,})/g;
+const PLACEHOLDER = /test|example|demo|fake/i;
 const SKIP_FILES = [/^pnpm-lock\.yaml$/, /\.(png|jpe?g|gif|ico|webp|woff2?)$/i];
 
 const denylist = (process.env.PRIVACY_DENYLIST ?? "")
@@ -57,6 +62,10 @@ function scan(label, text) {
           `${label}:${i + 1}: email address outside example domains`,
         );
       }
+    }
+    for (const match of line.matchAll(VERCEL_IDS)) {
+      if (!PLACEHOLDER.test(match[0]))
+        findings.push(`${label}:${i + 1}: Vercel token or team id`);
     }
     const lower = line.toLowerCase();
     for (const term of denylist) {

@@ -1,5 +1,7 @@
 import "server-only";
 import { revalidateTag } from "next/cache";
+import { after } from "next/server";
+import { describeError } from "@/lib/describe-error";
 import { Prisma } from "@/generated/prisma/client";
 import { isAllowedAccount } from "@/server/authz/config";
 import { db } from "@/server/db";
@@ -28,6 +30,11 @@ import type {
   RepositoryEvent,
 } from "./types";
 import { ignoredRepoCheck, type WebhookStore } from "./webhook";
+import {
+  foldDeploymentHint,
+  refreshFromHint,
+  type HintPayload,
+} from "./vercel-hints";
 
 const LOCK_MS = 5 * 60 * 1000;
 
@@ -243,6 +250,29 @@ export const prismaWebhookStore: WebhookStore = {
             installationId,
             payload as unknown as RepositoryEvent,
           );
+        }
+        return;
+      case "deployment_status":
+        if (installationId !== null) {
+          const ids = await foldDeploymentHint(
+            installationId,
+            payload as unknown as HintPayload,
+            new Date(),
+          );
+          if (ids.length > 0) {
+            try {
+              after(() =>
+                refreshFromHint(installationId, ids).catch((error: unknown) =>
+                  console.warn(
+                    "Vercel hint refresh failed",
+                    describeError(error),
+                  ),
+                ),
+              );
+            } catch {
+              // Outside a request (replays): the dirty mark is picked up by step v3.
+            }
+          }
         }
         return;
       case "github_app_authorization":

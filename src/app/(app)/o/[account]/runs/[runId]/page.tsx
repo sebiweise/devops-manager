@@ -33,6 +33,8 @@ import { cn } from "@/lib/utils";
 import { hasRole } from "@/server/authz/roles";
 import { lastRunCancelAt } from "@/server/data/audit";
 import { getRunDetail } from "@/server/data/insights";
+import { deploymentsForShas } from "@/server/data/vercel";
+import { PreviewBadge } from "@/components/hosting/preview-badge";
 import { getManagementState } from "@/server/data/management";
 import { getRunSteps } from "@/server/data/steps";
 import { accountMeta } from "@/lib/page-meta";
@@ -63,13 +65,15 @@ export default async function RunPage({
   );
   const { run, jobs, attempt, attempts, timings } = detail;
 
-  const [t, format, locale, nowDate, state] = await Promise.all([
+  const [t, format, locale, nowDate, state, deployed] = await Promise.all([
     getTranslations(),
     getFormatter(),
     getLocale(),
     getNow(),
     orNotFound(getManagementState(scope, installation.id)),
+    orNotFound(deploymentsForShas(scope, installation.id, [run.headSha])),
   ]);
+  const deployedAs = deployed.get(run.headSha.toLowerCase()) ?? [];
   const login = installation.accountLogin;
   const now = nowDate.getTime();
   const origin = Math.min(
@@ -165,6 +169,11 @@ export default async function RunPage({
               {live ? (
                 <span className="rounded-full border px-2 py-0.5 text-xs font-normal">
                   {t("run.live")}
+                </span>
+              ) : null}
+              {deployedAs.length > 0 ? (
+                <span className="text-sm font-normal">
+                  <PreviewBadge deployments={deployedAs} />
                 </span>
               ) : null}
             </span>

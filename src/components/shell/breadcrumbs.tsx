@@ -23,7 +23,9 @@ export type Crumb =
         | "queue"
         | "costs"
         | "settings"
-        | "audit";
+        | "audit"
+        | "deployments"
+        | "projects";
     }
   | { kind: "repo"; login: string; name: string; fullName: string }
   | {

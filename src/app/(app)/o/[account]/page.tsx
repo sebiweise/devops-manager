@@ -40,6 +40,13 @@ import {
   listWorkflowStats,
 } from "@/server/data/insights";
 import { getAccountSummaries } from "@/server/data/summaries";
+import {
+  getDeploymentInsights,
+  getVercelActionState,
+  getVercelSummary,
+  listNeedsAttention,
+} from "@/server/data/vercel";
+import { HostingCard } from "@/components/hosting/hosting-card";
 
 export const generateMetadata = accountMeta("overview");
 
@@ -104,7 +111,7 @@ export default async function AccountPage({
   const { scope, installation } = await loadAccount(account);
   const range = await pageRange(sp);
   const now = new Date();
-  const [t, locale, overview, week, flaky, active, summaries] =
+  const [t, locale, overview, week, flaky, active, summaries, vercel] =
     await Promise.all([
       getTranslations(),
       getLocale(),
@@ -122,7 +129,22 @@ export default async function AccountPage({
         ),
       ),
       getAccountSummaries(scope, now, { backfillDays: env.BACKFILL_DAYS }),
+      orNotFound(getVercelSummary(scope, installation.id)),
     ]);
+  const [hosting, attention, vercelActions] = vercel
+    ? await Promise.all([
+        orNotFound(getDeploymentInsights(scope, installation.id, range, now)),
+        orNotFound(listNeedsAttention(scope, installation.id, 8)),
+        orNotFound(
+          getVercelActionState(
+            scope,
+            installation.id,
+            env.MANAGEMENT_ENABLED,
+            now,
+          ),
+        ),
+      ])
+    : [null, [], null];
   const card = summaries.find(
     (c) => c.installationId === String(installation.id),
   );
@@ -323,6 +345,23 @@ export default async function AccountPage({
           />
         )}
       </KpiStrip>
+
+      {vercel && hosting ? (
+        <HostingCard
+          login={login}
+          teamSlug={vercel.teamSlug}
+          plan={vercel.plan}
+          insights={hosting}
+          attention={attention}
+          rangeLabel={rangeLabel}
+          settingsHref={isAdmin ? `${base}/settings` : undefined}
+          actions={{
+            installationId: String(installation.id),
+            login,
+            state: vercelActions,
+          }}
+        />
+      ) : null}
 
       {overview.bucket === "hour" ? (
         <EmptyState quiet message={t("charts.hourlyNone")} />

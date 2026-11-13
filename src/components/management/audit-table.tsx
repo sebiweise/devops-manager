@@ -113,7 +113,7 @@ export function AuditTable({
                 {e.repoFullName ? (
                   <span className="block font-medium">{e.repoFullName}</span>
                 ) : null}
-                <span className="text-muted-foreground">
+                <span className="break-all text-muted-foreground">
                   {e.targetType}: {e.targetId}
                 </span>
               </TableCell>
@@ -133,7 +133,9 @@ export function AuditTable({
                 ) : null}
                 {e.githubRequestId ? (
                   <span className="block text-muted-foreground">
-                    {t("requestId", { id: e.githubRequestId })}
+                    {e.action.startsWith("VERCEL_")
+                      ? t("vercelRequestId", { id: e.githubRequestId })
+                      : t("requestId", { id: e.githubRequestId })}
                   </span>
                 ) : null}
                 <details>
