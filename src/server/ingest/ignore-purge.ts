@@ -5,6 +5,7 @@ import { localDay } from "@/server/metrics/days";
 import type { Deadline } from "./budget";
 import { SAMPLE_RETENTION_DAYS } from "./prune";
 import { rollupRunnerDays } from "./runner-rollup";
+import { compareCodeUnits } from "@/lib/compare";
 
 /**
  * Reconcile step j) purge of ignored repositories (UI overhaul §3.3).
@@ -86,7 +87,7 @@ async function collectDays(
       ...before,
       ...rows.map((r) => r.day).filter((d) => d >= oldest),
     ]),
-  ].sort();
+  ].sort(compareCodeUnits);
   const value = { days };
   await db.appState.upsert({
     where: { key },

@@ -6,6 +6,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState } from "react";
 import { SyncNowButton } from "@/components/sync-now-button";
 import { cn } from "@/lib/utils";
+import { compareCodeUnits } from "@/lib/compare";
 
 /**
  * Data freshness in the account header (UI overhaul §1.10): "Data updated
@@ -45,7 +46,7 @@ export function FreshnessChip({
     iso ? format.relativeTime(new Date(iso), at) : t("never");
   const updated = [lastWebhookAt, lastReconciledAt]
     .filter((v): v is string => !!v)
-    .sort()
+    .sort(compareCodeUnits)
     .pop();
 
   useEffect(() => {

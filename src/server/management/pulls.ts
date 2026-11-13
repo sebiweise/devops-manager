@@ -66,7 +66,7 @@ export const ACKNOWLEDGEABLE_STATES: ReadonlySet<string> = new Set([
   "has_hooks",
 ]);
 
-const CO_AUTHOR = /^co-authored-by:\s*(.+)$/i;
+const CO_AUTHOR = /^co-authored-by:\s*(\S.*)$/i;
 
 /**
  * The commit message for a merge with the audit trailer, or null when the

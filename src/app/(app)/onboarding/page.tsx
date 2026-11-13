@@ -16,6 +16,7 @@ import { installUrl } from "@/server/github/app";
 import { verifyAndStoreInstallation } from "@/server/ingest/discovery";
 import readonlyManifest from "../../../../github-app-manifest.readonly.json";
 import { refreshInstallations } from "./actions";
+import { compareCodeUnits } from "@/lib/compare";
 
 export async function generateMetadata() {
   return pageTitle("onboarding");
@@ -43,7 +44,7 @@ function missingPermissions(
           (LEVEL[level as keyof typeof LEVEL] ?? 1),
       )
       .map(([name]) => name)
-      .sort()
+      .sort(compareCodeUnits)
   );
 }
 

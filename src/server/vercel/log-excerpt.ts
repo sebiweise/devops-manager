@@ -29,8 +29,9 @@ export type LogExcerpt = {
   truncated: boolean;
 };
 
+// Matching ESC and BEL is the point here: ANSI sequences are stripped.
 const ANSI =
-  /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g;
+  /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g; // NOSONAR(typescript:S6324)
 const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
 
 export function sanitizeLogLine(

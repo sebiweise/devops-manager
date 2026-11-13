@@ -61,7 +61,8 @@ function createAuth() {
   // Read here, not at module level: `next build` imports this module with
   // SKIP_ENV_VALIDATION and without any of these variables.
   const isHttps = env.BETTER_AUTH_URL.startsWith("https://");
-  const issuer = env.OIDC_ISSUER.replace(/\/+$/, "");
+  let issuer = env.OIDC_ISSUER;
+  while (issuer.endsWith("/")) issuer = issuer.slice(0, -1);
   /** `__Host-` cookies need Secure, Path=/ and no Domain, so only over https. */
   const hostCookie = (name: string) =>
     isHttps

@@ -30,7 +30,7 @@ if (process.env.NODE_ENV === "production") {
 }
 const host = new URL(url).hostname;
 if (!["localhost", "127.0.0.1", "::1"].includes(host)) {
-  console.error(`refusing to seed a non-local database (${host})`);
+  console.error("refusing to seed a non-local database");
   process.exit(1);
 }
 const appIdx = process.argv.indexOf("--app");
@@ -338,7 +338,8 @@ for (const [
           "feature-x",
           "dependabot/npm/example",
         ]),
-        headSha: createHash("sha1").update(`run-${id_}`).digest("hex"),
+        // Fake 40-hex commit SHAs for demo data, not a security use.
+        headSha: createHash("sha1").update(`run-${id_}`).digest("hex"), // NOSONAR(javascript:S4790)
         isDefaultBranch: true,
         actorLogin: "example-user",
         runNumber: id_ % 10_000,
@@ -720,7 +721,8 @@ for (const r of runs) {
 // production of project-b (served from an older deployment).
 /** @param {bigint} repoId */
 const lastSha = (repoId) =>
-  createHash("sha1").update(`synthetic-${repoId}`).digest("hex");
+  // Fake 40-hex commit SHA for demo data, not a security use.
+  createHash("sha1").update(`synthetic-${repoId}`).digest("hex"); // NOSONAR(javascript:S4790)
 deployments.push({
   id: "dpl_demo_failed_production",
   installationId: ORG,

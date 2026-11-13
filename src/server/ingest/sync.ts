@@ -334,14 +334,15 @@ export async function incrementalSync(
 /**
  * e) Walks backwards in three-day windows until
  * `backfillUntil <= now - backfillDays`, persisting `backfillUntil` after each
- * leaf window. Returns true when the backfill is complete.
+ * leaf window. Resolves once the backfill is complete;
+ * running out of time or rate budget throws (DeadlineReached, RateLimited).
  */
 export async function backfill(
   ctx: SyncContext,
   repo: SyncRepo,
-): Promise<boolean> {
+): Promise<void> {
   const state = await syncState(repo, ctx.installationId);
-  if (state.backfillDone) return true;
+  if (state.backfillDone) return;
   const now = ctx.deadline.now();
   const target = new Date(now - ctx.backfillDays * 86_400_000);
   let until = state.backfillUntil ?? state.runsCursor ?? new Date(now);
@@ -374,7 +375,6 @@ export async function backfill(
     where: { repositoryId: repo.id },
     data: { backfillDone: true, backfillUntil: until, lastError: null },
   });
-  return true;
 }
 
 type StaleJob = {

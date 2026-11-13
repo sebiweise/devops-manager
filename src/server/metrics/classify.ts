@@ -4,6 +4,8 @@
  * merged job row.
  */
 
+import { compareCodeUnits } from "@/lib/compare";
+
 export type RunnerKind =
   "GITHUB_HOSTED" | "LARGER_HOSTED" | "SELF_HOSTED" | "UNKNOWN";
 export type RunnerOs = "LINUX" | "WINDOWS" | "MACOS" | "UNKNOWN";
@@ -25,7 +27,7 @@ export const HOSTED_GROUP = "GitHub Actions";
 export function normalizeLabels(labels: ReadonlyArray<string>): string[] {
   return [...new Set(labels.map((l) => l.trim().toLowerCase()))]
     .filter((l) => l.length > 0)
-    .sort();
+    .sort(compareCodeUnits);
 }
 
 export function labelKeyOf(labels: ReadonlyArray<string>): string {
@@ -34,8 +36,21 @@ export function labelKeyOf(labels: ReadonlyArray<string>): string {
 
 /** Strips a matrix suffix: "test (ubuntu-latest, 22)" -> "test". */
 export function baseNameOf(name: string): string {
-  const stripped = name.replace(/\s+\([^()]*\)\s*$/, "").trim();
+  const stripped = stripMatrixSuffix(name).trim();
   return stripped.length > 0 ? stripped : name;
+}
+
+/**
+ * Same as `name.replace(/\s+\([^()]*\)\s*$/, "")`, without the regex
+ * backtracking on long whitespace runs.
+ */
+function stripMatrixSuffix(name: string): string {
+  const end = name.trimEnd();
+  if (!end.endsWith(")")) return name;
+  const open = end.lastIndexOf("(");
+  if (open < 1 || end.lastIndexOf(")", end.length - 2) > open) return name;
+  if (!/\s/.test(end[open - 1]!)) return name;
+  return end.slice(0, open).trimEnd();
 }
 
 const STANDARD_LABEL =

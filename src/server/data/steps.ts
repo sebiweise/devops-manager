@@ -75,8 +75,10 @@ export function resetStepsCache(): void {
 export function mapSteps(steps: ReadonlyArray<GhStep> | undefined): StepDto[] {
   return (steps ?? [])
     .map((s, i) => {
-      const started = s.started_at ? Date.parse(s.started_at) : NaN;
-      const completed = s.completed_at ? Date.parse(s.completed_at) : NaN;
+      const started = s.started_at ? Date.parse(s.started_at) : Number.NaN;
+      const completed = s.completed_at
+        ? Date.parse(s.completed_at)
+        : Number.NaN;
       return {
         number: s.number ?? i + 1,
         name: s.name ?? "",
