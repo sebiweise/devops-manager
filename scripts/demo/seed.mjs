@@ -8,7 +8,9 @@
 // forks, one archived, one ignored), 30 days of runs and jobs, queued jobs,
 // self-hosted runners with samples, billing items, webhook deliveries and a
 // Vercel team with projects, deployments (a failed production build and a
-// rolled-back production) and findings.
+// rolled-back production), findings and hash-chained audit entries of the
+// M6 actions (Vercel actions switched on, a rollback, a redeploy whose new
+// deployment is linked to its entry).
 // Every name is a generic placeholder. With --app, it then calls the app's
 // cron endpoint (CRON_SECRET from the environment) until the daily
 // summaries are computed. Refuses to run when NODE_ENV=production or when
@@ -598,6 +600,7 @@ await insert("VercelConnection", [
     tokenHint: "a1b2",
     tokenScope: "team",
     tokenExpiresAt: iso(NOW + 9 * DAY),
+    managementEnabled: true,
     createdByUserId: "demo",
     revokedAt: null,
     lastError: null,
@@ -619,6 +622,7 @@ await insert("VercelConnection", [
     tokenHint: "c3d4",
     tokenScope: "team",
     tokenExpiresAt: null,
+    managementEnabled: false,
     createdByUserId: "demo",
     lastUsedAt: null,
     deploymentsCursor: null,
@@ -757,6 +761,37 @@ deployments.push({
   buildMs: null,
   syncedAt: recent(2),
 });
+// A preview of project-c redeployed from this app (M6): linked to its audit
+// entry through meta.devopsManagerAudit.
+const AUDIT_TOGGLE = "5c0c2d8e-1f4a-4b6c-9d2e-3a4b5c6d7e01";
+const AUDIT_ROLLBACK = "5c0c2d8e-1f4a-4b6c-9d2e-3a4b5c6d7e02";
+const AUDIT_REDEPLOY = "5c0c2d8e-1f4a-4b6c-9d2e-3a4b5c6d7e03";
+deployments.push({
+  id: "dpl_demo_redeployed_preview",
+  installationId: ORG,
+  projectId: "prj_demo00000000000000003",
+  target: "preview",
+  state: "READY",
+  readySubstate: "STAGED",
+  url: "project-c-redeploy-example-team.vercel.app",
+  branch: "feature-y",
+  commitSha: lastSha(203n),
+  commitMessage: "fix: retry the flaky image step",
+  creatorKind: "redeploy",
+  errorCode: null,
+  isRollbackCandidate: false,
+  auditLogId: AUDIT_REDEPLOY,
+  auditLinkKind: "exact",
+  createdAt: iso(NOW - 25 * MIN),
+  buildingAt: iso(NOW - 25 * MIN + 8_000),
+  readyAt: iso(NOW - 25 * MIN + 98_000),
+  buildMs: 90_000,
+  syncedAt: recent(2),
+});
+for (const d of deployments) {
+  d.auditLogId ??= null;
+  d.auditLinkKind ??= null;
+}
 /** @param {string} projectId */
 const prodOf = (projectId) =>
   deployments
@@ -797,6 +832,11 @@ await insert(
       liveProdDeploymentId: liveOf.get(id),
       autoAssignPausedAt:
         name === "project-b" ? iso(NOW - 5 * 3_600_000) : null,
+      // project-b was rolled back from this app (see the audit entries).
+      aliasRequestType: name === "project-b" ? "rollback" : null,
+      aliasRequestStatus: name === "project-b" ? "succeeded" : null,
+      aliasRequestAt: name === "project-b" ? iso(NOW - 5 * 3_600_000) : null,
+      aliasToDeploymentId: name === "project-b" ? liveOf.get(id) : null,
       updatedAt: recent(2),
     };
   }),
@@ -886,6 +926,7 @@ await insert("Finding", [
       projectId: "prj_demo00000000000000002",
       projectName: "project-b",
       since: iso(NOW - 5 * 3_600_000),
+      promoteDeploymentId: prodOf("prj_demo00000000000000002")[0]?.id ?? "",
       repositoryId: "202",
     },
   ),
@@ -912,6 +953,153 @@ await insert("Finding", [
     },
   ),
 ]);
+
+// ---------- audit: the M6 actions of example-org, hash-chained ----------
+// Computed like src/server/audit/chain.ts, so "Verify chain" succeeds.
+/** @param {unknown} v @returns {string} */
+const canonical = (v) => {
+  if (v === null || v === undefined) return "null";
+  if (typeof v === "bigint") return JSON.stringify(v.toString());
+  if (v instanceof Date) return JSON.stringify(v.toISOString());
+  if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
+  if (typeof v === "object") {
+    const entries = Object.entries(v)
+      .filter(([, x]) => x !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, x]) => `${JSON.stringify(k)}:${canonical(x)}`).join(",")}}`;
+  }
+  return JSON.stringify(v);
+};
+/** @param {unknown} fields @param {string} prev */
+const chainHash = (fields, prev) =>
+  createHash("sha256").update(canonical(fields)).update(prev).digest("hex");
+const projectBLive = liveOf.get("prj_demo00000000000000002");
+const auditEntries = [
+  {
+    id: AUDIT_TOGGLE,
+    at: NOW - 6 * 3_600_000,
+    actorRole: "ADMIN",
+    actingAs: null,
+    action: "VERCEL_MANAGEMENT_TOGGLE",
+    repositoryId: null,
+    repoFullName: null,
+    targetType: "vercel_team",
+    targetId: String(ORG),
+    params: { teamSlug: "example-team", before: false, after: true },
+    httpStatus: null,
+    requestId: null,
+  },
+  {
+    id: AUDIT_ROLLBACK,
+    at: NOW - 5 * 3_600_000,
+    actorRole: "OPERATOR",
+    actingAs: "vercel:token:a1b2",
+    action: "VERCEL_ROLLBACK",
+    repositoryId: 202n,
+    repoFullName: "example-org/repo-b",
+    targetType: "vercel_deployment",
+    targetId: projectBLive,
+    params: {
+      projectId: "prj_demo00000000000000002",
+      deploymentId: projectBLive,
+      target: "production",
+    },
+    httpStatus: 201,
+    requestId: "fra1::demo-rollback",
+  },
+  {
+    id: AUDIT_REDEPLOY,
+    at: NOW - 25 * MIN - 2_000,
+    actorRole: "OPERATOR",
+    actingAs: "vercel:token:a1b2",
+    action: "VERCEL_REDEPLOY",
+    repositoryId: 203n,
+    repoFullName: "example-org/repo-c",
+    targetType: "vercel_deployment",
+    targetId: "dpl_demo_redeployed_preview",
+    params: {
+      projectId: "prj_demo00000000000000003",
+      deploymentId: "dpl_demo_redeployed_preview",
+      target: "preview",
+      withLatestCommit: false,
+    },
+    httpStatus: 200,
+    requestId: "fra1::demo-redeploy",
+  },
+];
+let prevHash = "0".repeat(64);
+let headSeq = 0n;
+for (const a of auditEntries) {
+  const immutable = {
+    id: a.id,
+    installationId: ORG,
+    actorUserId: "demo-operator",
+    actorDisplay: "Demo operator",
+    actorRole: a.actorRole,
+    actorProvider: "oidc",
+    actingAs: a.actingAs,
+    action: a.action,
+    repositoryId: a.repositoryId,
+    repoFullName: a.repoFullName,
+    targetType: a.targetType,
+    targetId: a.targetId,
+    batchId: null,
+    params: a.params,
+    confirmation: a.action === "VERCEL_REDEPLOY" ? "DIALOG" : "TYPED",
+    idempotencyKey: `demo-${a.id}`,
+    createdAt: new Date(a.at),
+  };
+  const hash = chainHash(immutable, prevHash);
+  const final = {
+    status: "SUCCEEDED",
+    httpStatus: a.httpStatus,
+    githubRequestId: a.requestId,
+    error: null,
+    completedAt: new Date(a.at + 1_500),
+  };
+  const { rows } = await client.query(
+    `INSERT INTO "AuditLog" ("id", "installationId", "actorUserId", "actorDisplay", "actorRole",
+       "actorProvider", "actingAs", "action", "repositoryId", "repoFullName", "targetType", "targetId",
+       "batchId", "params", "confirmation", "idempotencyKey", "status", "httpStatus", "githubRequestId",
+       "error", "prevHash", "hash", "resultHash", "createdAt", "completedAt")
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+     RETURNING "seq"`,
+    [
+      immutable.id,
+      immutable.installationId,
+      immutable.actorUserId,
+      immutable.actorDisplay,
+      immutable.actorRole,
+      immutable.actorProvider,
+      immutable.actingAs,
+      immutable.action,
+      immutable.repositoryId,
+      immutable.repoFullName,
+      immutable.targetType,
+      immutable.targetId,
+      null,
+      JSON.stringify(immutable.params),
+      immutable.confirmation,
+      immutable.idempotencyKey,
+      final.status,
+      final.httpStatus,
+      final.githubRequestId,
+      null,
+      prevHash,
+      hash,
+      chainHash(final, hash),
+      immutable.createdAt.toISOString(),
+      final.completedAt.toISOString(),
+    ],
+  );
+  prevHash = hash;
+  headSeq = BigInt(rows[0].seq);
+}
+await client.query(
+  `INSERT INTO "AuditChainHead" ("installationId", "seq", "hash", "sealedAfterSeq", "updatedAt")
+   VALUES ($1, $2, $3, 0, now())`,
+  [ORG, headSeq, prevHash],
+);
 
 console.log(
   `seeded ${repos.length} repositories, ${runs.length} runs, ${jobs.length} jobs, ${samples.length} runner samples, ${billing.length} billing items, ${deployments.length} Vercel deployments`,
