@@ -27,7 +27,50 @@ const ALLOWED_EMAIL_DOMAINS = [
 // GitHub commits merges and squashes as `GitHub <noreply@github.com>`;
 // Dependabot signs off its commits with `dependabot[bot] <support@github.com>`.
 const ALLOWED_ADDRESSES = new Set(["noreply@github.com", "support@github.com"]);
-const EMAIL = /[A-Za-z0-9._%+-]+@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})/g;
+// Email addresses are found without a regex: a nested group like (?:[a-z0-9-]+\.)+
+// backtracks super-linearly. Every "@" with a local part before it is a candidate.
+const LOCAL_CHAR = /[A-Za-z0-9._%+-]/;
+const DOMAIN_CHAR = /[A-Za-z0-9.-]/;
+
+/**
+ * Addresses in a line as { address, domain }.
+ * @param {string} line
+ */
+function emails(line) {
+  /** @type {{ address: string, domain: string }[]} */
+  const found = [];
+  for (let at = line.indexOf("@"); at !== -1; at = line.indexOf("@", at + 1)) {
+    let start = at;
+    while (start > 0 && LOCAL_CHAR.test(line.charAt(start - 1))) start--;
+    if (start === at) continue;
+    let end = at + 1;
+    while (end < line.length && DOMAIN_CHAR.test(line.charAt(end))) end++;
+    const domain = emailDomain(line.slice(at + 1, end));
+    if (domain)
+      found.push({ address: `${line.slice(start, at)}@${domain}`, domain });
+  }
+  return found;
+}
+
+/**
+ * The domain of an email candidate, or null when it is not a domain with a TLD.
+ * @param {string} raw
+ */
+function emailDomain(raw) {
+  // Labels up to the first empty one ("a..b", a leading or trailing dot)
+  /** @type {string[]} */
+  const labels = [];
+  for (const label of raw.split(".")) {
+    if (label === "") break;
+    labels.push(label);
+  }
+  // The longest "label.label....tld" prefix whose last part starts with 2+ letters
+  for (let k = labels.length - 1; k >= 1; k--) {
+    const tld = /^[A-Za-z]*/.exec(labels[k] ?? "")?.[0] ?? "";
+    if (tld.length >= 2) return [...labels.slice(0, k), tld].join(".");
+  }
+  return null;
+}
 const VERCEL_IDS = /\b(vc[a-z]_[A-Za-z0-9_]{16,}|team_[A-Za-z0-9]{20,})\b/g;
 const PLACEHOLDER = /test|example|demo|fake/i;
 const SKIP_FILES = [/^pnpm-lock\.yaml$/, /\.(png|jpe?g|gif|ico|webp|woff2?)$/i];
@@ -52,10 +95,9 @@ const findings = [];
 function scan(label, text) {
   const lines = text.split(/\r?\n/);
   lines.forEach((line, i) => {
-    for (const match of line.matchAll(EMAIL)) {
-      const domain = match[1] ?? "";
+    for (const { address, domain } of emails(line)) {
       if (
-        !ALLOWED_ADDRESSES.has(match[0].toLowerCase()) &&
+        !ALLOWED_ADDRESSES.has(address.toLowerCase()) &&
         !ALLOWED_EMAIL_DOMAINS.some((re) => re.test(domain))
       ) {
         findings.push(
