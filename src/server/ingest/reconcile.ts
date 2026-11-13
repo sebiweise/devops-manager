@@ -37,6 +37,11 @@ import { drainRollups, markRecentDaysDirty } from "./rollup";
 import { rollupRunnerDays } from "./runner-rollup";
 import { sampleRunners, type RunnerSampleResult } from "./runners";
 import { localDay } from "@/server/metrics/days";
+import type { Fetch } from "@/server/vercel/client";
+import { describeError } from "@/lib/describe-error";
+import type { EnvVercelToken } from "./vercel-credential";
+import { reencryptStoredTokens } from "./vercel-credential";
+import { runVercelStep, type VercelStepResult } from "./vercel-reconcile";
 import {
   backfill,
   incrementalSync,
@@ -60,6 +65,9 @@ import {
  *   g) rollups (incl. DailyRunnerStat)      h) billing (daily)   i) prune (daily)
  *   j) purge of ignored repositories (every pass, until done)
  *   k) open PR and Dependabot alert counts per repository (every 6 h)
+ *   v) Vercel inventory (vercel-reconcile.ts; own 25 s budget, right
+ *      after the claim and before the GitHub steps)
+ *   k2) re-encrypt stored tokens under a rotated key (cron pass only)
  *
  * Installations are processed round-robin by lastReconciledAt and claimed
  * with a column lock (`reconcileLockedUntil`), which is PgBouncer-safe.
@@ -80,6 +88,8 @@ export type InstallationResult = {
   ignorePurge?: IgnorePurgeResult;
   /** Repositories whose open PR / alert counts were refreshed. */
   repoCounts?: number;
+  /** Step v (Vercel); absent without a connection. */
+  vercel?: VercelStepResult;
 };
 
 export type ReconcileResult = {
@@ -98,6 +108,12 @@ export type ReconcileOptions = {
   preclaimed?: boolean;
   /** Overrides for tests; default from env. */
   config?: Partial<ReconcileConfig>;
+  /** Step v: Sync now forces the project list; tests inject fetch and the env token. */
+  vercel?: {
+    forceProjects?: boolean;
+    fetch?: Fetch;
+    envToken?: EnvVercelToken | null;
+  };
 };
 
 export type ReconcileConfig = {
@@ -209,6 +225,24 @@ async function reconcileInstallation(
     (a, b) => (touched.get(a.id) ?? 0) - (touched.get(b.id) ?? 0),
   );
   result.repos = ordered.length;
+
+  // v) Vercel, before the GitHub steps, bounded by its own budget.
+  if (!deadline.expired(10_000)) {
+    try {
+      const vercel = await runVercelStep({
+        installationId: inst.id,
+        timezone: inst.timezone,
+        retentionDays: retention,
+        deadline,
+        forceProjects: opts.vercel?.forceProjects,
+        fetch: opts.vercel?.fetch,
+        envToken: opts.vercel?.envToken,
+      });
+      if (vercel.status !== "none") result.vercel = vercel;
+    } catch (error) {
+      console.warn("vercel step failed", describeError(error));
+    }
+  }
 
   try {
     // a) Local replay for this installation (the cron pass replays all first).
@@ -542,6 +576,14 @@ export async function runReconcile(
 
   if (opts.installationId === undefined && !deadline.expired()) {
     await pruneGlobal(deadline);
+  }
+  // k2) Tokens under a rotated key are encrypted again (cron pass only).
+  if (opts.installationId === undefined && !deadline.expired(5_000)) {
+    try {
+      await reencryptStoredTokens(() => deadline.expired(5_000));
+    } catch (error) {
+      console.warn("re-encrypt failed", describeError(error));
+    }
   }
   result.deadlineReached ||= deadline.expired();
   return result;

@@ -13,6 +13,9 @@ import {
 } from "./github-client";
 import { persistRateBudget } from "./rate-store";
 import { claimLazyRunnerSample, sampleRunners } from "./runners";
+import { effectiveRetentionDays } from "./prune";
+import { runVercelStep } from "./vercel-reconcile";
+import type { Fetch } from "@/server/vercel/client";
 import {
   claimInstallation,
   runReconcile,
@@ -174,11 +177,16 @@ export async function claimSyncNow(
   return count === 1;
 }
 
-/** Runs reconcile for one installation (Sync now); skipped while another reconcile holds the lock. */
+/**
+ * Runs reconcile for one installation (Sync now, first sync after a Vercel
+ * connect); skipped while another reconcile holds the lock. Sync now also
+ * re-reads the Vercel project list.
+ */
 export function scheduleInstallationReconcile(
   installationId: bigint,
   schedule: Scheduler,
   clients: GitHubClients = githubClients,
+  opts: { forceVercelProjects?: boolean } = {},
 ): void {
   schedule(async () => {
     const deadline = lazyDeadline();
@@ -189,6 +197,7 @@ export function scheduleInstallationReconcile(
       clients,
       installationId,
       preclaimed: true,
+      vercel: { forceProjects: opts.forceVercelProjects },
     }).catch((error: unknown) => {
       console.error(
         "sync now failed",
@@ -242,6 +251,99 @@ export async function maybeLazyRunnerSample(
     } catch (error) {
       if (error instanceof PermissionNotGrantedError) return;
       console.warn("lazy runner sample failed", describeError(error));
+    }
+  });
+  return true;
+}
+
+// ---------- Vercel (design addendum §7.2, §7.3) ----------
+
+const VERCEL_LAZY_MS = 5 * 60 * 1000;
+const VERCEL_LAZY_LOCK_MS = 60 * 1000;
+
+/**
+ * Claims the Vercel fast path of a page view: the connection was last synced
+ * more than 5 minutes ago, it is not revoked or paused, and no reconcile
+ * holds the installation's lock. The same column lock as reconcile, so a
+ * lazy pass and a full pass never overlap.
+ */
+export async function claimLazyVercel(
+  installationId: bigint,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const { count } = await db.installation.updateMany({
+    where: {
+      id: installationId,
+      deletedAt: null,
+      suspendedAt: null,
+      OR: [
+        { reconcileLockedUntil: null },
+        { reconcileLockedUntil: { lt: now } },
+      ],
+      vercel: {
+        is: {
+          revokedAt: null,
+          AND: [
+            {
+              OR: [
+                { lastSyncedAt: null },
+                {
+                  lastSyncedAt: {
+                    lt: new Date(now.getTime() - VERCEL_LAZY_MS),
+                  },
+                },
+              ],
+            },
+            { OR: [{ pausedUntil: null }, { pausedUntil: { lt: now } }] },
+          ],
+        },
+      },
+    },
+    data: {
+      reconcileLockedUntil: new Date(now.getTime() + VERCEL_LAZY_LOCK_MS),
+    },
+  });
+  return count === 1;
+}
+
+/**
+ * Page-view trigger of the Vercel fast path (v2 to v5, 20 s) in `after()`.
+ * Called when the GitHub lazy reconcile did not start (that one includes
+ * step v anyway). Returns true when this call scheduled it.
+ */
+export async function maybeLazyVercelRefresh(
+  installationId: bigint,
+  schedule: Scheduler,
+  opts: { now?: Date; fetch?: Fetch } = {},
+): Promise<boolean> {
+  if (!(await claimLazyVercel(installationId, opts.now))) return false;
+  schedule(async () => {
+    try {
+      const inst = await db.installation.findUnique({
+        where: { id: installationId },
+        select: { timezone: true, rawRetentionDays: true },
+      });
+      if (!inst) return;
+      await runVercelStep({
+        installationId,
+        timezone: inst.timezone,
+        retentionDays: effectiveRetentionDays(
+          inst.rawRetentionDays,
+          env.MAX_RETENTION_DAYS,
+        ),
+        deadline: lazyDeadline(),
+        mode: "fast",
+        fetch: opts.fetch,
+      });
+    } catch (error) {
+      console.warn("lazy Vercel refresh failed", describeError(error));
+    } finally {
+      await db.installation
+        .updateMany({
+          where: { id: installationId },
+          data: { reconcileLockedUntil: null },
+        })
+        .catch(() => undefined);
     }
   });
   return true;

@@ -61,6 +61,11 @@ export async function syncNow(raw: {
   if (!(await claimSyncNow(installationId))) return { status: "rate_limited" };
 
   await appendAudit({ ...audit, status: "SUCCEEDED" });
-  scheduleInstallationReconcile(installationId, (task) => after(task));
+  scheduleInstallationReconcile(
+    installationId,
+    (task) => after(task),
+    undefined,
+    { forceVercelProjects: true },
+  );
   return { status: "started" };
 }

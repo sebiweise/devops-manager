@@ -21,6 +21,7 @@ export type TokenPurpose =
   | "read.variables"
   | "read.org_variables"
   | "read.dependabot"
+  | "read.deployments"
   | "act.runs"
   | "act.variables"
   | "act.org_variables"
@@ -58,6 +59,9 @@ export const PURPOSES: Record<TokenPurpose, PurposeSpec> = {
     required: { organization_actions_variables: "read" },
   },
   "read.dependabot": { required: { vulnerability_alerts: "read" } },
+  // Optional (addendum §7.3): only gates the deployment_status hint fold,
+  // which needs no token; without it the hints are simply inactive.
+  "read.deployments": { required: { deployments: "read" } },
   "act.runs": { required: { actions: "write" }, mutation: true },
   "act.variables": { required: { actions_variables: "write" }, mutation: true },
   "act.org_variables": {

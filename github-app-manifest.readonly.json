@@ -15,13 +15,19 @@
   "setup_url": "https://devops.example.com/onboarding",
   "setup_on_update": true,
   "request_oauth_on_install": false,
-  "default_events": ["workflow_run", "workflow_job", "repository"],
+  "default_events": [
+    "workflow_run",
+    "workflow_job",
+    "repository",
+    "deployment_status"
+  ],
   "default_permissions": {
     "metadata": "read",
     "actions": "read",
     "contents": "read",
     "pull_requests": "read",
     "checks": "read",
+    "deployments": "read",
     "statuses": "read",
     "actions_variables": "read",
     "vulnerability_alerts": "read",
