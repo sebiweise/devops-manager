@@ -1,4 +1,5 @@
 import "server-only";
+import { describeError } from "@/lib/describe-error";
 import { getDeadline } from "@vercel/functions";
 import { env } from "@/env";
 import { db } from "@/server/db";
@@ -240,10 +241,7 @@ export async function maybeLazyRunnerSample(
       await persistRateBudget(installationId, budget);
     } catch (error) {
       if (error instanceof PermissionNotGrantedError) return;
-      console.warn(
-        "lazy runner sample failed",
-        error instanceof Error ? error.name : "unknown",
-      );
+      console.warn("lazy runner sample failed", describeError(error));
     }
   });
   return true;
