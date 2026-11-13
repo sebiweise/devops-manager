@@ -53,13 +53,19 @@ fails with "already connected elsewhere" and names nothing else.
   and the `deployment_status` event (both in the shipped manifests; accept
   the updated permissions on the installation), the Vercel GitHub integration's
   deployment events mark the projects linked to that repository dirty, and a
-  targeted refresh (at most 3 GETs, debounced to 30 s per project) reads their
-  state from Vercel. Nothing from the event payload is stored. Without the
-  permission the settings page says so and the data refreshes by polling.
+  targeted refresh (at most 3 projects, debounced to 30 s per project) reads
+  their deployments from Vercel; a project whose production deployment
+  became ready is read once more, so a production pinned by a rollback keeps
+  its "auto-assign paused" banner. Nothing from the event payload is stored.
+  Without the permission the settings page says so and the data refreshes by
+  polling.
 
 A rejected token (401, or 403 with `invalidToken`/`missingToken`) stops the
 sync, shows a banner and a "Needs attention" item, and makes no further calls
-until the token is rotated. A 429 pauses the sync until its retry time.
+until the token is rotated. A 429 pauses the sync until its retry time. Both
+apply to every read: the sync, the hint refresh and the build log. An action
+whose token is rejected revokes the connection too; a 429 on an action does
+not pause the sync (write limits are per action).
 
 ## Actions (M6)
 
@@ -80,7 +86,11 @@ until the token is rotated. A 429 pauses the sync until its retry time.
   with Vercel's status, message and `x-vercel-id`. Parameters are ids and
   flags only. A double submit (same dialog) sends one request.
 - **Re-read**: after each call the deployment (or the project) is read from
-  Vercel again and stored; the page shows what Vercel reported.
+  Vercel again and stored; the page shows what Vercel reported. When that
+  read fails after Vercel accepted the call, the entry still records the
+  call's result; a promote or rollback then records the request on the
+  project (a rollback shows the banner at once) and the next sync reads the
+  serving deployment.
 - **Auto-assign paused (rollback)**: after a rollback Vercel stops assigning
   the production domains to new deployments. The repository card, the
   project row and "Needs attention" show a banner with **Promote** for the
