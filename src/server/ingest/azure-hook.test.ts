@@ -120,7 +120,7 @@ describe("service hook route", () => {
       (
         await handleAzureHook(
           {
-            hookKey: "unknownkey0123456789",
+            hookKey: "unknownkey0123456789", // gitleaks:allow (test placeholder)
             authorization: basic(KEY, SECRET),
             body: envelope(),
           },
