@@ -7,6 +7,13 @@ import type { Fetch } from "@/server/vercel/client";
  * fails on `decrypt=true`, paginates like Vercel (newest first,
  * `pagination.next` = the oldest `createdAt` of the page) and records every
  * call. All ids and names are placeholders.
+ *
+ * Writes (M6) answer only when `writes` is on: redeploy (echoes `meta`,
+ * creator source "redeploy"), cancel (queued or building only), promote and
+ * rollback (move the serving deployment, record the alias request; on
+ * Hobby only the previous production deployment may be rolled back to).
+ * `dropAfterSend` applies a write and then fails at the network level, so
+ * the outcome is unknown to the caller.
  */
 
 export type FakeToken = {
@@ -27,6 +34,13 @@ export type FakeProject = {
   repoId?: number;
   repo?: string;
   liveProductionId?: string;
+  alias?: {
+    type: "promote" | "rollback";
+    jobStatus: string;
+    requestedAt: number;
+    toDeploymentId: string;
+    fromDeploymentId: string | null;
+  };
 };
 
 export type FakeDeployment = {
@@ -43,6 +57,7 @@ export type FakeDeployment = {
   buildingAt?: number;
   ready?: number;
   source?: string;
+  meta?: Record<string, string>;
 };
 
 export type FakeCall = {
@@ -71,6 +86,15 @@ export class FakeVercel {
     headers?: Record<string, string>;
   }> = [];
   decryptRequested = false;
+  /** M6: answer POST/PATCH writes (off: 405 like the read-only M5 fake). */
+  writes = false;
+  /** Paths (prefix) whose next write is applied, then fails at the network level. */
+  dropAfterSend: string[] = [];
+  /** False: a redeploy does not keep the meta it was sent (fallback linking). */
+  echoMeta = true;
+  /** Build log events per deployment id. */
+  readonly logs = new Map<string, unknown[]>();
+  private created = 0;
   /** Called before each response (tests advance a clock here). */
   onRequest?: (call: FakeCall) => void;
 
@@ -123,7 +147,7 @@ export class FakeVercel {
           },
         });
       if (url.origin !== "https://api.vercel.com") return json(404, {});
-      if (call.method !== "GET")
+      if (call.method !== "GET" && !this.writes)
         return json(405, {
           error: { code: "method_unknown", message: "GET only in M5" },
         });
@@ -283,6 +307,58 @@ export class FakeVercel {
           },
         });
       }
+      if (call.method !== "GET") {
+        const body =
+          typeof init.body === "string"
+            ? (JSON.parse(init.body) as Record<string, unknown>)
+            : {};
+        const res = this.write(call.method, p, teamId, body);
+        const drop = this.dropAfterSend.findIndex((x) => p.startsWith(x));
+        if (drop >= 0) {
+          this.dropAfterSend.splice(drop, 1);
+          throw new TypeError("fetch failed: socket hang up");
+        }
+        return res.body === null
+          ? new Response(null, {
+              status: res.status,
+              headers: { "x-vercel-id": `fake::${this.calls.length}` },
+            })
+          : json(res.status, res.body);
+      }
+      const proj = p.match(/^\/v9\/projects\/([^/]+)$/);
+      if (proj) {
+        const x = this.projects.find(
+          (q) => q.id === proj[1] && q.teamId === teamId,
+        );
+        if (!x)
+          return json(404, {
+            error: { code: "not_found", message: "Project not found" },
+          });
+        return json(200, {
+          id: x.id,
+          name: x.name,
+          framework: "nextjs",
+          env: [{ key: "SECRET", value: ENV_SECRET_VALUE, type: "plain" }],
+          targets: x.liveProductionId
+            ? { production: { id: x.liveProductionId } }
+            : undefined,
+          lastAliasRequest:
+            url.searchParams.get("rollbackInfo") === "true"
+              ? (x.alias ?? null)
+              : null,
+        });
+      }
+      const events = p.match(/^\/v3\/deployments\/([^/]+)\/events$/);
+      if (events) {
+        const d = this.deployments.find(
+          (x) => x.uid === events[1] && x.teamId === teamId,
+        );
+        if (!d)
+          return json(404, {
+            error: { code: "not_found", message: "Deployment not found" },
+          });
+        return json(200, this.logs.get(d.uid) ?? []);
+      }
       const one = p.match(/^\/v13\/deployments\/([^/]+)$/);
       if (one) {
         const d = this.deployments.find(
@@ -299,6 +375,103 @@ export class FakeVercel {
         error: { code: "not_found", message: `no route ${p}` },
       });
     };
+  }
+
+  private write(
+    method: string,
+    p: string,
+    teamId: string,
+    body: Record<string, unknown>,
+  ): { status: number; body: unknown } {
+    const err = (status: number, code: string, message: string) => ({
+      status,
+      body: { error: { code, message } },
+    });
+    const now = Date.now();
+    if (method === "POST" && p === "/v13/deployments") {
+      const from = this.deployments.find(
+        (d) => d.uid === body.deploymentId && d.teamId === teamId,
+      );
+      if (!from) return err(404, "not_found", "Deployment not found");
+      this.created++;
+      const d: FakeDeployment = {
+        uid: `dpl_testR${this.created}`,
+        teamId,
+        projectId: from.projectId,
+        name: String(body.name ?? from.name),
+        createdAt: now,
+        readyState: "QUEUED",
+        target: body.target === "production" ? "production" : null,
+        sha: from.sha,
+        ref: from.ref,
+        source: "redeploy",
+        meta: this.echoMeta
+          ? ((body.meta ?? {}) as Record<string, string>)
+          : {},
+      };
+      this.deployments.push(d);
+      const r = this.render(d);
+      return { status: 200, body: { ...r, id: r.uid, uid: undefined } };
+    }
+    const cancel = p.match(/^\/v12\/deployments\/([^/]+)\/cancel$/);
+    if (method === "PATCH" && cancel) {
+      const d = this.deployments.find(
+        (x) => x.uid === cancel[1] && x.teamId === teamId,
+      );
+      if (!d) return err(404, "not_found", "Deployment not found");
+      if (!["QUEUED", "INITIALIZING", "BUILDING"].includes(d.readyState))
+        return err(400, "bad_request", "Deployment is not cancelable");
+      d.readyState = "CANCELED";
+      const r = this.render(d);
+      return { status: 200, body: { ...r, id: r.uid, uid: undefined } };
+    }
+    const alias = p.match(
+      /^\/(v10|v1)\/projects\/([^/]+)\/(promote|rollback)\/([^/]+)$/,
+    );
+    if (method === "POST" && alias) {
+      const [, , projectId, kind, deploymentId] = alias;
+      const project = this.projects.find(
+        (x) => x.id === projectId && x.teamId === teamId,
+      );
+      const d = this.deployments.find(
+        (x) => x.uid === deploymentId && x.projectId === projectId,
+      );
+      if (!project || !d) return err(404, "not_found", "Not found");
+      if (d.readyState !== "READY" || d.target !== "production")
+        return err(422, "invalid_deployment", "Not a production deployment");
+      if (kind === "rollback") {
+        const team = this.teams.get(teamId);
+        const live = this.deployments.find(
+          (x) => x.uid === project.liveProductionId,
+        );
+        const previous = this.deployments
+          .filter(
+            (x) =>
+              x.projectId === projectId &&
+              x.target === "production" &&
+              x.readyState === "READY" &&
+              live &&
+              x.createdAt < live.createdAt,
+          )
+          .sort((a, b) => b.createdAt - a.createdAt)[0];
+        if (team?.plan === "hobby" && previous?.uid !== d.uid)
+          return err(
+            402,
+            "plan_limit",
+            "Hobby can roll back to the previous deployment only",
+          );
+      }
+      project.alias = {
+        type: kind as "promote" | "rollback",
+        jobStatus: "succeeded",
+        requestedAt: now,
+        toDeploymentId: d.uid,
+        fromDeploymentId: project.liveProductionId ?? null,
+      };
+      project.liveProductionId = d.uid;
+      return { status: kind === "promote" ? 202 : 201, body: null };
+    }
+    return err(404, "not_found", `no write route ${method} ${p}`);
   }
 
   private render(d: FakeDeployment) {
@@ -322,7 +495,10 @@ export class FakeVercel {
         username: "example-user",
         email: "user@example.com",
       },
+      isRollbackCandidate:
+        d.target === "production" && d.readyState === "READY",
       meta: {
+        ...(d.meta ?? {}),
         githubCommitSha: d.sha,
         githubCommitRef: d.ref ?? "main",
         githubCommitMessage: d.message ?? "chore: example change",
