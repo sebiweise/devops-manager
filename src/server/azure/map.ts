@@ -221,7 +221,7 @@ export function baseNameOf(name: string): string {
  * cancellation at the cap counts even without the issue text.
  */
 const CAP_TEXT =
-  /(maximum (execution|job) time|exceeded the (maximum )?(execution |job )?time|timed? ?out|has (been )?(canceled|cancelled) (after|because)|time limit)/i;
+  /(ran longer than the maximum time|maximum (execution|job) time|exceeded the (maximum )?(execution |job )?time|timed? ?out|has (been )?(canceled|cancelled) (after|because)|time limit)/i;
 
 export function hitJobCap(
   rec: Pick<AzureTimelineRecord, "result" | "issues">,

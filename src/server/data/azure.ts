@@ -881,6 +881,8 @@ export type PipelineRow = {
   lastTimedOut: boolean;
   lastBuildId: number | null;
   lastAt: string | null;
+  /** The latest completed default-branch run failed (or partially succeeded). */
+  defaultFailing: boolean;
   summary: PipelineSummary;
   /** Job p90 in seconds over 7 days. */
   jobP90S: number | null;
@@ -1030,6 +1032,31 @@ export async function listPipelines(
   const last = new Map(
     latest.map((l) => [`${l.projectId}:${l.definitionId}`, l]),
   );
+  // The latest completed default-branch run decides "failing" (as the finding does).
+  const defaultRuns = await db.$queryRaw<
+    Array<{
+      projectId: string;
+      definitionId: number;
+      result: string;
+      timedOut: boolean;
+    }>
+  >`
+    SELECT DISTINCT ON ("projectId", "definitionId") "projectId", "definitionId",
+           "result"::text AS result, "timedOut"
+    FROM "AzureBuild"
+    WHERE "installationId" = ${installationId} AND "status" = 'COMPLETED'
+      AND "isDefaultBranch" AND "result" <> 'NONE'
+    ORDER BY "projectId", "definitionId", "queuedAt" DESC`;
+  const failingKeys = new Set(
+    defaultRuns
+      .filter(
+        (r) =>
+          r.result === "FAILED" ||
+          r.result === "PARTIALLY_SUCCEEDED" ||
+          r.timedOut,
+      )
+      .map((r) => `${r.projectId}:${r.definitionId}`),
+  );
   let rows: PipelineRow[] = defs.map((d) => {
     const key = `${d.projectId}:${d.id}`;
     const rid = effectiveRepo(d);
@@ -1054,6 +1081,7 @@ export async function listPipelines(
       lastTimedOut: l?.timedOut ?? false,
       lastBuildId: l?.id ?? null,
       lastAt: iso(l?.queuedAt),
+      defaultFailing: failingKeys.has(key),
       summary: pipelineSummary(by.get(key) ?? []),
       jobP90S: p90.get(key) ?? null,
       azureUrl: azureDefinitionUrl(conn.orgName, d.projectId, d.id),
@@ -1065,12 +1093,7 @@ export async function listPipelines(
   if (query.filters.includes("unlinked"))
     rows = rows.filter((r) => r.link === "unlinked");
   if (query.filters.includes("failing"))
-    rows = rows.filter(
-      (r) =>
-        r.lastResult === "FAILED" ||
-        r.lastResult === "PARTIALLY_SUCCEEDED" ||
-        r.lastTimedOut,
-    );
+    rows = rows.filter((r) => r.defaultFailing);
   if (query.filters.includes("macos"))
     rows = rows.filter(
       (r) => (r.summary.macosShare ?? 0) > 0 || r.os === "MACOS",
@@ -1086,11 +1109,8 @@ export async function listPipelines(
       ...summary,
       definitions: all.length,
       linked: linkedRows.length,
-      failing: all.filter(
-        (r) =>
-          r.link !== "unlinked" &&
-          (r.lastResult === "FAILED" || r.lastTimedOut),
-      ).length,
+      failing: all.filter((r) => r.link !== "unlinked" && r.defaultFailing)
+        .length,
     },
   };
 }

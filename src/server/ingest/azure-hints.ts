@@ -289,6 +289,15 @@ export async function refreshAzureBuilds(
         days,
       );
     }
+    // A build first seen here starts its debounce window now.
+    await db.azureBuild.updateMany({
+      where: {
+        installationId,
+        id: { in: claimed.map((b) => b.buildId) },
+        hintRefreshedAt: null,
+      },
+      data: { hintRefreshedAt: now },
+    });
     if (unknownDefinition)
       await db.azureDevOpsConnection.updateMany({
         where: { installationId },
