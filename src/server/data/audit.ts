@@ -36,6 +36,8 @@ export type AuditFilter = {
   repositoryId?: bigint;
   status?: AuditStatus;
   batchId?: string;
+  /** One entry (e.g. "created by audit entry" on a deployment). */
+  id?: string;
   from?: Date;
   to?: Date;
 };
@@ -89,6 +91,7 @@ function whereOf(
     ...(filter.repositoryId ? { repositoryId: filter.repositoryId } : {}),
     ...(filter.status ? { status: filter.status } : {}),
     ...(filter.batchId ? { batchId: filter.batchId } : {}),
+    ...(filter.id ? { id: filter.id } : {}),
     ...(filter.from || filter.to
       ? {
           createdAt: {

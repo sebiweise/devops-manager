@@ -14,11 +14,22 @@ import {
   rotateVercelToken,
   type ConnectResult,
 } from "@/server/management/vercel";
+import {
+  getBuildLogExcerpt,
+  performVercelDeploymentAction,
+  setVercelManagementEnabled,
+  type BuildLogResult,
+  type DeploymentActionData,
+} from "@/server/management/vercel-actions";
 
 /**
  * Server Actions of the "Hosting · Vercel" settings (admin): connect,
- * rotate, disconnect and the manual project link. The token travels only in
- * the request body of connect/rotate; results never echo it.
+ * rotate, disconnect and the manual project link; and of the M6 actions:
+ * redeploy, cancel, promote and roll back a deployment (operator), the
+ * Vercel management toggle (admin) and the live build log excerpt
+ * (operator). The token travels only in the request body of
+ * connect/rotate; results never echo it. Malformed input and foreign ids
+ * answer 404.
  */
 
 const id = z.string().regex(/^\d{1,20}$/);
@@ -99,5 +110,73 @@ export async function linkVercelProjectAction(
       },
       deps(),
     ),
+  );
+}
+
+// ---------- M6: deployment actions, Vercel toggle, build log ----------
+
+const vercelId = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+
+const deploymentInput = z.object({
+  installationId: id,
+  deploymentId: vercelId,
+  operation: z.enum(["redeploy", "cancel", "promote", "rollback"]),
+  withLatestCommit: z.boolean().optional(),
+  confirmed: z.boolean(),
+  typed: z.string().max(200).optional(),
+  idempotencyKey: z.uuid(),
+});
+
+/** Redeploy, cancel, promote or roll back one deployment (operator or admin). */
+export async function vercelDeploymentAction(
+  raw: z.input<typeof deploymentInput>,
+): Promise<ActionResult<DeploymentActionData> | Denial> {
+  const parsed = deploymentInput.safeParse(raw);
+  if (!parsed.success) notFound();
+  const d = parsed.data;
+  return withActor((actor) =>
+    performVercelDeploymentAction(actor, {
+      ...d,
+      installationId: BigInt(d.installationId),
+    }),
+  );
+}
+
+const toggleInput = z.object({
+  installationId: id,
+  enabled: z.boolean(),
+  typed: z.string().max(200),
+  idempotencyKey: z.uuid(),
+});
+
+/** The Vercel management toggle (admin, TYPED team slug). */
+export async function setVercelManagementAction(
+  raw: z.input<typeof toggleInput>,
+): Promise<ActionResult<{ enabled: boolean }> | Denial> {
+  const parsed = toggleInput.safeParse(raw);
+  if (!parsed.success) notFound();
+  const d = parsed.data;
+  return withActor((actor) =>
+    setVercelManagementEnabled(actor, {
+      ...d,
+      installationId: BigInt(d.installationId),
+    }),
+  );
+}
+
+const logInput = z.object({ installationId: id, deploymentId: vercelId });
+
+/** The live build log excerpt (operators and admins; never stored). */
+export async function vercelBuildLogAction(
+  raw: z.input<typeof logInput>,
+): Promise<BuildLogResult | Denial> {
+  const parsed = logInput.safeParse(raw);
+  if (!parsed.success) notFound();
+  const d = parsed.data;
+  return withActor((actor) =>
+    getBuildLogExcerpt(actor, {
+      installationId: BigInt(d.installationId),
+      deploymentId: d.deploymentId,
+    }),
   );
 }

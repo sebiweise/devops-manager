@@ -82,6 +82,8 @@ export type VercelSummary = {
   lastSyncStatus: string | null;
   lastSyncedAt: string | null;
   tokenExpiresAt: string | null;
+  /** The connection's own management toggle (M6). */
+  managementEnabled: boolean;
 };
 
 /** What every role may know about the connection (nav, banners); null = none. */
@@ -103,11 +105,13 @@ export async function getVercelSummary(
       lastSyncStatus: true,
       lastSyncedAt: true,
       tokenExpiresAt: true,
+      managementEnabled: true,
     },
   });
   if (!c) return null;
   return {
     connected: true,
+    managementEnabled: c.managementEnabled,
     teamSlug: c.teamSlug,
     teamName: c.teamName,
     plan: c.plan,
@@ -136,6 +140,8 @@ export type VercelSettings = {
     projectsSyncedAt: string | null;
     pausedUntil: string | null;
     createdAt: string;
+    /** The Vercel management toggle (M6, off by default). */
+    managementEnabled: boolean;
   };
   /** True when the App may receive deployment_status events (hints). */
   hintsAvailable: boolean;
@@ -204,6 +210,7 @@ export async function getVercelSettings(
           projectsSyncedAt: iso(c.projectsSyncedAt),
           pausedUntil: iso(c.pausedUntil),
           createdAt: c.createdAt.toISOString(),
+          managementEnabled: c.managementEnabled,
         }
       : null,
     hintsAvailable:
@@ -442,6 +449,12 @@ export type DeploymentRow = {
   vercelUrl: string;
   /** The live production deployment of its project. */
   live: boolean;
+  /** Offered for Instant Rollback (Hobby: the previous production deployment only). */
+  rollbackCandidate: boolean;
+  /** The audit entry of the M6 action that created it, if any. */
+  auditEntryId: string | null;
+  /** "exact" (meta) | "probable" (time window) */
+  auditLinkKind: string | null;
 };
 
 const deploymentSelect = {
@@ -458,6 +471,8 @@ const deploymentSelect = {
   createdAt: true,
   readyAt: true,
   buildMs: true,
+  auditLogId: true,
+  auditLinkKind: true,
   project: {
     select: {
       name: true,
@@ -489,6 +504,7 @@ function toRow(
   d: DeploymentRecord,
   teamSlug: string,
   repos: Map<bigint, string>,
+  candidates: ReadonlySet<string> = new Set(),
 ): DeploymentRow {
   const repoId = effectiveRepoId(d.project);
   return {
@@ -509,7 +525,29 @@ function toRow(
     repoFullName: repoId != null ? (repos.get(repoId) ?? null) : null,
     vercelUrl: vercelDeploymentUrl(teamSlug, d.project.name, d.id),
     live: d.project.liveProdDeploymentId === d.id,
+    rollbackCandidate: candidates.has(d.id),
+    auditEntryId: d.auditLogId,
+    auditLinkKind: d.auditLogId ? d.auditLinkKind : null,
   };
+}
+
+/** Rollback candidates of the given projects (see rollbackCandidateIds). */
+async function candidatesOf(
+  installationId: bigint,
+  projectIds: ReadonlyArray<string>,
+): Promise<Set<string>> {
+  const unique = [...new Set(projectIds)];
+  if (unique.length === 0) return new Set();
+  const conn = await db.vercelConnection.findUnique({
+    where: { installationId },
+    select: { plan: true },
+  });
+  const lists = await Promise.all(
+    unique.map((id) =>
+      rollbackCandidateIds(installationId, id, conn?.plan ?? null),
+    ),
+  );
+  return new Set(lists.flat());
 }
 
 async function teamSlugOf(installationId: bigint): Promise<string | null> {
@@ -620,8 +658,12 @@ export async function listDeployments(
     ...records.map((r) => effectiveRepoId(r.project)),
     ...projects.map(effectiveRepoId),
   ]);
+  const candidates = await candidatesOf(
+    installationId,
+    records.map((r) => r.projectId),
+  );
   return {
-    rows: records.map((r) => toRow(r, teamSlug, repos)),
+    rows: records.map((r) => toRow(r, teamSlug, repos, candidates)),
     total,
     page,
     size: query.size,
@@ -749,6 +791,8 @@ export type ProjectRow = {
   latestProdAt: string | null;
   latestProdSha: string | null;
   autoAssignPausedAt: string | null;
+  /** While auto-assign is paused: the deployment Promote is offered for. */
+  promoteDeploymentId: string | null;
   paused: boolean;
   vercelUrl: string;
   recent: DeploymentRow[];
@@ -828,6 +872,17 @@ export async function listVercelProjects(
     : [];
   const repos = await repoNames(installationId, projects.map(effectiveRepoId));
   const latest = new Map(records.map((r) => [r.id, r]));
+  const candidates = await candidatesOf(installationId, ids);
+  const promotable = new Map(
+    await Promise.all(
+      projects
+        .filter((p) => p.autoAssignPausedAt)
+        .map(
+          async (p) =>
+            [p.id, await promoteCandidateId(installationId, p.id)] as const,
+        ),
+    ),
+  );
   return {
     rows: projects.map((p) => {
       const repoId = effectiveRepoId(p);
@@ -846,11 +901,12 @@ export async function listVercelProjects(
         latestProdAt: iso(p.latestProdReadyAt ?? prod?.createdAt),
         latestProdSha: prod?.commitSha ?? null,
         autoAssignPausedAt: iso(p.autoAssignPausedAt),
+        promoteDeploymentId: promotable.get(p.id) ?? null,
         paused: p.pausedAt != null,
         vercelUrl: vercelProjectUrl(teamSlug, p.name),
         recent: records
           .filter((r) => r.projectId === p.id)
-          .map((r) => toRow(r, teamSlug, repos)),
+          .map((r) => toRow(r, teamSlug, repos, candidates)),
       };
     }),
     total,
@@ -872,6 +928,8 @@ export type RepoDeploymentCard = {
   latestPreview: DeploymentRow | null;
   recent: DeploymentRow[];
   autoAssignPausedAt: string | null;
+  /** While auto-assign is paused: the deployment Promote is offered for. */
+  promote: DeploymentRow | null;
 };
 
 /**
@@ -911,8 +969,21 @@ export async function getRepoDeployments(
     },
   });
   const repos = new Map([[repo.id, repo.fullName]]);
+  const candidates = await candidatesOf(
+    installationId,
+    projects.map((p) => p.id),
+  );
   const out: RepoDeploymentCard[] = [];
   for (const p of projects) {
+    const promoteId = p.autoAssignPausedAt
+      ? await promoteCandidateId(installationId, p.id)
+      : null;
+    const promote = promoteId
+      ? await db.vercelDeployment.findFirst({
+          where: { installationId, id: promoteId },
+          select: deploymentSelect,
+        })
+      : null;
     const [recent, preview, prod, live] = await Promise.all([
       db.vercelDeployment.findMany({
         where: { installationId, projectId: p.id },
@@ -944,11 +1015,14 @@ export async function getRepoDeployments(
       manualLink: p.manualRepositoryId != null,
       productionBranch: p.productionBranch,
       vercelUrl: vercelProjectUrl(teamSlug, p.name),
-      production: prod ? toRow(prod, teamSlug, repos) : null,
-      live: live ? toRow(live, teamSlug, repos) : null,
-      latestPreview: preview ? toRow(preview, teamSlug, repos) : null,
-      recent: recent.map((r) => toRow(r, teamSlug, repos)),
+      production: prod ? toRow(prod, teamSlug, repos, candidates) : null,
+      live: live ? toRow(live, teamSlug, repos, candidates) : null,
+      latestPreview: preview
+        ? toRow(preview, teamSlug, repos, candidates)
+        : null,
+      recent: recent.map((r) => toRow(r, teamSlug, repos, candidates)),
       autoAssignPausedAt: iso(p.autoAssignPausedAt),
+      promote: promote ? toRow(promote, teamSlug, repos, candidates) : null,
     });
   }
   return out;
@@ -1020,6 +1094,288 @@ export async function deploymentsForShas(
   return out;
 }
 
+// ---------- M6 actions: targets, candidates, capability ----------
+
+export type VercelActionState = {
+  /** Every gate the UI can know of is open (the server checks again). */
+  canAct: boolean;
+  /** Why the buttons are hidden, for the hint next to them. */
+  blockedBy:
+    | null
+    | "role"
+    | "management_disabled_global"
+    | "management_disabled_installation"
+    | "vercel_management_disabled"
+    | "vercel_revoked";
+  /** Operators and admins may read the live build log excerpt. */
+  canViewLog: boolean;
+  plan: string | null;
+  teamSlug: string;
+  /** Deployments created in the last 24 h (Hobby: 100 per day). */
+  last24h: number;
+};
+
+/** What the deployment action buttons may offer to this user (UI hint only). */
+export async function getVercelActionState(
+  scope: TenantScope,
+  installationId: bigint,
+  managementGlobal: boolean,
+  now: Date = new Date(),
+): Promise<VercelActionState | null> {
+  guard(scope, installationId);
+  const inst = await db.installation.findFirst({
+    where: { id: installationId, deletedAt: null, suspendedAt: null },
+    select: { managementEnabled: true },
+  });
+  if (!inst) throw new NotFoundError();
+  const c = await db.vercelConnection.findUnique({
+    where: { installationId },
+    select: {
+      teamSlug: true,
+      plan: true,
+      revokedAt: true,
+      managementEnabled: true,
+    },
+  });
+  if (!c) return null;
+  const operator = hasRole(scope.role, "OPERATOR");
+  const blockedBy: VercelActionState["blockedBy"] = !operator
+    ? "role"
+    : c.revokedAt
+      ? "vercel_revoked"
+      : !managementGlobal
+        ? "management_disabled_global"
+        : !inst.managementEnabled
+          ? "management_disabled_installation"
+          : !c.managementEnabled
+            ? "vercel_management_disabled"
+            : null;
+  const last24h = await db.vercelDeployment.count({
+    where: {
+      installationId,
+      createdAt: { gte: new Date(now.getTime() - DAY_MS) },
+    },
+  });
+  return {
+    canAct: blockedBy === null,
+    blockedBy,
+    canViewLog: operator && !c.revokedAt,
+    plan: c.plan,
+    teamSlug: c.teamSlug,
+    last24h,
+  };
+}
+
+export type DeploymentActionTarget = {
+  id: string;
+  projectId: string;
+  projectName: string;
+  target: string;
+  state: string;
+  createdAt: Date;
+  commitSha: string | null;
+  isRollbackCandidate: boolean;
+  repositoryId: bigint | null;
+  repoFullName: string | null;
+  liveProdDeploymentId: string | null;
+  autoAssignPausedAt: Date | null;
+  plan: string | null;
+  teamSlug: string;
+  /** The installation's local time zone (daily statistics). */
+  timezone: string;
+  /** "vercel:token:<hint>" or "vercel:env-token" for the audit row. */
+  actingAs: string;
+};
+
+/**
+ * The deployment an M6 action targets, with its project, the effective
+ * repository (same installation, not removed, not ignored) and the
+ * connection's plan. NotFoundError outside the scope, for a deployment of
+ * another installation or of a removed project.
+ */
+export async function findDeploymentActionTarget(
+  scope: TenantScope,
+  installationId: bigint,
+  deploymentId: string,
+): Promise<DeploymentActionTarget> {
+  guard(scope, installationId);
+  const inst = await activeInstallation(installationId);
+  const [d, conn] = await Promise.all([
+    db.vercelDeployment.findFirst({
+      where: {
+        id: deploymentId,
+        installationId,
+        project: { removedAt: null },
+      },
+      select: {
+        id: true,
+        projectId: true,
+        target: true,
+        state: true,
+        createdAt: true,
+        commitSha: true,
+        isRollbackCandidate: true,
+        project: {
+          select: {
+            name: true,
+            repositoryId: true,
+            manualRepositoryId: true,
+            liveProdDeploymentId: true,
+            autoAssignPausedAt: true,
+          },
+        },
+      },
+    }),
+    db.vercelConnection.findUnique({
+      where: { installationId },
+      select: {
+        plan: true,
+        teamSlug: true,
+        tokenSource: true,
+        tokenHint: true,
+      },
+    }),
+  ]);
+  if (!d || !conn) throw new NotFoundError();
+  const repoId = effectiveRepoId(d.project);
+  const repo =
+    repoId != null
+      ? await db.repository.findFirst({
+          where: {
+            id: repoId,
+            installationId,
+            removedAt: null,
+            ignoredAt: null,
+          },
+          select: { id: true, fullName: true },
+        })
+      : null;
+  return {
+    id: d.id,
+    projectId: d.projectId,
+    projectName: d.project.name,
+    target: d.target,
+    state: d.state,
+    createdAt: d.createdAt,
+    commitSha: d.commitSha,
+    isRollbackCandidate: d.isRollbackCandidate,
+    repositoryId: repo?.id ?? null,
+    repoFullName: repo?.fullName ?? null,
+    liveProdDeploymentId: d.project.liveProdDeploymentId,
+    autoAssignPausedAt: d.project.autoAssignPausedAt,
+    plan: conn.plan,
+    teamSlug: conn.teamSlug,
+    timezone: inst.timezone,
+    actingAs:
+      conn.tokenSource === "ENV"
+        ? "vercel:env-token"
+        : `vercel:token:${conn.tokenHint ?? "unknown"}`,
+  };
+}
+
+/**
+ * Rollback candidates of a project (design addendum §8.2): READY
+ * production deployments older than the one serving production that Vercel
+ * marks as candidates, newest first. On Hobby only the previous production
+ * deployment is offered (Vercel's Instant Rollback limit).
+ */
+export async function rollbackCandidateIds(
+  installationId: bigint,
+  projectId: string,
+  plan: string | null,
+): Promise<string[]> {
+  const project = await db.vercelProject.findFirst({
+    where: { id: projectId, installationId, removedAt: null },
+    select: { liveProdDeploymentId: true },
+  });
+  if (!project?.liveProdDeploymentId) return [];
+  const live = await db.vercelDeployment.findFirst({
+    where: { installationId, id: project.liveProdDeploymentId },
+    select: { createdAt: true },
+  });
+  if (!live) return [];
+  const rows = await db.vercelDeployment.findMany({
+    where: {
+      installationId,
+      projectId,
+      target: "production",
+      state: "READY",
+      isRollbackCandidate: true,
+      createdAt: { lt: live.createdAt },
+    },
+    orderBy: { createdAt: "desc" },
+    take: plan === "hobby" ? 1 : 20,
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
+
+/** The newest READY production deployment that is not serving production (the W4 fix). */
+export async function promoteCandidateId(
+  installationId: bigint,
+  projectId: string,
+): Promise<string | null> {
+  const project = await db.vercelProject.findFirst({
+    where: { id: projectId, installationId, removedAt: null },
+    select: { liveProdDeploymentId: true },
+  });
+  if (!project) return null;
+  const d = await db.vercelDeployment.findFirst({
+    where: {
+      installationId,
+      projectId,
+      target: "production",
+      state: "READY",
+      ...(project.liveProdDeploymentId
+        ? { id: { not: project.liveProdDeploymentId } }
+        : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  return d?.id ?? null;
+}
+
+/** Links a deployment created by an M6 redeploy to its audit row. */
+export async function linkDeploymentAudit(
+  scope: TenantScope,
+  installationId: bigint,
+  deploymentId: string,
+  auditId: string,
+): Promise<void> {
+  guard(scope, installationId);
+  await db.vercelDeployment.updateMany({
+    where: { id: deploymentId, installationId },
+    data: { auditLogId: auditId, auditLinkKind: "exact" },
+  });
+}
+
+/** VERCEL_MANAGEMENT_TOGGLE: the connection's own toggle (local write). */
+export async function setVercelManagement(
+  scope: TenantScope,
+  installationId: bigint,
+  enabled: boolean,
+): Promise<void> {
+  guard(scope, installationId);
+  const { count } = await db.vercelConnection.updateMany({
+    where: { installationId },
+    data: { managementEnabled: enabled },
+  });
+  if (count !== 1) throw new NotFoundError();
+}
+
+/** The connection fields the toggle needs (admin settings). */
+export async function findVercelToggleTarget(
+  scope: TenantScope,
+  installationId: bigint,
+): Promise<{ teamSlug: string; managementEnabled: boolean } | null> {
+  guard(scope, installationId);
+  return db.vercelConnection.findUnique({
+    where: { installationId },
+    select: { teamSlug: true, managementEnabled: true },
+  });
+}
+
 // ---------- needs attention (findings) ----------
 
 export type AttentionItem = {
@@ -1033,6 +1389,12 @@ export type AttentionItem = {
   /** e.g. the token expiry or the pause start. */
   at: string | null;
   repoFullName: string | null;
+  /** Auto-assign paused: the deployment Promote is offered for (W4). */
+  promote: null | {
+    deploymentId: string;
+    projectName: string;
+    commitSha: string | null;
+  };
 };
 
 const SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
@@ -1055,6 +1417,33 @@ export async function listNeedsAttention(
     typeof d.repositoryId === "string" ? BigInt(d.repositoryId) : null,
   );
   const repos = await repoNames(installationId, repoIds);
+  const promoteIds = details
+    .map((d) =>
+      d.kind === "auto_assign_paused" &&
+      typeof d.promoteDeploymentId === "string"
+        ? d.promoteDeploymentId
+        : null,
+    )
+    .filter((x): x is string => x !== null);
+  const promotable = new Map(
+    (promoteIds.length > 0
+      ? await db.vercelDeployment.findMany({
+          where: {
+            installationId,
+            id: { in: promoteIds },
+            state: "READY",
+            target: "production",
+            project: { removedAt: null },
+          },
+          select: {
+            id: true,
+            commitSha: true,
+            project: { select: { name: true } },
+          },
+        })
+      : []
+    ).map((d) => [d.id, d]),
+  );
   return rows
     .map((r, i) => {
       const d = details[i]!;
@@ -1075,6 +1464,16 @@ export async function listNeedsAttention(
         since: r.firstSeenAt.toISOString(),
         at: str("expiresAt") ?? str("since"),
         repoFullName: repoId != null ? (repos.get(repoId) ?? null) : null,
+        promote: (() => {
+          const p = promotable.get(str("promoteDeploymentId") ?? "");
+          return p && str("kind") === "auto_assign_paused"
+            ? {
+                deploymentId: p.id,
+                projectName: p.project.name,
+                commitSha: p.commitSha,
+              }
+            : null;
+        })(),
       };
     })
     .sort(

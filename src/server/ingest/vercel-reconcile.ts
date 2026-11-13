@@ -39,6 +39,11 @@ import { scrubKnown } from "./webhook";
  *   v4 latest prod   DB only: latest production state, live deployment,
  *                    "auto-assign paused" (rollback), and the findings
  *   v5 rollup        DailyDeploymentStat for the days touched
+ *   v7 audit links   DB only: a deployment whose `meta.devopsManagerAudit`
+ *                    names a VERCEL_REDEPLOY row of this installation is
+ *                    linked to it ("exact", in the upsert); a redeploy whose
+ *                    outcome is unknown is linked to the redeploy-created
+ *                    deployment of its project within 2 minutes ("probable")
  *
  * Failure handling: 401 or 403 with invalidToken/missingToken revokes the
  * connection (no further calls until a rotate); a 429 pauses until its
@@ -236,6 +241,24 @@ export async function upsertDeployments(
       })
     ).map((r) => [r.id, r]),
   );
+  // v7 (exact): only redeploy rows of this installation can be named.
+  const refs = [
+    ...new Set(rows.map((d) => d.auditRef).filter((r): r is string => !!r)),
+  ];
+  const audits = new Set(
+    refs.length > 0
+      ? (
+          await db.auditLog.findMany({
+            where: {
+              id: { in: refs },
+              installationId,
+              action: "VERCEL_REDEPLOY",
+            },
+            select: { id: true },
+          })
+        ).map((a) => a.id)
+      : [],
+  );
   let prodBecameReady = false;
   const ops: Prisma.PrismaPromise<unknown>[] = [];
   for (const d of rows) {
@@ -265,11 +288,15 @@ export async function upsertDeployments(
       buildMs: d.buildMs,
       syncedAt: now,
     };
+    const link =
+      d.auditRef && audits.has(d.auditRef)
+        ? { auditLogId: d.auditRef, auditLinkKind: "exact" }
+        : {};
     ops.push(
       db.vercelDeployment.upsert({
         where: { id: d.id },
-        create: { id: d.id, installationId, ...data },
-        update: data,
+        create: { id: d.id, installationId, ...data, ...link },
+        update: { ...data, ...link },
       }),
     );
     days?.add(localDay(d.createdAt, timezone));
@@ -569,6 +596,8 @@ export async function updateLatestProduction(
       manualRepositoryId: true,
       liveProdDeploymentId: true,
       autoAssignPausedAt: true,
+      aliasRequestType: true,
+      aliasRequestAt: true,
     },
   });
   const failing: string[] = [];
@@ -600,14 +629,29 @@ export async function updateLatestProduction(
     // Production is pinned to an older deployment (a rollback) when the
     // project's live deployment is older than the newest ready production
     // deployment and the project list was read after that one became ready.
-    const pinned =
-      !!live &&
+    // A promote re-enables auto-assignment even for an older deployment,
+    // so a pin older than the last promote read after an action is not a
+    // pause. A rollback read after an action pauses it until the project
+    // list is read again (the rollback job may still be running then).
+    const promotedAfter =
+      p.aliasRequestType === "promote" &&
+      !!p.aliasRequestAt &&
       !!newestReady &&
-      live.id !== newestReady.id &&
-      live.createdAt < newestReady.createdAt &&
-      !!conn.projectsSyncedAt &&
-      !!newestReady.readyAt &&
-      conn.projectsSyncedAt > newestReady.readyAt;
+      newestReady.createdAt <= p.aliasRequestAt;
+    const rolledBack =
+      p.aliasRequestType === "rollback" &&
+      !!p.aliasRequestAt &&
+      (!conn.projectsSyncedAt || conn.projectsSyncedAt <= p.aliasRequestAt);
+    const pinned =
+      rolledBack ||
+      (!promotedAfter &&
+        !!live &&
+        !!newestReady &&
+        live.id !== newestReady.id &&
+        live.createdAt < newestReady.createdAt &&
+        !!conn.projectsSyncedAt &&
+        !!newestReady.readyAt &&
+        conn.projectsSyncedAt > newestReady.readyAt);
     await db.vercelProject.update({
       where: { id: p.id },
       data: {
@@ -659,6 +703,10 @@ export async function updateLatestProduction(
             projectId: p.id,
             projectName: p.name,
             since: (p.autoAssignPausedAt ?? now).toISOString(),
+            promoteDeploymentId:
+              newestReady && newestReady.id !== live?.id
+                ? newestReady.id
+                : null,
             repositoryId: repositoryId != null ? String(repositoryId) : null,
           },
         },
@@ -738,6 +786,102 @@ export async function updateCredentialFindings(
     );
   }
   await resolveFindings(installationId, "CREDENTIAL", "vercel:", keep, now);
+}
+
+// ---------- v7 ----------
+
+const PROBABLE_WINDOW_MS = 2 * 60_000;
+const PROBABLE_LOOKBACK_MS = 24 * 3_600_000;
+
+/**
+ * v7 (probable): a VERCEL_REDEPLOY whose outcome is unknown (the request
+ * failed after it was sent) and that no deployment names in its meta is
+ * linked to the newest unlinked redeploy-created deployment of its project
+ * created within 2 minutes after the audit row. The audit row itself is
+ * never rewritten; the UI shows the link as "probably".
+ */
+export async function linkProbableRedeploys(
+  installationId: bigint,
+  now: Date,
+): Promise<number> {
+  const rows = await db.auditLog.findMany({
+    where: {
+      installationId,
+      action: "VERCEL_REDEPLOY",
+      status: "FAILED",
+      error: { startsWith: "outcome_unknown" },
+      createdAt: { gte: new Date(now.getTime() - PROBABLE_LOOKBACK_MS) },
+    },
+    orderBy: { createdAt: "asc" },
+    take: 20,
+    select: { id: true, createdAt: true, params: true },
+  });
+  let linked = 0;
+  for (const r of rows) {
+    const params = (r.params ?? {}) as Record<string, unknown>;
+    const projectId =
+      typeof params.projectId === "string" ? params.projectId : null;
+    if (!projectId) continue;
+    const already = await db.vercelDeployment.findFirst({
+      where: { installationId, auditLogId: r.id },
+      select: { id: true },
+    });
+    if (already) continue;
+    const d = await db.vercelDeployment.findFirst({
+      where: {
+        installationId,
+        projectId,
+        creatorKind: "redeploy",
+        auditLogId: null,
+        createdAt: {
+          gte: new Date(r.createdAt.getTime() - 5_000),
+          lte: new Date(r.createdAt.getTime() + PROBABLE_WINDOW_MS),
+        },
+      },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    if (!d) continue;
+    await db.vercelDeployment.updateMany({
+      where: { id: d.id, installationId, auditLogId: null },
+      data: { auditLogId: r.id, auditLinkKind: "probable" },
+    });
+    linked++;
+  }
+  return linked;
+}
+
+/**
+ * After an M6 promote or rollback: the project as Vercel reports it now
+ * (serving deployment and the last alias request). A rollback pauses
+ * production auto-assignment, a promote ends the pause (design addendum
+ * §8.2, W4). The findings follow in the same call.
+ */
+export async function applyProjectAliasRead(
+  installationId: bigint,
+  project: VercelProjectInfo,
+  action: "promote" | "rollback",
+  now: Date,
+): Promise<void> {
+  const alias = project.aliasRequest;
+  const current = await db.vercelProject.findFirst({
+    where: { id: project.id, installationId },
+    select: { autoAssignPausedAt: true },
+  });
+  if (!current) return;
+  await db.vercelProject.updateMany({
+    where: { id: project.id, installationId },
+    data: {
+      liveProdDeploymentId: project.liveProductionId,
+      aliasRequestType: alias?.type ?? action,
+      aliasRequestStatus: alias?.status ?? null,
+      aliasRequestAt: alias?.at ?? now,
+      aliasToDeploymentId: alias?.toDeploymentId ?? null,
+      autoAssignPausedAt:
+        action === "rollback" ? (current.autoAssignPausedAt ?? now) : null,
+    },
+  });
+  await updateLatestProduction(installationId, now);
 }
 
 // ---------- v5 ----------
@@ -916,6 +1060,7 @@ export async function runVercelStep(
       result.status = "partial";
       result.reason = "deadline (Vercel step budget)";
       await updateLatestProduction(installationId, now);
+      await linkProbableRedeploys(installationId, now);
       return finish(installationId, result, now, cred.token, rate);
     }
     if (error instanceof VercelError && error.revoked) {
@@ -951,6 +1096,7 @@ export async function runVercelStep(
 
   await rollupDeploymentDays(installationId, opts.timezone, [...ctx.days]);
   await updateLatestProduction(installationId, now);
+  await linkProbableRedeploys(installationId, now);
   await updateCredentialFindings(installationId, now);
   await touchVercelUse(installationId, now);
   return finish(installationId, result, now, cred.token, rate, {
