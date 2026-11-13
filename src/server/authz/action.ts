@@ -19,7 +19,19 @@ import {
 } from "@/server/github/purposes";
 import type { GitHubApi, GitHubClients } from "@/server/ingest/github-client";
 import { githubClients } from "@/server/ingest/triggers";
-import { redactError } from "@/server/ingest/webhook";
+import { vercelCredentialFor } from "@/server/ingest/vercel-credential";
+import { noteVercelFailure } from "@/server/ingest/vercel-reconcile";
+import { redactError, scrubKnown } from "@/server/ingest/webhook";
+import {
+  createVercelClient,
+  type Fetch,
+  type VercelReadApi,
+} from "@/server/vercel/client";
+import {
+  createVercelWriteClient,
+  vercelWriteErrorInfo,
+  type VercelWriteApi,
+} from "@/server/vercel/write";
 import { consumeActionTokens } from "./rate-limit";
 import { hasRole, type Role } from "./roles";
 import { currentRole, type TenantScope } from "./scope";
@@ -59,6 +71,13 @@ import { currentRole, type TenantScope } from "./scope";
  * Because the App acts for everyone, GitHub never checks the user's own
  * repository permission: the app role is the only user-level gate and the
  * App's granted permissions are the ceiling.
+ *
+ * Generalised additively for other providers (design addendum §8.1):
+ * `provider: "vercel"` adds the Vercel gate (connection, its own toggle)
+ * and answers every closed gate with `unavailable` plus a DENIED row;
+ * `actingAs` names the identity when it is not the App; `perform` takes a
+ * `mapError` for the provider's error shape; `auditChain: "instance"` sends
+ * the rows to chain 0. GitHub actions behave exactly as before.
  */
 
 export type ActionActor = {
@@ -76,6 +95,8 @@ export type ActionDeps = {
   /** Adds `DevOps-Manager-Audit: <auditId>` to merge commits. */
   mergeAuditTrailer: boolean;
   revalidate: (installationId: bigint) => void;
+  /** The fetch of Vercel calls (tests inject an in-memory Vercel). */
+  vercelFetch?: Fetch;
 };
 
 export function defaultActionDeps(
@@ -99,6 +120,12 @@ export type Denial =
   | { status: "permission_not_granted"; missing: string[] }
   | { status: "rate_limited"; retryAfterS: number }
   | { status: "confirmation_mismatch" }
+  /**
+   * A provider gate is closed (design addendum §8.1): for Vercel actions one
+   * of the three toggles is off, or the connection is missing or revoked.
+   * Recorded as a DENIED row (unlike `management_disabled` of GitHub actions).
+   */
+  | { status: "unavailable"; reason: UnavailableReason }
   /** The idempotency key belongs to another user or installation. */
   | { status: "conflict" }
   | {
@@ -124,6 +151,18 @@ export type Outcome<T> =
 
 export type ActionResult<T = null> = Outcome<T> | Denial;
 
+export const UNAVAILABLE_REASONS = [
+  "management_disabled_global",
+  "management_disabled_installation",
+  "vercel_not_connected",
+  "vercel_revoked",
+  "vercel_management_disabled",
+] as const;
+export type UnavailableReason = (typeof UNAVAILABLE_REASONS)[number];
+
+/** The error text of a DENIED row written for an `unavailable` gate. */
+const UNAVAILABLE_PREFIX = "unavailable:";
+
 export type AuditTarget = {
   type: string;
   id: string;
@@ -141,13 +180,32 @@ export type GateSpec = {
   role: Role;
   idempotencyKey: string;
   target: AuditTarget;
-  confirmation: "DIALOG" | "TYPED";
+  /** NONE: a step of a flow without its own confirmation (OAuth callback). */
+  confirmation: "DIALOG" | "TYPED" | "NONE";
   /** The token purpose whose permissions the App must hold. */
   purpose?: TokenPurpose;
   /** False for local settings that must work while management is off. */
   requiresManagement?: boolean;
   /** Rate-limit tokens (one per bulk item). */
   cost?: number;
+  /**
+   * The provider the action calls (default "github"). "vercel" adds one gate
+   * after the role check: the installation's Vercel connection exists, is
+   * not revoked and has its own management toggle on; the global kill
+   * switch and the installation toggle answer the same way there
+   * (`unavailable` plus a DENIED row).
+   */
+  provider?: "github" | "vercel";
+  /**
+   * Who performs the action when it is not the App (e.g.
+   * "vercel:token:<hint>"); used by `record()` when the row gives none.
+   */
+  actingAs?: string;
+  /**
+   * The audit chain of the rows: the installation's (default) or the
+   * instance-level chain 0 (personal billing credentials, design §3.4).
+   */
+  auditChain?: "installation" | "instance";
 };
 
 export type ActionInstallation = {
@@ -181,8 +239,15 @@ type ReplayRow = {
 
 function replayResult(row: ReplayRow): ActionResult<never> {
   switch (row.status) {
-    case "DENIED":
-      return { status: "forbidden" };
+    case "DENIED": {
+      const reason = row.error?.startsWith(UNAVAILABLE_PREFIX)
+        ? row.error.slice(UNAVAILABLE_PREFIX.length)
+        : null;
+      return reason &&
+        (UNAVAILABLE_REASONS as readonly string[]).includes(reason)
+        ? { status: "unavailable", reason: reason as UnavailableReason }
+        : { status: "forbidden" };
+    }
     case "PENDING":
       return { status: "pending", auditId: row.id, replayed: true };
     case "SUCCEEDED":
@@ -297,6 +362,29 @@ async function freshPermissions(
   }
 }
 
+/**
+ * The Vercel gate (design addendum §8.1, D5): the global kill switch, the
+ * installation toggle (unless the action does not require it), and the
+ * connection with its own management toggle, off by default.
+ */
+async function vercelGate(
+  inst: ActionInstallation,
+  spec: GateSpec,
+  deps: ActionDeps,
+): Promise<UnavailableReason | null> {
+  if (!deps.managementEnabled) return "management_disabled_global";
+  if (spec.requiresManagement !== false && !inst.managementEnabled)
+    return "management_disabled_installation";
+  const conn = await db.vercelConnection.findUnique({
+    where: { installationId: inst.id },
+    select: { revokedAt: true, managementEnabled: true },
+  });
+  if (!conn) return "vercel_not_connected";
+  if (conn.revokedAt) return "vercel_revoked";
+  if (!conn.managementEnabled) return "vercel_management_disabled";
+  return null;
+}
+
 /** The permissions a purpose lacks on this installation, or null when granted. */
 export const missingPermissions = missingOf;
 
@@ -313,18 +401,22 @@ export async function beginAction(
   const inst = await loadInstallation(spec.installationId);
   if (!inst) throw new NotFoundError();
 
-  if (!deps.managementEnabled)
+  const vercel = spec.provider === "vercel";
+  // GitHub actions: the toggles answer before anything is recorded (M3).
+  // Vercel actions check them after the role, as a DENIED row (§8.1).
+  if (!vercel && !deps.managementEnabled)
     return {
       ok: false,
       result: { status: "management_disabled", level: "global" },
     };
-  if (spec.requiresManagement !== false && !inst.managementEnabled)
+  if (!vercel && spec.requiresManagement !== false && !inst.managementEnabled)
     return {
       ok: false,
       result: { status: "management_disabled", level: "installation" },
     };
 
-  const replay = await replayOf(actor, inst.id, spec.idempotencyKey);
+  const chainId = spec.auditChain === "instance" ? 0n : inst.id;
+  const replay = await replayOf(actor, chainId, spec.idempotencyKey);
   if (replay)
     return { ok: false, result: replay.result, replayOf: replay.auditId };
 
@@ -348,6 +440,24 @@ export async function beginAction(
       };
     await session.record({ params: {}, status: "DENIED" });
     return { ok: false, result: { status: "forbidden" } };
+  }
+
+  if (vercel) {
+    const reason = await vercelGate(inst, spec, deps);
+    if (reason) {
+      const denied = await consumeActionTokens(actor.user.id, 1, deps.now());
+      if (!denied.ok)
+        return {
+          ok: false,
+          result: { status: "rate_limited", retryAfterS: denied.retryAfterS },
+        };
+      await session.record({
+        params: { reason },
+        status: "DENIED",
+        error: `${UNAVAILABLE_PREFIX}${reason}`,
+      });
+      return { ok: false, result: { status: "unavailable", reason } };
+    }
   }
 
   if (spec.purpose) {
@@ -388,6 +498,26 @@ export type RecordInput = {
   /** Defaults to the action's key; bulk children derive their own. */
   idempotencyKey?: string;
   status?: "PENDING" | "DENIED";
+  /** Only for DENIED rows: why (e.g. "unavailable:<reason>"). */
+  error?: string | null;
+  /**
+   * The identity that performs it when it is not the App (e.g.
+   * "vercel:token:<hint>"); default: `GateSpec.actingAs`, else the App for
+   * actions with a purpose.
+   */
+  actingAs?: string | null;
+};
+
+/** How a failed call is put into the audit row (status, message, request id). */
+export type ErrorInfo = {
+  status: number | null;
+  message: string;
+  requestId: string | null;
+};
+
+export type PerformOptions = {
+  /** Default: GitHub's error shape (githubErrorInfo). */
+  mapError?: (error: unknown) => ErrorInfo;
 };
 
 /** An authorised action: steps 6 to 9. */
@@ -415,17 +545,30 @@ export class ActionSession {
     return missingPermissions(purpose, this.installation.permissions);
   }
 
+  /** The chain the rows go to: the installation's, or 0 (instance). */
+  get auditInstallationId(): bigint {
+    return this.spec.auditChain === "instance" ? 0n : this.installation.id;
+  }
+
   /** Step 7: the hash-chained audit row (PENDING unless DENIED). */
   async record(input: RecordInput) {
     const target = input.target ?? this.spec.target;
     return appendAudit({
-      installationId: this.installation.id,
+      installationId: this.auditInstallationId,
       actorUserId: this.actor.user.id,
       actorDisplay: this.actor.user.name || this.actor.user.email,
       actorRole: this.role,
       actorProvider: this.provider,
       actingAs:
-        this.spec.purpose && input.status !== "DENIED" ? actingAs() : null,
+        input.status === "DENIED"
+          ? null
+          : input.actingAs !== undefined
+            ? input.actingAs
+            : this.spec.actingAs !== undefined
+              ? this.spec.actingAs
+              : this.spec.purpose
+                ? actingAs()
+                : null,
       action: input.action ?? this.spec.action,
       repositoryId: target.repositoryId ?? null,
       repoFullName: target.repoFullName ?? null,
@@ -436,6 +579,9 @@ export class ActionSession {
       confirmation: this.spec.confirmation,
       idempotencyKey: input.idempotencyKey ?? this.spec.idempotencyKey,
       status: input.status ?? "PENDING",
+      ...(input.status === "DENIED" && input.error
+        ? { error: input.error }
+        : {}),
       ipHash: this.actor.ipHash ?? null,
       userAgent: this.actor.userAgent ?? null,
     });
@@ -458,6 +604,7 @@ export class ActionSession {
   async perform<T>(
     auditId: string,
     fn: () => Promise<Done<T>>,
+    options: PerformOptions = {},
   ): Promise<Outcome<T>> {
     try {
       const done = await fn();
@@ -473,10 +620,10 @@ export class ActionSession {
         data: done.data,
       };
     } catch (error) {
-      const info =
+      const info: ErrorInfo =
         error instanceof PermissionNotGrantedError
           ? { status: null, message: error.message, requestId: null }
-          : githubErrorInfo(error);
+          : (options.mapError ?? githubErrorInfo)(error);
       await completeAudit(auditId, {
         status: "FAILED",
         httpStatus: info.status,
@@ -510,6 +657,75 @@ export class ActionSession {
     );
   }
 
+  /**
+   * Vercel provider (design addendum §8.1): the read and write clients of
+   * the installation's connection. The token is decrypted here, so this is
+   * only called inside `executeVercel` (i.e. inside `perform`).
+   */
+  private async vercel(): Promise<{
+    read: VercelReadApi;
+    write: VercelWriteApi;
+    token: string;
+  }> {
+    const cred = await vercelCredentialFor(this.installation.id);
+    if (cred.kind !== "token") throw new Error("vercel_unavailable");
+    const opts = {
+      token: cred.token,
+      teamId: cred.teamId,
+      fetch: this.deps.vercelFetch,
+      now: () => this.deps.now().getTime(),
+    };
+    return {
+      read: createVercelClient(opts),
+      write: createVercelWriteClient(opts),
+      token: cred.token,
+    };
+  }
+
+  /**
+   * Step 8 and 9 for Vercel: decrypt the token, call Vercel, record the
+   * result with Vercel's status, message and `x-vercel-id`, scrubbed of
+   * the token. A rejected token (401, or 403 naming the token) also marks
+   * the connection revoked (plus its finding), so the sync stops calling.
+   * A 429 here does not pause the sync: write limits (deployments per day,
+   * for example) are per action and can last hours, while the reads have
+   * their own limits.
+   */
+  async executeVercel<T>(
+    auditId: string,
+    fn: (api: {
+      read: VercelReadApi;
+      write: VercelWriteApi;
+    }) => Promise<Done<T>>,
+  ): Promise<Outcome<T>> {
+    let token: string | null = null;
+    return this.perform(
+      auditId,
+      async () => {
+        const api = await this.vercel();
+        token = api.token;
+        try {
+          return await fn(api);
+        } catch (error) {
+          await noteVercelFailure(
+            this.installation.id,
+            error,
+            this.deps.now(),
+            api.token,
+            { pause: false },
+          );
+          throw error;
+        }
+      },
+      {
+        mapError: (error) => {
+          const info = vercelWriteErrorInfo(error);
+          return { ...info, message: scrubKnown(info.message, [token], 500) };
+        },
+      },
+    );
+  }
+
   /** Writes the final status of a row whose work was done outside `perform` (bulk parents). */
   async finish(auditId: string, completion: AuditCompletion): Promise<void> {
     await completeAudit(auditId, completion);
@@ -536,7 +752,7 @@ export async function recordAndExecute<T>(
   if (!row.created) {
     const replay = await replayOf(
       session.actor,
-      session.installation.id,
+      session.auditInstallationId,
       record.idempotencyKey ?? session.spec.idempotencyKey,
     );
     return replay?.result ?? { status: "conflict" };

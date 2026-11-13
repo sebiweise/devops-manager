@@ -122,6 +122,9 @@ export default async function AuditPage({
         {query.values.batch ? (
           <input type="hidden" name="batch" value={query.values.batch} />
         ) : null}
+        {query.values.entry ? (
+          <input type="hidden" name="entry" value={query.values.entry} />
+        ) : null}
         <div className="flex flex-col gap-1">
           <label htmlFor="audit-action" className="text-xs font-medium">
             {t("action")}
@@ -213,16 +216,19 @@ export default async function AuditPage({
         </Link>
       </form>
 
-      {query.values.actor || query.values.batch ? (
+      {query.values.actor || query.values.batch || query.values.entry ? (
         <p className="text-sm text-muted-foreground">
-          {query.values.batch
-            ? t("filteredBatch", { batch: query.values.batch })
-            : t("filteredActor")}{" "}
+          {query.values.entry
+            ? t("filteredEntry")
+            : query.values.batch
+              ? t("filteredBatch", { batch: query.values.batch })
+              : t("filteredActor")}{" "}
           <Link
             className="underline"
             href={withParams(base, current, {
               actor: undefined,
               batch: undefined,
+              entry: undefined,
             })}
           >
             {t("clearFilter")}

@@ -147,3 +147,12 @@ repositories. Every action is audited with the app user who triggered it.
   forward) and logged as `audit chain head`, so removing the newest entries
   is detected. Keep the application logs in an external sink if the head
   should survive a full database rewrite.
+
+## Vercel deployments (optional)
+
+The manifests request **Repository: Deployments (read)** and the
+`deployment_status` event. An existing installation keeps its old
+permissions until an owner accepts the change on GitHub (the installation's
+settings show the request). The Vercel pages work without it; the app then
+refreshes Vercel data by polling only and the settings page says so.
+Connecting a Vercel team is described in [VERCEL.md](VERCEL.md).

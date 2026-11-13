@@ -2,21 +2,21 @@
 
 import { notFound } from "next/navigation";
 import { z } from "zod";
-import { requireScope } from "@/server/better-auth/session";
+import { withActor } from "@/server/authz/request";
 import {
   revokeBillingCredential,
   startConnect,
   storeBillingToken,
   type CredentialActionResult,
 } from "@/server/billing/personal";
-import { NotFoundError } from "@/server/data/installations";
 
 /**
  * Server Actions for the personal-account billing credential (/admin/github,
  * design §3.4, §8.2 #15). Admin only; an unknown, foreign or organisation
- * installation answers 404. The token travels only in the request body of
- * `storeBillingTokenAction`: it is validated, encrypted and never returned,
- * logged or audited.
+ * installation answers 404. The session and the request's Origin are checked
+ * like every management action (withActor). The token travels only in the
+ * request body of `storeBillingTokenAction`: it is validated, encrypted and
+ * never returned, logged or audited.
  */
 
 const installationId = z.string().regex(/^\d{1,20}$/);
@@ -37,14 +37,13 @@ const revokeInput = z.object({
 });
 
 async function guarded(
-  run: () => Promise<CredentialActionResult>,
+  run: Parameters<typeof withActor<CredentialActionResult>>[0],
 ): Promise<CredentialActionResult> {
-  try {
-    return await run();
-  } catch (error) {
-    if (error instanceof NotFoundError) notFound();
-    throw error;
-  }
+  const result = await withActor(run);
+  // An Origin mismatch answers like a missing role.
+  return "status" in result && result.status === "forbidden"
+    ? { status: "forbidden" }
+    : (result as CredentialActionResult);
 }
 
 export async function storeBillingTokenAction(raw: {
@@ -53,19 +52,15 @@ export async function storeBillingTokenAction(raw: {
   confirmation: string;
   idempotencyKey?: string;
 }): Promise<CredentialActionResult> {
-  const { user, scope } = await requireScope();
   const parsed = storeInput.safeParse(raw);
   if (!parsed.success) notFound();
-  return guarded(() =>
-    storeBillingToken(
-      { user, scope },
-      {
-        installationId: BigInt(parsed.data.installationId),
-        token: parsed.data.token,
-        confirmation: parsed.data.confirmation,
-        idempotencyKey: parsed.data.idempotencyKey,
-      },
-    ),
+  return guarded((actor) =>
+    storeBillingToken(actor, {
+      installationId: BigInt(parsed.data.installationId),
+      token: parsed.data.token,
+      confirmation: parsed.data.confirmation,
+      idempotencyKey: parsed.data.idempotencyKey,
+    }),
   );
 }
 
@@ -73,14 +68,12 @@ export async function storeBillingTokenAction(raw: {
 export async function startGitHubConnectAction(raw: {
   installationId: string;
 }): Promise<CredentialActionResult> {
-  const { user, scope } = await requireScope();
   const parsed = connectInput.safeParse(raw);
   if (!parsed.success) notFound();
-  return guarded(() =>
-    startConnect(
-      { user, scope },
-      { installationId: BigInt(parsed.data.installationId) },
-    ),
+  return guarded((actor) =>
+    startConnect(actor, {
+      installationId: BigInt(parsed.data.installationId),
+    }),
   );
 }
 
@@ -89,17 +82,13 @@ export async function revokeBillingCredentialAction(raw: {
   confirmation: string;
   idempotencyKey?: string;
 }): Promise<CredentialActionResult> {
-  const { user, scope } = await requireScope();
   const parsed = revokeInput.safeParse(raw);
   if (!parsed.success) notFound();
-  return guarded(() =>
-    revokeBillingCredential(
-      { user, scope },
-      {
-        installationId: BigInt(parsed.data.installationId),
-        confirmation: parsed.data.confirmation,
-        idempotencyKey: parsed.data.idempotencyKey,
-      },
-    ),
+  return guarded((actor) =>
+    revokeBillingCredential(actor, {
+      installationId: BigInt(parsed.data.installationId),
+      confirmation: parsed.data.confirmation,
+      idempotencyKey: parsed.data.idempotencyKey,
+    }),
   );
 }

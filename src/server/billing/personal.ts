@@ -1,9 +1,15 @@
 import "server-only";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { env } from "@/env";
-import { actorProviderOf, appendAudit } from "@/server/audit/log";
-import { hasRole } from "@/server/authz/roles";
-import type { TenantScope } from "@/server/authz/scope";
+import {
+  beginAction,
+  defaultActionDeps,
+  type ActionActor,
+  type ActionDeps,
+  type ActionSession,
+  type Denial,
+  type Outcome,
+} from "@/server/authz/action";
 import {
   connectEnabled,
   personalInstallation,
@@ -39,8 +45,12 @@ import {
  * revoke. The Server Actions in src/server/actions/personal-billing.ts and
  * the callback route call these with the signed-in actor.
  *
- * Rules: admin only (others get a DENIED audit row); the installation must be
- * a visible personal installation (else NotFoundError, 404); the token's
+ * Every flow runs through the management pipeline (`beginAction`, design
+ * addendum §5.5): admin only with the role re-resolved live (others get a
+ * DENIED audit row), idempotency, the per-user rate limit and the global
+ * kill switch; it changes app data only, so it works while the
+ * installation's management toggle is off. The installation must be a
+ * visible personal installation (else NotFoundError, 404); the token's
  * GitHub login must equal the installation's account; store and revoke need
  * the account login typed as confirmation. Audit rows go to the
  * instance-level chain (installation 0) and never contain a token.
@@ -52,10 +62,7 @@ import {
  * left behind that this instance can no longer see or revoke.
  */
 
-export type Actor = {
-  user: { id: string; name: string; email: string };
-  scope: TenantScope;
-};
+export type Actor = ActionActor;
 
 export type CredentialActionStatus =
   | "saved"
@@ -65,6 +72,11 @@ export type CredentialActionStatus =
   | "revoke_failed"
   | "redirect"
   | "forbidden"
+  | "unauthorized"
+  | "management_disabled"
+  | "rate_limited"
+  | "conflict"
+  | "replayed"
   | "confirmation_mismatch"
   | "invalid_token"
   | "token_too_broad"
@@ -81,7 +93,12 @@ export type CredentialActionResult = {
   url?: string;
 };
 
-export type FlowDeps = { fetch: Fetch; now: () => Date };
+export type FlowDeps = {
+  fetch: Fetch;
+  now: () => Date;
+  /** The pipeline's dependencies (default: from env, with `now`). */
+  action?: ActionDeps;
+};
 
 const defaultDeps = (): FlowDeps => ({
   fetch: (input, init) => fetch(input, init),
@@ -113,37 +130,76 @@ export function connectRedirectUri(): string {
   ).toString();
 }
 
-type AuditAction =
+type CredentialAction =
   | "BILLING_CREDENTIAL_SET"
   | "BILLING_CREDENTIAL_CONNECT"
   | "BILLING_CREDENTIAL_REVOKE";
 
-async function audit(
+/** A pipeline result that ended the flow, in the flow's own words. */
+function denialStatus(result: Denial | Outcome<never>): CredentialActionResult {
+  switch (result.status) {
+    case "forbidden":
+    case "unauthorized":
+    case "rate_limited":
+    case "conflict":
+    case "confirmation_mismatch":
+      return { status: result.status };
+    case "management_disabled":
+    case "unavailable":
+      return { status: "management_disabled" };
+    case "succeeded":
+    case "failed":
+    case "pending":
+      return { status: "replayed" };
+    default:
+      return { status: "forbidden" };
+  }
+}
+
+/** Steps 2 to 5 of the pipeline for one credential action (instance chain). */
+async function begin(
   actor: Actor,
-  action: AuditAction,
+  action: CredentialAction,
   installationId: bigint,
-  status: "SUCCEEDED" | "FAILED" | "DENIED",
+  confirmation: "TYPED" | "NONE",
+  idempotencyKey: string,
+  deps: FlowDeps,
+): Promise<
+  | { ok: true; session: ActionSession }
+  | { ok: false; result: CredentialActionResult }
+> {
+  const begun = await beginAction(
+    actor,
+    {
+      installationId,
+      action,
+      role: "ADMIN",
+      idempotencyKey,
+      target: { type: "credential", id: String(installationId) },
+      confirmation,
+      requiresManagement: false,
+      auditChain: "instance",
+    },
+    deps.action ?? defaultActionDeps({ now: deps.now }),
+  );
+  if (!begun.ok) return { ok: false, result: denialStatus(begun.result) };
+  return { ok: true, session: begun.session };
+}
+
+/** Records the attempt and writes its final status in one go. */
+async function audit(
+  session: ActionSession,
+  installationId: bigint,
+  status: "SUCCEEDED" | "FAILED",
   params: Record<string, unknown>,
-  confirmation: "TYPED" | "DIALOG" | "NONE",
-  idempotencyKey?: string,
   error?: string,
-) {
-  await appendAudit({
-    installationId: 0n,
-    actorUserId: actor.user.id,
-    actorDisplay: actor.user.name || actor.user.email,
-    actorRole: actor.scope.role,
-    actorProvider: await actorProviderOf(actor.user.id),
-    actingAs: null,
-    action,
-    targetType: "credential",
-    targetId: String(installationId),
+): Promise<boolean> {
+  const row = await session.record({
     params: { installationId: String(installationId), ...params },
-    confirmation,
-    idempotencyKey: idempotencyKey ?? randomUUID(),
-    status,
-    error: error ?? null,
   });
+  if (!row.created) return false;
+  await session.finish(row.id, { status, error: error ?? null });
+  return true;
 }
 
 /** Classic PATs, OAuth and other GitHub tokens: real tokens, but broader than billing needs. */
@@ -164,18 +220,16 @@ export async function storeBillingToken(
   },
   deps: FlowDeps = defaultDeps(),
 ): Promise<CredentialActionResult> {
-  if (!hasRole(actor.scope.role, "ADMIN")) {
-    await audit(
-      actor,
-      "BILLING_CREDENTIAL_SET",
-      input.installationId,
-      "DENIED",
-      {},
-      "TYPED",
-      input.idempotencyKey,
-    );
-    return { status: "forbidden" };
-  }
+  const begun = await begin(
+    actor,
+    "BILLING_CREDENTIAL_SET",
+    input.installationId,
+    "TYPED",
+    input.idempotencyKey ?? randomUUID(),
+    deps,
+  );
+  if (!begun.ok) return begun.result;
+  const { session } = begun;
   const inst = await personalInstallation(actor.scope, input.installationId);
   if (input.confirmation.trim() !== inst.accountLogin)
     return { status: "confirmation_mismatch" };
@@ -197,13 +251,10 @@ export async function storeBillingToken(
   if (owner.oauthScopes.length > 0) return { status: "token_too_broad" };
   if (!sameLogin(owner.login, inst.accountLogin)) {
     await audit(
-      actor,
-      "BILLING_CREDENTIAL_SET",
+      session,
       inst.id,
       "FAILED",
       { kind: "PAT", githubLogin: owner.login },
-      "TYPED",
-      input.idempotencyKey,
       "login_mismatch",
     );
     return { status: "login_mismatch", login: owner.login };
@@ -217,13 +268,10 @@ export async function storeBillingToken(
   );
   if (previous === "failed") {
     await audit(
-      actor,
-      "BILLING_CREDENTIAL_SET",
+      session,
       inst.id,
       "FAILED",
       { kind: "PAT", githubLogin: owner.login, previousRevocation: previous },
-      "TYPED",
-      input.idempotencyKey,
       "previous_revocation_failed",
     );
     return { status: "revoke_failed" };
@@ -240,35 +288,32 @@ export async function storeBillingToken(
     },
     createdByUserId: actor.user.id,
   });
-  await audit(
-    actor,
-    "BILLING_CREDENTIAL_SET",
-    inst.id,
-    "SUCCEEDED",
-    { kind: "PAT", githubLogin: owner.login, previousRevocation: previous },
-    "TYPED",
-    input.idempotencyKey,
-  );
+  await audit(session, inst.id, "SUCCEEDED", {
+    kind: "PAT",
+    githubLogin: owner.login,
+    previousRevocation: previous,
+  });
   return { status: "saved", login: owner.login };
 }
 
-/** Option B, step 1: the authorize URL (state bound to this admin, PKCE S256). */
+/**
+ * Option B, step 1: the authorize URL (state bound to this admin, PKCE
+ * S256). Nothing is audited on success; a denial is.
+ */
 export async function startConnect(
   actor: Actor,
   input: { installationId: bigint },
   deps: FlowDeps = defaultDeps(),
 ): Promise<CredentialActionResult> {
-  if (!hasRole(actor.scope.role, "ADMIN")) {
-    await audit(
-      actor,
-      "BILLING_CREDENTIAL_CONNECT",
-      input.installationId,
-      "DENIED",
-      {},
-      "NONE",
-    );
-    return { status: "forbidden" };
-  }
+  const begun = await begin(
+    actor,
+    "BILLING_CREDENTIAL_CONNECT",
+    input.installationId,
+    "NONE",
+    randomUUID(),
+    deps,
+  );
+  if (!begun.ok) return begun.result;
   const inst = await personalInstallation(actor.scope, input.installationId);
   const app = appClient();
   if (!connectEnabled() || !app) return { status: "not_configured" };
@@ -293,7 +338,11 @@ export async function startConnect(
   };
 }
 
-/** Option B, step 2 (callback): exchange the code, check the login, store encrypted. */
+/**
+ * Option B, step 2 (callback): exchange the code, check the login, store
+ * encrypted. The state is single use and consumed first; the idempotency
+ * key is derived from it, so a repeated callback never stores twice.
+ */
 export async function completeConnect(
   actor: Actor,
   input: { code: string; state: string },
@@ -301,13 +350,22 @@ export async function completeConnect(
 ): Promise<CredentialActionResult> {
   const app = appClient();
   if (!connectEnabled() || !app) return { status: "not_configured" };
-  if (!hasRole(actor.scope.role, "ADMIN")) return { status: "forbidden" };
   const pending = await consumeConnectState(
     input.state,
     actor.user.id,
     deps.now(),
   );
   if (!pending) return { status: "invalid_state" };
+  const begun = await begin(
+    actor,
+    "BILLING_CREDENTIAL_CONNECT",
+    pending.installationId,
+    "NONE",
+    `billing-connect:${createHash("sha256").update(input.state).digest("hex")}`,
+    deps,
+  );
+  if (!begun.ok) return begun.result;
+  const { session } = begun;
   const inst = await personalInstallation(actor.scope, pending.installationId);
 
   let tokens;
@@ -329,16 +387,7 @@ export async function completeConnect(
         : error instanceof GitHubHttpError
           ? `http_${error.status}`
           : "github_error";
-    await audit(
-      actor,
-      "BILLING_CREDENTIAL_CONNECT",
-      inst.id,
-      "FAILED",
-      { kind: "USER_TO_SERVER" },
-      "NONE",
-      undefined,
-      reason,
-    );
+    await audit(session, inst.id, "FAILED", { kind: "USER_TO_SERVER" }, reason);
     return { status: "github_error" };
   }
   if (!sameLogin(owner.login, inst.accountLogin)) {
@@ -347,13 +396,10 @@ export async function completeConnect(
       () => undefined,
     );
     await audit(
-      actor,
-      "BILLING_CREDENTIAL_CONNECT",
+      session,
       inst.id,
       "FAILED",
       { kind: "USER_TO_SERVER", githubLogin: owner.login },
-      "NONE",
-      undefined,
       "login_mismatch",
     );
     return { status: "login_mismatch", login: owner.login };
@@ -378,18 +424,11 @@ export async function completeConnect(
     tokens,
     createdByUserId: actor.user.id,
   });
-  await audit(
-    actor,
-    "BILLING_CREDENTIAL_CONNECT",
-    inst.id,
-    "SUCCEEDED",
-    {
-      kind: "USER_TO_SERVER",
-      githubLogin: owner.login,
-      previousRevocation: previous,
-    },
-    "NONE",
-  );
+  await audit(session, inst.id, "SUCCEEDED", {
+    kind: "USER_TO_SERVER",
+    githubLogin: owner.login,
+    previousRevocation: previous,
+  });
   return { status: "connected", login: owner.login };
 }
 
@@ -412,18 +451,16 @@ export async function revokeBillingCredential(
   },
   deps: FlowDeps = defaultDeps(),
 ): Promise<CredentialActionResult> {
-  if (!hasRole(actor.scope.role, "ADMIN")) {
-    await audit(
-      actor,
-      "BILLING_CREDENTIAL_REVOKE",
-      input.installationId,
-      "DENIED",
-      {},
-      "TYPED",
-      input.idempotencyKey,
-    );
-    return { status: "forbidden" };
-  }
+  const begun = await begin(
+    actor,
+    "BILLING_CREDENTIAL_REVOKE",
+    input.installationId,
+    "TYPED",
+    input.idempotencyKey ?? randomUUID(),
+    deps,
+  );
+  if (!begun.ok) return begun.result;
+  const { session } = begun;
   const inst = await personalInstallation(actor.scope, input.installationId);
   if (input.confirmation.trim() !== inst.accountLogin)
     return { status: "confirmation_mismatch" };
@@ -435,40 +472,20 @@ export async function revokeBillingCredential(
   );
   const params = { kind: stored?.kind ?? null, remoteRevocation: remote };
   if (remote === "failed") {
-    await audit(
-      actor,
-      "BILLING_CREDENTIAL_REVOKE",
-      inst.id,
-      "FAILED",
-      params,
-      "TYPED",
-      input.idempotencyKey,
-      "remote_revocation_failed",
-    );
+    await audit(session, inst.id, "FAILED", params, "remote_revocation_failed");
     return { status: "revoke_failed" };
   }
   await deleteCredential(inst.id);
   if (remote === "not_configured") {
     await audit(
-      actor,
-      "BILLING_CREDENTIAL_REVOKE",
+      session,
       inst.id,
       "FAILED",
       params,
-      "TYPED",
-      input.idempotencyKey,
       "remote_revocation_not_configured",
     );
     return { status: "revoked_locally" };
   }
-  await audit(
-    actor,
-    "BILLING_CREDENTIAL_REVOKE",
-    inst.id,
-    "SUCCEEDED",
-    params,
-    "TYPED",
-    input.idempotencyKey,
-  );
+  await audit(session, inst.id, "SUCCEEDED", params);
   return { status: "revoked" };
 }

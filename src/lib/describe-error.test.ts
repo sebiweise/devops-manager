@@ -30,3 +30,25 @@ describe("describeError", () => {
     expect(describeError("x")).toBe("unknown");
   });
 });
+
+describe("describeError for Vercel", () => {
+  it("adds status, code, path and request id and redacts Vercel tokens", () => {
+    const error = Object.assign(
+      new Error("Token vcp_testabcdefghijklmnop is invalid"),
+      {
+        name: "VercelError",
+        status: 403,
+        code: "forbidden",
+        path: "/v7/deployments?teamId=team_x",
+        requestId: "fra1::abc-123",
+      },
+    );
+    const line = describeError(error);
+    expect(line).toContain(
+      "VercelError · 403 · forbidden · GET /v7/deployments",
+    );
+    expect(line).toContain("x-vercel-id fra1::abc-123");
+    expect(line).not.toContain("vcp_testabcdefghijklmnop");
+    expect(line).not.toContain("teamId");
+  });
+});

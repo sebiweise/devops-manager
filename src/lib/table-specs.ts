@@ -148,3 +148,41 @@ export const COST_WORKFLOW_TABLE: TableSpec<CostWorkflowSortKey, never> = {
   defaultSort: "minutes",
   defaultDir: { name: "asc" },
 };
+
+// ---------- Vercel deployments (M5) ----------
+
+export const DEPLOYMENT_SORTS = ["created", "project", "build"] as const;
+export type DeploymentSortKey = (typeof DEPLOYMENT_SORTS)[number];
+
+export const DEPLOYMENT_FILTERS = [
+  "production",
+  "preview",
+  "error",
+  "building",
+  "ready",
+  "canceled",
+] as const;
+export type DeploymentFilter = (typeof DEPLOYMENT_FILTERS)[number];
+
+export const DEPLOYMENT_TABLE: TableSpec<DeploymentSortKey, DeploymentFilter> =
+  {
+    sorts: DEPLOYMENT_SORTS,
+    defaultSort: "created",
+    defaultDir: { project: "asc" },
+    filters: DEPLOYMENT_FILTERS,
+  };
+
+// ---------- Vercel projects (M5) ----------
+
+export const PROJECT_SORTS = ["name", "latest"] as const;
+export type ProjectSortKey = (typeof PROJECT_SORTS)[number];
+
+export const PROJECT_FILTERS = ["failing", "paused", "unlinked"] as const;
+export type ProjectFilter = (typeof PROJECT_FILTERS)[number];
+
+export const PROJECT_TABLE: TableSpec<ProjectSortKey, ProjectFilter> = {
+  sorts: PROJECT_SORTS,
+  defaultSort: "name",
+  defaultDir: { name: "asc" },
+  filters: PROJECT_FILTERS,
+};

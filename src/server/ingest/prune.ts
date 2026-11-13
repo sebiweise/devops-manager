@@ -11,6 +11,8 @@ import type { Deadline } from "./budget";
  * | WebhookDelivery              | deleted after 14 days; FAILED/DEAD payloads nulled after 7 days |
  * | RunnerSample                 | 30 days                                       |
  * | Installations past purgeAfter| every row of the installation                 |
+ * | VercelDeployment             | older than rawRetentionDays, except each project's latest production and latest preview per branch |
+ * | Findings FIXED               | 90 days after they were resolved              |
  * | Daily stats, BillingUsageItem| kept forever                                  |
  */
 
@@ -49,7 +51,12 @@ export async function pruneInstallation(
   installationId: bigint,
   retentionDays: number | null,
   deadline: Deadline,
-): Promise<{ jobs: number; runs: number; samples: number }> {
+): Promise<{
+  jobs: number;
+  runs: number;
+  samples: number;
+  deployments?: number;
+}> {
   const samples = await deleteInBatches(
     deadline,
     () =>
@@ -80,7 +87,34 @@ export async function pruneInstallation(
         WHERE "installationId" = ${installationId} AND "createdAt" < ${cutoff}
         LIMIT ${BATCH})`,
   );
-  return { jobs, runs, samples };
+  // Vercel deployments: the latest production and the latest preview per
+  // branch of every project stay, so the cards never go blank.
+  const deployments = await deleteInBatches(
+    deadline,
+    () =>
+      db.$executeRaw`
+      DELETE FROM "VercelDeployment" WHERE "id" IN (
+        SELECT d."id" FROM "VercelDeployment" d
+        WHERE d."installationId" = ${installationId} AND d."createdAt" < ${cutoff}
+          AND d."id" NOT IN (
+            SELECT DISTINCT ON (k."projectId", k."target",
+                   CASE WHEN k."target" = 'production' THEN '' ELSE coalesce(k."branch", '') END)
+                   k."id"
+            FROM "VercelDeployment" k
+            WHERE k."installationId" = ${installationId}
+            ORDER BY k."projectId", k."target",
+                   CASE WHEN k."target" = 'production' THEN '' ELSE coalesce(k."branch", '') END,
+                   k."createdAt" DESC)
+        LIMIT ${BATCH})`,
+  );
+  await db.finding.deleteMany({
+    where: {
+      installationId,
+      status: "FIXED",
+      resolvedAt: { lt: new Date(deadline.now() - 90 * DAY_MS) },
+    },
+  });
+  return { jobs, runs, samples, deployments };
 }
 
 /** Tenant tables of an installation, children first; Installation goes last. */
@@ -98,6 +132,12 @@ const PURGE_TABLES = [
   "SyncState",
   "InstallationRateLimit",
   "WebhookDelivery",
+  "VercelDeployment",
+  "VercelProject",
+  "DailyDeploymentStat",
+  "Finding",
+  "FeatureAvailability",
+  "VercelConnection",
   "Repository",
 ] as const;
 

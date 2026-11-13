@@ -1,4 +1,4 @@
-import { Settings } from "lucide-react";
+import { KeyRound, Settings } from "lucide-react";
 import Link from "next/link";
 import { after } from "next/server";
 import { getTranslations } from "next-intl/server";
@@ -11,7 +11,11 @@ import { staleReasons } from "@/lib/insights-view";
 import { cookieRange } from "@/lib/page-range";
 import { hasRole } from "@/server/authz/roles";
 import { getFreshness } from "@/server/data/insights";
-import { maybeLazyReconcile } from "@/server/ingest/triggers";
+import { getVercelSummary } from "@/server/data/vercel";
+import {
+  maybeLazyReconcile,
+  maybeLazyVercelRefresh,
+} from "@/server/ingest/triggers";
 
 // The lazy reconcile and "Sync now" run in `after()` of these requests and are
 // bounded by the function's deadline (minus a 30 s margin). Without this, the
@@ -44,6 +48,10 @@ export default async function AccountLayout({
     refreshing = await maybeLazyReconcile(installation.id, (task) =>
       after(task),
     );
+    // The GitHub pass includes step v; otherwise Vercel data older than
+    // 5 minutes gets its own fast path (v2 to v5, 20 s).
+    if (!refreshing)
+      await maybeLazyVercelRefresh(installation.id, (task) => after(task));
   } catch (error) {
     // Freshness is best effort; the page renders from stored data.
     console.error(
@@ -53,10 +61,11 @@ export default async function AccountLayout({
   }
 
   const now = new Date();
-  const [t, freshness, range] = await Promise.all([
+  const [t, freshness, range, vercel] = await Promise.all([
     getTranslations(),
     getFreshness(scope, installation.id, now),
     cookieRange(),
+    getVercelSummary(scope, installation.id),
   ]);
   const base = accountPath(installation.accountLogin);
   const isAdmin = hasRole(scope.role, "ADMIN");
@@ -120,6 +129,23 @@ export default async function AccountLayout({
                 { href: `${base}/costs`, label: t("accountNav.costs") },
               ],
             },
+            ...(vercel
+              ? [
+                  {
+                    label: t("accountNav.groups.hosting"),
+                    items: [
+                      {
+                        href: `${base}/deployments`,
+                        label: t("accountNav.deployments"),
+                      },
+                      {
+                        href: `${base}/projects`,
+                        label: t("accountNav.projects"),
+                      },
+                    ],
+                  },
+                ]
+              : []),
             {
               label: t("accountNav.groups.manage"),
               items: [
@@ -137,6 +163,50 @@ export default async function AccountLayout({
             },
           ]}
         />
+        {vercel?.revoked ? (
+          <p
+            role="status"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-status-critical/50 bg-status-critical/10 p-2 text-sm"
+          >
+            <KeyRound
+              aria-hidden="true"
+              className="size-4 text-status-critical"
+            />
+            {t("hosting.revokedBanner", { team: vercel.teamSlug })}
+            {isAdmin ? (
+              <Link
+                href={`${base}/settings#hosting`}
+                className="font-medium underline underline-offset-2"
+              >
+                {t("hosting.reconnect")}
+              </Link>
+            ) : null}
+          </p>
+        ) : vercel?.tokenExpiresAt &&
+          Date.parse(vercel.tokenExpiresAt) - now.getTime() <
+            14 * 86_400_000 ? (
+          <p
+            role="status"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-status-warning/60 bg-status-warning/10 p-2 text-sm"
+          >
+            <KeyRound
+              aria-hidden="true"
+              className="size-4 text-status-warning"
+            />
+            {t("hosting.expiringBanner", {
+              team: vercel.teamSlug,
+              date: new Date(vercel.tokenExpiresAt).toISOString().slice(0, 10),
+            })}
+            {isAdmin ? (
+              <Link
+                href={`${base}/settings#hosting`}
+                className="font-medium underline underline-offset-2"
+              >
+                {t("hosting.rotateNow")}
+              </Link>
+            ) : null}
+          </p>
+        ) : null}
         {stale ? (
           <FreshnessBanner
             freshness={freshness}

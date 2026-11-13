@@ -28,6 +28,8 @@ export const FILE_SECRETS = [
   "GITHUB_WEBHOOK_SECRET",
   "GITHUB_WEBHOOK_SECRET_PREVIOUS",
   "GITHUB_BILLING_TOKEN",
+  "VERCEL_TOKEN",
+  "ALLOWED_VERCEL_TEAMS",
 ] as const;
 
 /** Copies `<NAME>_FILE` contents into `<NAME>` when `<NAME>` is not set. */
@@ -147,6 +149,15 @@ export const env = createEnv({
     GITHUB_BILLING_TOKEN: billingTokenSchema,
     GITHUB_CONNECT_ENABLED: flag(false),
 
+    // Hosting: Vercel (M5). The env token is a shortcut for single-owner
+    // setups: it belongs to the installation of VERCEL_ACCOUNT and is never
+    // written to the database. ALLOWED_VERCEL_TEAMS (ids or slugs) limits
+    // which teams may be connected; unset = any team.
+    VERCEL_TOKEN: optionalString,
+    VERCEL_TEAM_ID: optionalString,
+    VERCEL_ACCOUNT: optionalString,
+    ALLOWED_VERCEL_TEAMS: optionalString,
+
     // Management
     MANAGEMENT_ENABLED: flag(true),
     VARIABLE_PRESETS: optionalString,
@@ -194,6 +205,14 @@ export const env = createEnv({
           code: "custom",
           path: ["VARIABLE_PRESETS"],
           message: error instanceof Error ? error.message : "invalid",
+        });
+      }
+      if (v.VERCEL_TOKEN && !v.VERCEL_ACCOUNT) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["VERCEL_ACCOUNT"],
+          message:
+            "VERCEL_TOKEN needs VERCEL_ACCOUNT: the GitHub account whose installation the Vercel team belongs to",
         });
       }
       if (
