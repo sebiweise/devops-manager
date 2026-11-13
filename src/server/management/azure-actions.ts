@@ -18,6 +18,7 @@ import {
   createAzureClient,
 } from "@/server/azure/client";
 import {
+  AZURE_LOG_LINES,
   buildAzureLogExcerpt,
   type AzureLogExcerpt,
 } from "@/server/azure/log-excerpt";
@@ -554,10 +555,10 @@ export async function getAzureLogExcerpt(
       org: cred.org,
       auth: cred.auth,
       fetch: deps.azureFetch,
-    }).getLog(t.projectId, t.id, log.logId);
+    }).getLog(t.projectId, t.id, log.logId, AZURE_LOG_LINES);
     return {
       status: "ok",
-      excerpt: buildAzureLogExcerpt(raw, secrets),
+      excerpt: buildAzureLogExcerpt(raw.text, secrets, raw.earlier),
       azureUrl: azureBuildUrl(cred.org, t.projectId, t.id),
     };
   } catch (error) {

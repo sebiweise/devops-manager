@@ -29,11 +29,13 @@ const STAMP = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s?/;
 export function buildAzureLogExcerpt(
   raw: string,
   secrets: ReadonlyArray<string | null | undefined>,
+  /** Older lines were not fetched (a line range of a long log). */
+  earlier = false,
 ): AzureLogExcerpt {
   const all = raw.split(/\r?\n/);
   while (all.length > 0 && all[all.length - 1]!.trim() === "") all.pop();
   const tail = all.slice(-AZURE_LOG_LINES);
-  let truncated = all.length > tail.length;
+  let truncated = earlier || all.length > tail.length;
   const out: AzureLogLine[] = [];
   let bytes = 0;
   for (let i = tail.length - 1; i >= 0; i--) {

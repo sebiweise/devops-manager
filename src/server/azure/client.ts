@@ -921,9 +921,23 @@ export interface AzureReadApi {
   /** Null when the preview route is unavailable or its shape changed. */
   getResourceUsage(): Promise<AzureResourceUsage | null>;
   listHookSubscriptions(): Promise<AzureHookSubscriptionInfo[]>;
-  /** The newest lines of one log (raw; callers sanitise). */
-  getLog(projectId: string, buildId: number, logId: number): Promise<string>;
+  /**
+   * The newest lines of one log (raw; callers sanitise): reads the log's
+   * line count first and requests only the last `lines` lines, so a log of
+   * any size gives its tail. `earlier` tells that older lines were left out.
+   */
+  getLog(
+    projectId: string,
+    buildId: number,
+    logId: number,
+    lines?: number,
+  ): Promise<{ text: string; earlier: boolean }>;
 }
+
+const buildLogSchema = z.object({
+  id: z.number().int(),
+  lineCount: z.number().int().nonnegative().nullish(),
+});
 
 const iso = (d: Date) => d.toISOString();
 export const LOG_MAX_BYTES = 1024 * 1024;
@@ -1089,15 +1103,35 @@ export function createAzureClient(opts: AzureClientOptions): AzureReadApi {
         url: s.consumerInputs?.url ?? null,
       }));
     },
-    async getLog(projectId, buildId, logId) {
+    async getLog(projectId, buildId, logId, lines = 200) {
+      const base = `/${seg(projectId)}/_apis/build/builds/${seg(buildId)}/logs`;
+      let lineCount: number | null = null;
+      try {
+        const list = await get(base, {}, listOf(buildLogSchema));
+        lineCount =
+          list.data.value.find((l) => l.id === logId)?.lineCount ?? null;
+      } catch (error) {
+        // Without the line count the whole log is read (up to the cap).
+        if (!(
+          error instanceof AzureError &&
+          (error.code === "not_found" ||
+            error.code === "unexpected_response" ||
+            error.code === "bad_request")
+        ))
+          throw error;
+      }
+      const earlier = lineCount != null && lineCount > lines;
       const r = await transport.request({
         method: "GET",
-        path: `/${seg(projectId)}/_apis/build/builds/${seg(buildId)}/logs/${seg(logId)}`,
+        path: `${base}/${seg(logId)}`,
+        query: earlier
+          ? { startLine: lineCount! - lines + 1, endLine: lineCount! }
+          : {},
         schema: z.string(),
         text: true,
         maxBytes: LOG_MAX_BYTES,
       });
-      return r.data;
+      return { text: r.data, earlier };
     },
   };
 }
