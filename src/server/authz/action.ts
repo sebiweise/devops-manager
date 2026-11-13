@@ -388,6 +388,11 @@ export type RecordInput = {
   /** Defaults to the action's key; bulk children derive their own. */
   idempotencyKey?: string;
   status?: "PENDING" | "DENIED";
+  /**
+   * The identity that performs it when it is not the App (e.g.
+   * "vercel:token:<hint>"); default: the App for actions with a purpose.
+   */
+  actingAs?: string | null;
 };
 
 /** An authorised action: steps 6 to 9. */
@@ -425,7 +430,13 @@ export class ActionSession {
       actorRole: this.role,
       actorProvider: this.provider,
       actingAs:
-        this.spec.purpose && input.status !== "DENIED" ? actingAs() : null,
+        input.status === "DENIED"
+          ? null
+          : input.actingAs !== undefined
+            ? input.actingAs
+            : this.spec.purpose
+              ? actingAs()
+              : null,
       action: input.action ?? this.spec.action,
       repositoryId: target.repositoryId ?? null,
       repoFullName: target.repoFullName ?? null,
