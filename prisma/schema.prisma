@@ -834,6 +834,8 @@ model VercelProject {
   aliasRequestStatus     String?
   aliasRequestAt         DateTime?        @db.Timestamptz(3)
   aliasToDeploymentId    String?
+  /// Last read of this project from Vercel (v1 list or a targeted GET after a hint); the pause rule compares it with the newest ready production deployment.
+  projectReadAt          DateTime?        @db.Timestamptz(3)
   /// Set by GitHub deployment_status hints; the next refresh clears it.
   dirtyAt                DateTime?        @db.Timestamptz(3)
   /// Last targeted refresh from a hint (debounced to 30 s).

@@ -825,6 +825,101 @@ describe.skipIf(!DATABASE_URL)("vercel (M5)", () => {
       expect(vc.calls.length).toBe(calls);
     });
 
+    const hintA = async () => {
+      const ids = await hints.foldDeploymentHint(
+        A,
+        { repository: { id: 11 } },
+        new Date(),
+      );
+      return hints.refreshFromHint(A, ids, { fetch: vc.fetch() });
+    };
+    const allowNextHint = () =>
+      db.vercelProject.updateMany({ data: { hintRefreshedAt: null } });
+
+    it("revokes on a rejected token and makes no further hint calls", async () => {
+      vc.tokens.get(TOKEN_A)!.revoked = true;
+      expect((await hintA())?.status).toBe("credential_error");
+      const conn = await db.vercelConnection.findUniqueOrThrow({
+        where: { installationId: A },
+      });
+      expect(conn.revokedAt).not.toBeNull();
+      expect(conn.lastError ?? "").not.toContain(TOKEN_A);
+      expect(logs.join(" ")).not.toContain(TOKEN_A);
+      expect(
+        (await data.listNeedsAttention(actor("VIEWER").scope, A)).map(
+          (i) => i.kind,
+        ),
+      ).toContain("credential_revoked");
+      const calls = vc.calls.length;
+      await allowNextHint();
+      expect(await hintA()).toBeNull();
+      expect(vc.calls.length).toBe(calls);
+    });
+
+    it("pauses on a 429 until the retry time and makes no further hint calls", async () => {
+      vc.failNext("/v7/deployments", 429, {
+        error: {
+          code: "rate_limited",
+          message: "slow down",
+          limit: { resetMs: Date.now() + 120_000 },
+        },
+      });
+      expect((await hintA())?.status).toBe("rate_limited");
+      const conn = await db.vercelConnection.findUniqueOrThrow({
+        where: { installationId: A },
+      });
+      expect(conn.pausedUntil!.getTime()).toBeGreaterThan(Date.now() + 60_000);
+      expect(conn.revokedAt).toBeNull();
+      const calls = vc.calls.length;
+      await allowNextHint();
+      expect(await hintA()).toBeNull();
+      expect(vc.calls.length).toBe(calls);
+    });
+
+    it("keeps the auto-assign pause when a new production deployment arrives by hint", async () => {
+      // Rolled back to p1; the project list was read after that.
+      vc.projects[0]!.liveProductionId = "dpl_testA_p1";
+      await sync({ force: true });
+      vc.calls.length = 0;
+      // A new push to main becomes ready; only the hint path sees it.
+      vc.addDeployment({
+        uid: "dpl_testA_p5",
+        teamId: TEAM_A,
+        projectId: "prj_testA1",
+        name: "project-a",
+        createdAt: Date.now() - 90_000,
+        ready: Date.now() - 1_000,
+        readyState: "READY",
+        target: "production",
+        sha: SHA(77),
+      });
+      const r = await hintA();
+      expect(r?.status).toBe("ok");
+      expect(vc.calls.map((c) => c.path)).toEqual([
+        "/v7/deployments",
+        "/v9/projects/prj_testA1",
+      ]);
+      const p = await db.vercelProject.findUniqueOrThrow({
+        where: { id: "prj_testA1" },
+      });
+      expect(p.liveProdDeploymentId).toBe("dpl_testA_p1");
+      expect(p.linkRepoId).toBe(11n);
+      expect(p.autoAssignPausedAt).not.toBeNull();
+      const paused = (
+        await data.listNeedsAttention(actor("VIEWER").scope, A)
+      ).find((i) => i.kind === "auto_assign_paused");
+      expect(paused?.promote?.deploymentId).toBe("dpl_testA_p5");
+      // A later lazy pass (no project list) keeps it.
+      await sync();
+      expect(
+        (
+          await db.vercelProject.findUniqueOrThrow({
+            where: { id: "prj_testA1" },
+          })
+        ).autoAssignPausedAt,
+      ).not.toBeNull();
+    });
+
     it("ignores a hint for a repository of another installation", async () => {
       // project-b links to repo 22, which belongs to installation B.
       expect(

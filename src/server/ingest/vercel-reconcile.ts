@@ -175,6 +175,7 @@ export async function upsertProjects(
       repositoryId,
       liveProdDeploymentId: p.liveProductionId,
       pausedAt: p.paused ? now : null,
+      projectReadAt: now,
       removedAt: null,
     };
     await db.vercelProject.upsert({
@@ -577,6 +578,12 @@ export async function resolveFindings(
   });
 }
 
+function latestOf(a: Date | null, b: Date | null): Date | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a > b ? a : b;
+}
+
 /** v4: denormalises the production state per project and writes the findings. */
 export async function updateLatestProduction(
   installationId: bigint,
@@ -598,6 +605,7 @@ export async function updateLatestProduction(
       autoAssignPausedAt: true,
       aliasRequestType: true,
       aliasRequestAt: true,
+      projectReadAt: true,
     },
   });
   const failing: string[] = [];
@@ -628,7 +636,8 @@ export async function updateLatestProduction(
     ]);
     // Production is pinned to an older deployment (a rollback) when the
     // project's live deployment is older than the newest ready production
-    // deployment and the project list was read after that one became ready.
+    // deployment and the project was read (v1 list or a targeted re-read
+    // after a hint) after that one became ready.
     // A promote re-enables auto-assignment even for an older deployment,
     // so a pin older than the last promote read after an action is not a
     // pause. A rollback read after an action pauses it until the project
@@ -638,10 +647,11 @@ export async function updateLatestProduction(
       !!p.aliasRequestAt &&
       !!newestReady &&
       newestReady.createdAt <= p.aliasRequestAt;
+    const readAt = latestOf(conn.projectsSyncedAt, p.projectReadAt);
     const rolledBack =
       p.aliasRequestType === "rollback" &&
       !!p.aliasRequestAt &&
-      (!conn.projectsSyncedAt || conn.projectsSyncedAt <= p.aliasRequestAt);
+      (!readAt || readAt <= p.aliasRequestAt);
     const pinned =
       rolledBack ||
       (!promotedAfter &&
@@ -649,9 +659,9 @@ export async function updateLatestProduction(
         !!newestReady &&
         live.id !== newestReady.id &&
         live.createdAt < newestReady.createdAt &&
-        !!conn.projectsSyncedAt &&
+        !!readAt &&
         !!newestReady.readyAt &&
-        conn.projectsSyncedAt > newestReady.readyAt);
+        readAt > newestReady.readyAt);
     await db.vercelProject.update({
       where: { id: p.id },
       data: {
@@ -882,6 +892,77 @@ export async function applyProjectAliasRead(
     },
   });
   await updateLatestProduction(installationId, now);
+}
+
+/**
+ * After an M6 promote or rollback whose POST Vercel accepted but whose
+ * re-read of the project failed: record the request locally (a rollback
+ * pauses auto-assignment, a promote ends the pause) and mark the project
+ * dirty. The serving deployment is not guessed; the next project read
+ * brings it.
+ */
+export async function applyAliasActionLocally(
+  installationId: bigint,
+  projectId: string,
+  action: "promote" | "rollback",
+  toDeploymentId: string,
+  now: Date,
+): Promise<void> {
+  const current = await db.vercelProject.findFirst({
+    where: { id: projectId, installationId },
+    select: { autoAssignPausedAt: true },
+  });
+  if (!current) return;
+  await db.vercelProject.updateMany({
+    where: { id: projectId, installationId },
+    data: {
+      aliasRequestType: action,
+      aliasRequestStatus: null,
+      aliasRequestAt: now,
+      aliasToDeploymentId: toDeploymentId,
+      autoAssignPausedAt:
+        action === "rollback" ? (current.autoAssignPausedAt ?? now) : null,
+      dirtyAt: now,
+    },
+  });
+  await updateLatestProduction(installationId, now);
+}
+
+/**
+ * The connection state a failed Vercel call implies, for calls outside the
+ * reconcile step (hint refreshes, actions, the build log): a rejected token
+ * revokes the connection (plus the finding), a 429 pauses the sync until
+ * its retry time (`pause: false` for writes, whose limits are per action).
+ * Returns whether the error was one of these.
+ */
+export async function noteVercelFailure(
+  installationId: bigint,
+  error: unknown,
+  now: Date,
+  token: string | undefined,
+  opts: { pause?: boolean } = {},
+): Promise<boolean> {
+  if (!(error instanceof VercelError)) return false;
+  if (error.revoked) {
+    await markVercelRevoked(
+      installationId,
+      `${error.status ?? ""} ${error.message}`.trim(),
+      now,
+      token,
+    );
+    await updateCredentialFindings(installationId, now);
+    return true;
+  }
+  if (error.rateLimited && opts.pause !== false) {
+    await db.vercelConnection.updateMany({
+      where: { installationId },
+      data: {
+        pausedUntil: error.retryAt ?? new Date(now.getTime() + 60_000),
+      },
+    });
+    return true;
+  }
+  return false;
 }
 
 // ---------- v5 ----------

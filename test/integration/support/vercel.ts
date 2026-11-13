@@ -339,6 +339,15 @@ export class FakeVercel {
           name: x.name,
           framework: "nextjs",
           env: [{ key: "SECRET", value: ENV_SECRET_VALUE, type: "plain" }],
+          link: x.repoId
+            ? {
+                type: "github",
+                org: x.repo?.split("/")[0],
+                repo: x.repo?.split("/")[1],
+                repoId: x.repoId,
+                productionBranch: "main",
+              }
+            : undefined,
           targets: x.liveProductionId
             ? { production: { id: x.liveProductionId } }
             : undefined,

@@ -2,13 +2,15 @@ import "server-only";
 import { describeError } from "@/lib/describe-error";
 import { env } from "@/env";
 import { db } from "@/server/db";
-import type { Fetch } from "@/server/vercel/client";
+import { VercelError, type Fetch } from "@/server/vercel/client";
 import { Deadline } from "./budget";
 import { vercelCredentialFor } from "./vercel-credential";
 import {
+  noteVercelFailure,
   refreshProject,
   rollupDeploymentDays,
   updateLatestProduction,
+  upsertProjects,
   vercelApiFor,
   type VercelStepResult,
 } from "./vercel-reconcile";
@@ -19,9 +21,17 @@ import { effectiveRetentionDays } from "./prune";
  * §7.3). The Vercel GitHub integration posts them to the repository; the
  * fold only marks the Vercel projects linked to that repository **in the
  * same installation** dirty and stores nothing from the payload. A targeted
- * refresh then re-reads those projects from Vercel (at most 3 GETs, 5 s),
- * debounced to once per project per 30 s. A spoofed or wrong hint costs one
- * GET at most; the state always comes from Vercel.
+ * refresh then re-reads the deployments of at most 3 of those projects from
+ * Vercel (one GET each, 5 s in total), debounced to once per project per
+ * 30 s. A project whose production deployment became ready is read once
+ * more (GET /v9/projects/{id}): the serving deployment may not have moved
+ * (a rollback pins it), and the "auto-assign paused" rule needs a project
+ * read newer than that deployment. A spoofed or wrong hint costs one GET per
+ * project at most; the state always comes from Vercel.
+ *
+ * Failures map like in the reconcile step: a rejected token revokes the
+ * connection, a 429 pauses it until the retry time, so later hints make no
+ * calls until a rotate or the reset.
  */
 
 const DEBOUNCE_MS = 30_000;
@@ -100,8 +110,8 @@ async function claimHintRefresh(
 
 /**
  * The targeted refresh after a hint: only while the connection is healthy
- * (not revoked, not paused by a 429). Errors are logged and left to the next
- * pass; the projects stay dirty, so step v3 picks them up.
+ * (not revoked, not paused by a 429). Other errors are logged and left to
+ * the next pass; the projects stay dirty, so step v3 picks them up.
  */
 export async function refreshFromHint(
   installationId: bigint,
@@ -141,10 +151,25 @@ export async function refreshFromHint(
     result,
   };
   try {
-    for (const id of claimed) await refreshProject(ctx, id);
+    const becameReady: string[] = [];
+    for (const id of claimed)
+      if (await refreshProject(ctx, id)) becameReady.push(id);
+    for (const id of becameReady) {
+      const project = await ctx.api.getProject(id);
+      result.requests++;
+      await upsertProjects(installationId, [project], now);
+      result.projects++;
+    }
   } catch (error) {
-    result.status = "partial";
-    console.warn("Vercel hint refresh stopped", describeError(error));
+    if (await noteVercelFailure(installationId, error, now, cred.token)) {
+      result.status =
+        error instanceof VercelError && error.rateLimited
+          ? "rate_limited"
+          : "credential_error";
+    } else {
+      result.status = "partial";
+      console.warn("Vercel hint refresh stopped", describeError(error));
+    }
   }
   const retention = effectiveRetentionDays(
     conn.installation.rawRetentionDays,
