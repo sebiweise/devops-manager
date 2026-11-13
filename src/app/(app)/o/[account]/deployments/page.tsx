@@ -2,6 +2,7 @@ import { CircleX, Rocket } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getFormatter, getLocale, getTranslations } from "next-intl/server";
+import { env } from "@/env";
 import { DataTable, type Column } from "@/components/data/data-table";
 import { EmptyState } from "@/components/data/empty-state";
 import {
@@ -14,7 +15,9 @@ import {
 import { KpiStrip, KpiTile } from "@/components/data/kpi-strip";
 import { Pagination } from "@/components/data/pagination";
 import {
+  ActionsBlockedNote,
   buildTime,
+  DeploymentRowActions,
   DeploymentsPerDayChart,
   DeployStateBadge,
   ExternalVercelLink,
@@ -34,6 +37,7 @@ import { DEPLOYMENT_FILTERS, DEPLOYMENT_TABLE } from "@/lib/table-specs";
 import { parseTableQuery, withParams } from "@/lib/url-state";
 import {
   getDeploymentInsights,
+  getVercelActionState,
   getVercelSummary,
   listDeployments,
   type DeploymentRow,
@@ -48,6 +52,9 @@ export const generateMetadata = accountMeta("deployments");
  * against the plan's daily allotment), deployments per day by state, and
  * the paged table with filters (target and state chips, project, repo,
  * search over branch, SHA and message). 404 without a connection.
+ * The expanded row offers the M6 actions to operators while every gate is
+ * open, the live build log excerpt to operators and admins, the link to
+ * Vercel to everyone, and the audit entry of a redeploy that created it.
  */
 export default async function DeploymentsPage({
   params,
@@ -66,10 +73,13 @@ export default async function DeploymentsPage({
   const projectId = param(sp, "project");
   const repo = param(sp, "repo");
   const now = new Date();
-  const [t, locale, format, insights, page] = await Promise.all([
+  const [t, locale, format, actionState, insights, page] = await Promise.all([
     getTranslations(),
     getLocale(),
     getFormatter(),
+    orNotFound(
+      getVercelActionState(scope, installation.id, env.MANAGEMENT_ENABLED, now),
+    ),
     orNotFound(getDeploymentInsights(scope, installation.id, range, now)),
     orNotFound(
       listDeployments(
@@ -213,6 +223,20 @@ export default async function DeploymentsPage({
         ),
     },
     {
+      id: "actions",
+      label: t("hosting.col.actions"),
+      header: t("hosting.col.actions"),
+      expanderOnly: true,
+      cell: (d) => (
+        <DeploymentRowActions
+          deployment={d}
+          installationId={String(installation.id)}
+          login={login}
+          state={actionState}
+        />
+      ),
+    },
+    {
       id: "links",
       label: t("hosting.col.links"),
       header: t("hosting.col.links"),
@@ -326,6 +350,8 @@ export default async function DeploymentsPage({
           )}
         </KpiStrip>
       ) : null}
+
+      <ActionsBlockedNote state={actionState} />
 
       {insights && RANGE_BUCKET[range] !== "hour" ? (
         <DeploymentsPerDayChart

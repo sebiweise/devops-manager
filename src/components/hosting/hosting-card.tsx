@@ -4,7 +4,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { formatNumber, formatPercent } from "@/lib/format";
 import { dailyAllotment } from "@/lib/hosting-view";
 import type { AttentionItem, DeploymentInsights } from "@/server/data/vercel";
-import { NeedsAttention } from "./hosting";
+import { NeedsAttention, type HostingActions } from "./hosting";
 
 /**
  * The Hosting card of the account overview (design addendum §9, W1/W8):
@@ -20,6 +20,7 @@ export async function HostingCard({
   attention,
   rangeLabel,
   settingsHref,
+  actions,
 }: {
   login: string;
   teamSlug: string;
@@ -28,6 +29,8 @@ export async function HostingCard({
   attention: ReadonlyArray<AttentionItem>;
   rangeLabel: string;
   settingsHref?: string;
+  /** Promote on "auto-assign paused" for operators (W4). */
+  actions?: HostingActions;
 }) {
   const [t, locale] = await Promise.all([
     getTranslations("hosting"),
@@ -115,6 +118,7 @@ export async function HostingCard({
           items={attention}
           login={login}
           settingsHref={settingsHref}
+          actions={actions}
         />
       </div>
     </section>

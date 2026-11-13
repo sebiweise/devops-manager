@@ -1,6 +1,7 @@
 /**
  * Pure view helpers of the hosting (Vercel) pages: state badges, the Hobby
- * daily deployment allotment and the deployments-per-day series. Client-safe.
+ * daily deployment allotment, the deployments-per-day series and the M6
+ * action rules and result texts. Client-safe.
  */
 
 /** Vercel Hobby: deployments created per day (docs: Limits, 86 400 s window). */
@@ -218,5 +219,122 @@ export function vercelResultText(r: VercelResultLike): {
       };
     default:
       return { key: "management.result.error", values: {}, tone: "error" };
+  }
+}
+
+// ---------- M6 actions ----------
+
+export type DeploymentOperation =
+  "redeploy" | "cancel" | "promote" | "rollback";
+
+const REDEPLOYABLE: readonly string[] = ["READY", "ERROR", "CANCELED"];
+
+/**
+ * The operations a deployment offers (design addendum §8.2): cancel while
+ * queued or building; redeploy once finished; promote a READY production
+ * deployment that is not serving production (or while auto-assignment is
+ * paused); roll back to a candidate the server computed (Hobby: the
+ * previous production deployment only). The server checks every rule again.
+ */
+export function deploymentOperations(d: {
+  state: string;
+  target: string;
+  live: boolean;
+  rollbackCandidate: boolean;
+  /** The project's production auto-assignment is paused. */
+  paused?: boolean;
+}): DeploymentOperation[] {
+  const ops: DeploymentOperation[] = [];
+  if ((NON_TERMINAL_STATES as readonly string[]).includes(d.state))
+    ops.push("cancel");
+  if (REDEPLOYABLE.includes(d.state)) ops.push("redeploy");
+  if (d.target === "production" && d.state === "READY" && (!d.live || d.paused))
+    ops.push("promote");
+  if (d.rollbackCandidate && d.state === "READY" && !d.live)
+    ops.push("rollback");
+  return ops;
+}
+
+/** Production-affecting operations need the project name typed. */
+export function needsTypedName(
+  op: DeploymentOperation,
+  target: string,
+): boolean {
+  return (
+    op === "promote" ||
+    op === "rollback" ||
+    (op === "redeploy" && target === "production")
+  );
+}
+
+/** Refusal reasons of the M6 actions (messages: hosting.actions.refused). */
+export const VERCEL_ACTION_REFUSALS = [
+  "not_redeployable",
+  "not_cancelable",
+  "not_promotable",
+  "already_live",
+  "not_rollback_candidate",
+] as const;
+
+/** Reasons of an `unavailable` result (messages: hosting.actions.unavailable). */
+export const VERCEL_UNAVAILABLE = [
+  "management_disabled_global",
+  "management_disabled_installation",
+  "vercel_not_connected",
+  "vercel_revoked",
+  "vercel_management_disabled",
+] as const;
+
+/**
+ * The message of an M6 action result as a full message key: Vercel's own
+ * failures (an unknown outcome has its own text), the closed gates, the
+ * refusals; the pipeline's other denials reuse management.result.
+ */
+export function vercelActionResultText(r: VercelResultLike): {
+  key: string;
+  values: Record<string, string | number>;
+  tone: "success" | "error" | "info";
+} {
+  switch (r.status) {
+    case "succeeded":
+      return {
+        key: r.replayed
+          ? "management.result.replayed"
+          : "hosting.actions.result.succeeded",
+        values: {},
+        tone: "success",
+      };
+    case "failed":
+      return (r.message ?? "").startsWith("outcome_unknown")
+        ? {
+            key: "hosting.actions.result.outcomeUnknown",
+            values: {},
+            tone: "info",
+          }
+        : {
+            key: "hosting.actions.result.failed",
+            values: { message: r.message || "—" },
+            tone: "error",
+          };
+    case "unavailable":
+      return (VERCEL_UNAVAILABLE as readonly string[]).includes(r.reason ?? "")
+        ? {
+            key: `hosting.actions.unavailable.${r.reason}`,
+            values: {},
+            tone: "error",
+          }
+        : { key: "management.result.error", values: {}, tone: "error" };
+    case "refused":
+      return (VERCEL_ACTION_REFUSALS as readonly string[]).includes(
+        r.reason ?? "",
+      )
+        ? {
+            key: `hosting.actions.refused.${r.reason}`,
+            values: {},
+            tone: "error",
+          }
+        : vercelResultText(r);
+    default:
+      return vercelResultText(r);
   }
 }

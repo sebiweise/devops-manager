@@ -42,6 +42,7 @@ import {
 import { getAccountSummaries } from "@/server/data/summaries";
 import {
   getDeploymentInsights,
+  getVercelActionState,
   getVercelSummary,
   listNeedsAttention,
 } from "@/server/data/vercel";
@@ -130,12 +131,20 @@ export default async function AccountPage({
       getAccountSummaries(scope, now, { backfillDays: env.BACKFILL_DAYS }),
       orNotFound(getVercelSummary(scope, installation.id)),
     ]);
-  const [hosting, attention] = vercel
+  const [hosting, attention, vercelActions] = vercel
     ? await Promise.all([
         orNotFound(getDeploymentInsights(scope, installation.id, range, now)),
         orNotFound(listNeedsAttention(scope, installation.id, 8)),
+        orNotFound(
+          getVercelActionState(
+            scope,
+            installation.id,
+            env.MANAGEMENT_ENABLED,
+            now,
+          ),
+        ),
       ])
-    : [null, []];
+    : [null, [], null];
   const card = summaries.find(
     (c) => c.installationId === String(installation.id),
   );
@@ -346,6 +355,11 @@ export default async function AccountPage({
           attention={attention}
           rangeLabel={rangeLabel}
           settingsHref={isAdmin ? `${base}/settings` : undefined}
+          actions={{
+            installationId: String(installation.id),
+            login,
+            state: vercelActions,
+          }}
         />
       ) : null}
 

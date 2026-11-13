@@ -4,7 +4,10 @@ import {
   deployBadgeKind,
   deploySuccessRate,
   fillDays,
+  deploymentOperations,
+  needsTypedName,
   quotaRatio,
+  vercelActionResultText,
   vercelResultText,
 } from "./hosting-view";
 
@@ -57,5 +60,85 @@ describe("hosting view", () => {
       "management.result.forbidden",
     );
     expect(vercelResultText({ status: "succeeded" }).tone).toBe("success");
+  });
+});
+
+describe("M6 deployment actions view", () => {
+  const base = {
+    state: "READY",
+    target: "production",
+    live: false,
+    rollbackCandidate: false,
+  };
+
+  it("offers the operations each state allows", () => {
+    expect(deploymentOperations({ ...base, state: "BUILDING" })).toEqual([
+      "cancel",
+    ]);
+    expect(deploymentOperations({ ...base, state: "QUEUED" })).toEqual([
+      "cancel",
+    ]);
+    expect(deploymentOperations({ ...base, state: "ERROR" })).toEqual([
+      "redeploy",
+    ]);
+    expect(deploymentOperations({ ...base, live: true })).toEqual(["redeploy"]);
+    // Live but paused: promote re-enables auto-assignment.
+    expect(deploymentOperations({ ...base, live: true, paused: true })).toEqual(
+      ["redeploy", "promote"],
+    );
+    expect(deploymentOperations({ ...base, rollbackCandidate: true })).toEqual([
+      "redeploy",
+      "promote",
+      "rollback",
+    ]);
+    expect(deploymentOperations({ ...base, target: "preview" })).toEqual([
+      "redeploy",
+    ]);
+    expect(deploymentOperations({ ...base, state: "DELETED" })).toEqual([]);
+  });
+
+  it("needs the typed project name for production-affecting operations", () => {
+    expect(needsTypedName("redeploy", "preview")).toBe(false);
+    expect(needsTypedName("redeploy", "production")).toBe(true);
+    expect(needsTypedName("cancel", "production")).toBe(false);
+    expect(needsTypedName("promote", "production")).toBe(true);
+    expect(needsTypedName("rollback", "production")).toBe(true);
+  });
+
+  it("puts action results into words", () => {
+    expect(vercelActionResultText({ status: "succeeded" }).key).toBe(
+      "hosting.actions.result.succeeded",
+    );
+    expect(
+      vercelActionResultText({
+        status: "failed",
+        message: "outcome_unknown: fetch failed",
+      }),
+    ).toMatchObject({
+      key: "hosting.actions.result.outcomeUnknown",
+      tone: "info",
+    });
+    expect(
+      vercelActionResultText({ status: "failed", message: "conflict: busy" }),
+    ).toEqual({
+      key: "hosting.actions.result.failed",
+      values: { message: "conflict: busy" },
+      tone: "error",
+    });
+    expect(
+      vercelActionResultText({
+        status: "unavailable",
+        reason: "vercel_management_disabled",
+      }).key,
+    ).toBe("hosting.actions.unavailable.vercel_management_disabled");
+    expect(
+      vercelActionResultText({ status: "refused", reason: "already_live" }).key,
+    ).toBe("hosting.actions.refused.already_live");
+    expect(
+      vercelActionResultText({ status: "refused", reason: "unchanged" }).key,
+    ).toBe("vercelSettings.errors.unchanged");
+    expect(vercelActionResultText({ status: "forbidden" }).key).toBe(
+      "management.result.forbidden",
+    );
   });
 });

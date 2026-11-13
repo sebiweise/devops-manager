@@ -1,8 +1,10 @@
 import {
   CircleAlert,
   ExternalLink,
+  Info,
   KeyRound,
   Rocket,
+  ScrollText,
   TriangleAlert,
 } from "lucide-react";
 import Link from "next/link";
@@ -30,15 +32,171 @@ import type {
   AttentionItem,
   DeploymentRow,
   RepoDeploymentCard,
+  VercelActionState,
 } from "@/server/data/vercel";
+import {
+  BuildLogExcerpt,
+  DeploymentActions,
+  type ActionContext,
+  type ActionDeployment,
+} from "./deployment-actions";
 
 /**
  * Building blocks of the hosting (Vercel) views: state and target badges,
  * the preview badge of pull requests and runs, the deployments-per-day
  * chart (figure + legend + table view), the Needs-attention list and the
- * repository's Deployments card. External strings are rendered as text;
- * links to Vercel are built from stored ids (rel="noopener noreferrer").
+ * repository's Deployments card, and the M6 action blocks (buttons for
+ * operators while every gate is open, the live build log excerpt, the
+ * audit entry of a redeploy, the auto-assign banner with Promote). External
+ * strings are rendered as text; links to Vercel are built from stored ids
+ * (rel="noopener noreferrer").
  */
+
+/** Where the action blocks of a page come from (null: no buttons). */
+export type HostingActions = {
+  installationId: string;
+  login: string;
+  state: VercelActionState | null;
+};
+
+function actionContext(a: HostingActions | undefined): ActionContext | null {
+  return a?.state?.canAct
+    ? {
+        installationId: a.installationId,
+        plan: a.state.plan,
+        last24h: a.state.last24h,
+      }
+    : null;
+}
+
+export function actionDeployment(d: DeploymentRow): ActionDeployment {
+  return {
+    id: d.id,
+    projectName: d.projectName,
+    target: d.target,
+    state: d.state,
+    live: d.live,
+    rollbackCandidate: d.rollbackCandidate,
+    commitSha: d.commitSha,
+    branch: d.branch,
+  };
+}
+
+/**
+ * The expanded deployment row: M6 buttons (operators, every gate open), the
+ * build log excerpt (operators and admins; viewers use the Vercel link) and
+ * the audit entry of the redeploy that created it ("probably" for a link by
+ * time window).
+ */
+export async function DeploymentRowActions({
+  deployment: d,
+  installationId,
+  login,
+  state,
+  paused = false,
+}: {
+  deployment: DeploymentRow;
+  installationId: string;
+  login: string;
+  state: VercelActionState | null;
+  paused?: boolean;
+}) {
+  const t = await getTranslations("hosting");
+  const ctx = actionContext({ installationId, login, state });
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      {ctx ? (
+        <DeploymentActions
+          ctx={ctx}
+          deployment={actionDeployment(d)}
+          paused={paused}
+          compact
+        />
+      ) : null}
+      {state?.canViewLog ? (
+        <BuildLogExcerpt installationId={installationId} deploymentId={d.id} />
+      ) : (
+        <span className="text-xs text-muted-foreground">
+          {t("log.viewerNote")}
+        </span>
+      )}
+      {d.auditEntryId ? (
+        <Link
+          href={`/o/${encodeURIComponent(login)}/audit?entry=${encodeURIComponent(d.auditEntryId)}`}
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        >
+          <ScrollText aria-hidden="true" className="size-3" />
+          {d.auditLinkKind === "probable"
+            ? t("auditLink.probable")
+            : t("auditLink.exact")}
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+/** Why an operator sees no action buttons (a toggle is off, or the token was rejected). */
+export async function ActionsBlockedNote({
+  state,
+}: {
+  state: VercelActionState | null;
+}) {
+  if (!state?.blockedBy || state.blockedBy === "role") return null;
+  const t = await getTranslations("hosting.actions.blocked");
+  return (
+    <p className="flex items-start gap-2 text-sm text-muted-foreground">
+      <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+      {t(state.blockedBy)}
+    </p>
+  );
+}
+
+/** "Production auto-assignment paused since …" with Promote (W4). */
+export async function PausedBanner({
+  since,
+  promote,
+  actions,
+}: {
+  since: string;
+  promote: DeploymentRow | null;
+  actions?: HostingActions;
+}) {
+  const [t, format] = await Promise.all([
+    getTranslations("hosting"),
+    getFormatter(),
+  ]);
+  const ctx = actionContext(actions);
+  return (
+    <div
+      role="status"
+      className="flex flex-wrap items-start gap-2 rounded-md border border-status-warning/60 bg-status-warning/10 p-2 text-sm"
+    >
+      <TriangleAlert
+        aria-hidden="true"
+        className="mt-0.5 size-4 shrink-0 text-status-warning"
+      />
+      <span className="min-w-0 flex-1">
+        {t("pausedBanner", { when: format.relativeTime(new Date(since)) })}
+        {promote ? (
+          <span className="block text-xs text-muted-foreground">
+            {t("pausedPromote", {
+              commit: shortSha(promote.commitSha) ?? promote.id,
+            })}
+          </span>
+        ) : null}
+      </span>
+      {ctx && promote ? (
+        <DeploymentActions
+          ctx={ctx}
+          deployment={actionDeployment(promote)}
+          paused
+          only={["promote"]}
+          compact
+        />
+      ) : null}
+    </div>
+  );
+}
 
 export function DeployStateBadge({ state }: { state: string | null }) {
   return <StatusBadge kind={deployBadgeKind(state)} />;
@@ -201,11 +359,15 @@ export async function NeedsAttention({
   items,
   login,
   settingsHref,
+  actions,
 }: {
   items: ReadonlyArray<AttentionItem>;
   login: string;
   settingsHref?: string;
+  /** Offers Promote on "auto-assign paused" to operators (W4). */
+  actions?: HostingActions;
 }) {
+  const ctx = actionContext(actions);
   const [t, format] = await Promise.all([
     getTranslations("hosting.attention"),
     getFormatter(),
@@ -278,6 +440,26 @@ export async function NeedsAttention({
                   />
                 ) : null}
               </span>
+              {ctx && i.promote ? (
+                <span className="mt-1">
+                  <DeploymentActions
+                    ctx={ctx}
+                    deployment={{
+                      id: i.promote.deploymentId,
+                      projectName: i.promote.projectName,
+                      target: "production",
+                      state: "READY",
+                      live: false,
+                      rollbackCandidate: false,
+                      commitSha: i.promote.commitSha,
+                      branch: null,
+                    }}
+                    paused
+                    only={["promote"]}
+                    compact
+                  />
+                </span>
+              ) : null}
             </span>
           </li>
         );
@@ -286,7 +468,15 @@ export async function NeedsAttention({
   );
 }
 
-function DeploymentLine({ d }: { d: DeploymentRow }) {
+function DeploymentLine({
+  d,
+  ctx,
+  paused,
+}: {
+  d: DeploymentRow;
+  ctx: ActionContext | null;
+  paused: boolean;
+}) {
   const t = useTranslations("hosting");
   return (
     <li className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t py-1.5 text-sm first:border-t-0">
@@ -304,6 +494,14 @@ function DeploymentLine({ d }: { d: DeploymentRow }) {
       </span>
       <RelTime iso={d.createdAt} />
       <ExternalVercelLink href={d.vercelUrl} label={t("openInVercel")} />
+      {ctx ? (
+        <DeploymentActions
+          ctx={ctx}
+          deployment={actionDeployment(d)}
+          paused={paused}
+          compact
+        />
+      ) : null}
     </li>
   );
 }
@@ -325,14 +523,15 @@ async function RelTime({ iso }: { iso: string }) {
 /** The repository page's Deployments card, one block per linked project. */
 export async function RepoDeployments({
   cards,
+  actions,
 }: {
   cards: ReadonlyArray<RepoDeploymentCard>;
+  /** M6 buttons for operators (every gate open). */
+  actions?: HostingActions;
 }) {
-  const [t, format] = await Promise.all([
-    getTranslations("hosting"),
-    getFormatter(),
-  ]);
+  const t = await getTranslations("hosting");
   if (cards.length === 0) return null;
+  const ctx = actionContext(actions);
   return (
     <section
       aria-labelledby="repo-deployments"
@@ -359,18 +558,11 @@ export async function RepoDeployments({
               />
             </div>
             {c.autoAssignPausedAt ? (
-              <p
-                role="status"
-                className="flex items-start gap-2 rounded-md border border-status-warning/60 bg-status-warning/10 p-2 text-sm"
-              >
-                <TriangleAlert
-                  aria-hidden="true"
-                  className="mt-0.5 size-4 shrink-0 text-status-warning"
-                />
-                {t("pausedBanner", {
-                  when: format.relativeTime(new Date(c.autoAssignPausedAt)),
-                })}
-              </p>
+              <PausedBanner
+                since={c.autoAssignPausedAt}
+                promote={c.promote}
+                actions={actions}
+              />
             ) : null}
             <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5 text-sm">
               <dt className="text-xs text-muted-foreground">
@@ -391,6 +583,15 @@ export async function RepoDeployments({
                       <ExternalVercelLink
                         href={`https://${prod.url}`}
                         label={prod.url}
+                      />
+                    ) : null}
+                    {ctx ? (
+                      <DeploymentActions
+                        ctx={ctx}
+                        deployment={actionDeployment(prod)}
+                        paused={!!c.autoAssignPausedAt}
+                        only={["redeploy", "cancel"]}
+                        compact
                       />
                     ) : null}
                   </>
@@ -449,7 +650,12 @@ export async function RepoDeployments({
               </summary>
               <ul className="mt-1 flex flex-col">
                 {c.recent.map((d) => (
-                  <DeploymentLine key={d.id} d={d} />
+                  <DeploymentLine
+                    key={d.id}
+                    d={d}
+                    ctx={ctx}
+                    paused={!!c.autoAssignPausedAt}
+                  />
                 ))}
               </ul>
             </details>

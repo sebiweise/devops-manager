@@ -1176,8 +1176,14 @@
         "VERCEL_CONNECT": "Vercel connected",
         "VERCEL_TOKEN_ROTATE": "Vercel token rotated",
         "VERCEL_DISCONNECT": "Vercel disconnected",
-        "VERCEL_PROJECT_LINK": "Vercel project linked"
-      }
+        "VERCEL_PROJECT_LINK": "Vercel project linked",
+        "VERCEL_MANAGEMENT_TOGGLE": "Vercel actions switched",
+        "VERCEL_REDEPLOY": "Vercel redeploy",
+        "VERCEL_CANCEL": "Vercel deployment cancelled",
+        "VERCEL_PROMOTE": "Vercel deployment promoted",
+        "VERCEL_ROLLBACK": "Vercel production rolled back"
+      },
+      "filteredEntry": "Showing one entry."
     },
     "typeToConfirm": "Type {text} to confirm",
     "missingPermission": "The GitHub App has not been granted the permission this needs: {permissions}. An admin can grant it in the App's installation settings on GitHub.",
@@ -1829,7 +1835,8 @@
       "links": "Links",
       "repo": "Repository",
       "productionBranch": "Production branch",
-      "production": "Latest production"
+      "production": "Latest production",
+      "actions": "Actions"
     },
     "filter": {
       "production": "Production",
@@ -1929,6 +1936,87 @@
     "dashboard": {
       "title": "Hosting",
       "revoked": "token rejected"
+    },
+    "pausedPromote": "Promote the newest ready production deployment ({commit}) to go back to normal.",
+    "auditLink": {
+      "exact": "Created by an audit entry",
+      "probable": "Probably created by an audit entry"
+    },
+    "actions": {
+      "more": "Actions and build log",
+      "op": {
+        "redeploy": "Redeploy",
+        "cancel": "Cancel",
+        "promote": "Promote",
+        "rollback": "Roll back"
+      },
+      "opFor": "{op} {project} {deployment}",
+      "title": {
+        "redeploy": "Redeploy {project}",
+        "cancel": "Cancel the deployment of {project}",
+        "promote": "Promote to production: {project}",
+        "rollback": "Roll back production: {project}"
+      },
+      "confirm": {
+        "redeploy": "Build this {target, select, production {production} other {preview}} deployment again at Vercel. It gets a new id and URL.",
+        "cancel": "Stop this {target, select, production {production} other {preview}} build at Vercel.",
+        "promote": "Point the production domains to this deployment, without a new build.",
+        "rollback": "Point the production domains back to this earlier deployment (Instant Rollback)."
+      },
+      "project": "Project",
+      "deployment": "Deployment",
+      "commit": "Commit",
+      "target": "Target",
+      "production": "Production",
+      "preview": "Preview",
+      "withLatestCommit": "Use the latest commit of the branch",
+      "quota": "{used} of {cap} deployments of the plan used in the last 24 hours.",
+      "rollbackWarning": "After a rollback Vercel turns off the automatic assignment of production domains: new pushes to the production branch do not go live until a deployment is promoted.",
+      "promoteNote": "Promoting turns the automatic assignment of production domains back on.",
+      "actingAsNote": "Vercel performs this with the connected team token; the audit log records you as the one who triggered it.",
+      "pending": "Sending…",
+      "result": {
+        "succeeded": "Done. The state shown is the one Vercel reported afterwards.",
+        "failed": "Vercel refused the action: {message}",
+        "outcomeUnknown": "The request did not come back, so the outcome is unknown. Check the deployments in a minute; a deployment it created is linked to the audit entry."
+      },
+      "unavailable": {
+        "management_disabled_global": "Management is turned off for this instance.",
+        "management_disabled_installation": "Management is turned off for this account.",
+        "vercel_not_connected": "No Vercel team is connected.",
+        "vercel_revoked": "Vercel rejected the token. An admin has to rotate it.",
+        "vercel_management_disabled": "Vercel actions are turned off. An admin can turn them on in the settings."
+      },
+      "refused": {
+        "not_redeployable": "Only finished deployments can be redeployed.",
+        "not_cancelable": "Only queued or building deployments can be cancelled.",
+        "not_promotable": "Only ready production deployments can be promoted.",
+        "already_live": "This deployment already serves production.",
+        "not_rollback_candidate": "This deployment is not offered for a rollback (on Hobby only the previous production deployment is)."
+      },
+      "blocked": {
+        "management_disabled_global": "Deployment actions are hidden: management is turned off for this instance.",
+        "management_disabled_installation": "Deployment actions are hidden: management is turned off for this account.",
+        "vercel_management_disabled": "Deployment actions are hidden: Vercel actions are turned off in the settings.",
+        "vercel_revoked": "Deployment actions are hidden: Vercel rejected the token."
+      }
+    },
+    "log": {
+      "show": "Show build log",
+      "reload": "Reload build log",
+      "hide": "Hide",
+      "loading": "Loading…",
+      "label": "Build log excerpt",
+      "note": "The last {count, plural, one {line} other {# lines}} of the build output, read from Vercel just now. Tokens are removed; nothing is stored.",
+      "truncated": "The newest part of the build output (older lines were left out at 256 KB). Tokens are removed; nothing is stored.",
+      "empty": "Vercel returned no build output for this deployment.",
+      "failed": "Vercel did not return the build log ({status}).",
+      "forbidden": "Only operators and admins can read build logs.",
+      "unauthorized": "Your access has ended. Sign in again.",
+      "unavailable": "The Vercel token is missing or was rejected.",
+      "rate_limited": "Too many requests. Try again in a minute.",
+      "error": "The build log could not be loaded. Try again.",
+      "viewerNote": "The build log is on Vercel."
     }
   },
   "vercelSettings": {
@@ -2024,6 +2112,18 @@
       "invalid_repository": "Choose a repository of this account that is not ignored.",
       "unchanged": "Nothing to change.",
       "other": "The action failed ({code})."
+    },
+    "management": {
+      "title": "Vercel actions",
+      "on": "on",
+      "off": "off",
+      "description": "Redeploy, cancel, promote and roll back from this app (operators and admins). They need this switch, the account's management switch and MANAGEMENT_ENABLED; promote, rollback and production redeploys also need the project name typed. Off by default.",
+      "enable": "Turn on Vercel actions",
+      "disable": "Turn off Vercel actions",
+      "enableTitle": "Turn on Vercel actions",
+      "disableTitle": "Turn off Vercel actions",
+      "enableText": "Operators can then change deployments of this Vercel team, including production. Every action is audited.",
+      "disableText": "Deployment buttons disappear; data keeps syncing read-only."
     }
   }
 }

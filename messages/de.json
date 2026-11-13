@@ -1176,8 +1176,14 @@
         "VERCEL_CONNECT": "Vercel verbunden",
         "VERCEL_TOKEN_ROTATE": "Vercel-Token erneuert",
         "VERCEL_DISCONNECT": "Vercel getrennt",
-        "VERCEL_PROJECT_LINK": "Vercel-Projekt verknüpft"
-      }
+        "VERCEL_PROJECT_LINK": "Vercel-Projekt verknüpft",
+        "VERCEL_MANAGEMENT_TOGGLE": "Vercel-Aktionen umgeschaltet",
+        "VERCEL_REDEPLOY": "Vercel neu deployt",
+        "VERCEL_CANCEL": "Vercel-Deployment abgebrochen",
+        "VERCEL_PROMOTE": "Vercel-Deployment angehoben",
+        "VERCEL_ROLLBACK": "Vercel-Production zurückgerollt"
+      },
+      "filteredEntry": "Ein Eintrag wird angezeigt."
     },
     "typeToConfirm": "Zur Bestätigung {text} eingeben",
     "missingPermission": "Der GitHub App fehlt die nötige Berechtigung: {permissions}. Ein Admin kann sie in den Installationseinstellungen der App auf GitHub erteilen.",
@@ -1829,7 +1835,8 @@
       "links": "Links",
       "repo": "Repository",
       "productionBranch": "Produktions-Branch",
-      "production": "Letzte Produktion"
+      "production": "Letzte Produktion",
+      "actions": "Aktionen"
     },
     "filter": {
       "production": "Produktion",
@@ -1929,6 +1936,87 @@
     "dashboard": {
       "title": "Hosting",
       "revoked": "Token abgelehnt"
+    },
+    "pausedPromote": "Hebe das neueste fertige Production-Deployment ({commit}) an, um zum Normalbetrieb zurückzukehren.",
+    "auditLink": {
+      "exact": "Erstellt durch einen Audit-Eintrag",
+      "probable": "Vermutlich erstellt durch einen Audit-Eintrag"
+    },
+    "actions": {
+      "more": "Aktionen und Build-Log",
+      "op": {
+        "redeploy": "Neu deployen",
+        "cancel": "Abbrechen",
+        "promote": "Anheben",
+        "rollback": "Zurückrollen"
+      },
+      "opFor": "{op} {project} {deployment}",
+      "title": {
+        "redeploy": "{project} neu deployen",
+        "cancel": "Deployment von {project} abbrechen",
+        "promote": "In Production anheben: {project}",
+        "rollback": "Production zurückrollen: {project}"
+      },
+      "confirm": {
+        "redeploy": "Dieses {target, select, production {Production} other {Preview}}-Deployment bei Vercel erneut bauen. Es bekommt eine neue ID und URL.",
+        "cancel": "Diesen {target, select, production {Production} other {Preview}}-Build bei Vercel stoppen.",
+        "promote": "Die Production-Domains ohne neuen Build auf dieses Deployment zeigen lassen.",
+        "rollback": "Die Production-Domains auf dieses frühere Deployment zurücksetzen (Instant Rollback)."
+      },
+      "project": "Projekt",
+      "deployment": "Deployment",
+      "commit": "Commit",
+      "target": "Ziel",
+      "production": "Production",
+      "preview": "Preview",
+      "withLatestCommit": "Neuesten Commit des Branches verwenden",
+      "quota": "{used} von {cap} Deployments des Plans in den letzten 24 Stunden verbraucht.",
+      "rollbackWarning": "Nach einem Rollback schaltet Vercel die automatische Zuweisung der Production-Domains ab: Neue Pushes auf den Production-Branch gehen erst wieder live, wenn ein Deployment angehoben wird.",
+      "promoteNote": "Das Anheben schaltet die automatische Zuweisung der Production-Domains wieder ein.",
+      "actingAsNote": "Vercel führt das mit dem verbundenen Team-Token aus; das Audit-Log hält dich als Auslöser fest.",
+      "pending": "Wird gesendet…",
+      "result": {
+        "succeeded": "Erledigt. Der angezeigte Zustand ist der, den Vercel danach gemeldet hat.",
+        "failed": "Vercel hat die Aktion abgelehnt: {message}",
+        "outcomeUnknown": "Die Anfrage kam nicht zurück, das Ergebnis ist unbekannt. Prüfe die Deployments in einer Minute; ein so erstelltes Deployment wird mit dem Audit-Eintrag verknüpft."
+      },
+      "unavailable": {
+        "management_disabled_global": "Die Verwaltung ist für diese Instanz ausgeschaltet.",
+        "management_disabled_installation": "Die Verwaltung ist für dieses Konto ausgeschaltet.",
+        "vercel_not_connected": "Es ist kein Vercel-Team verbunden.",
+        "vercel_revoked": "Vercel hat den Token abgelehnt. Ein Admin muss ihn erneuern.",
+        "vercel_management_disabled": "Vercel-Aktionen sind ausgeschaltet. Ein Admin kann sie in den Einstellungen einschalten."
+      },
+      "refused": {
+        "not_redeployable": "Nur abgeschlossene Deployments können neu deployt werden.",
+        "not_cancelable": "Nur wartende oder laufende Deployments können abgebrochen werden.",
+        "not_promotable": "Nur fertige Production-Deployments können angehoben werden.",
+        "already_live": "Dieses Deployment bedient Production bereits.",
+        "not_rollback_candidate": "Für dieses Deployment wird kein Rollback angeboten (bei Hobby nur für das vorherige Production-Deployment)."
+      },
+      "blocked": {
+        "management_disabled_global": "Deployment-Aktionen sind ausgeblendet: Die Verwaltung ist für diese Instanz ausgeschaltet.",
+        "management_disabled_installation": "Deployment-Aktionen sind ausgeblendet: Die Verwaltung ist für dieses Konto ausgeschaltet.",
+        "vercel_management_disabled": "Deployment-Aktionen sind ausgeblendet: Vercel-Aktionen sind in den Einstellungen ausgeschaltet.",
+        "vercel_revoked": "Deployment-Aktionen sind ausgeblendet: Vercel hat den Token abgelehnt."
+      }
+    },
+    "log": {
+      "show": "Build-Log anzeigen",
+      "reload": "Build-Log neu laden",
+      "hide": "Ausblenden",
+      "loading": "Wird geladen…",
+      "label": "Auszug aus dem Build-Log",
+      "note": "{count, plural, one {Die letzte Zeile} other {Die letzten # Zeilen}} der Build-Ausgabe, eben von Vercel gelesen. Tokens sind entfernt; nichts wird gespeichert.",
+      "truncated": "Der neueste Teil der Build-Ausgabe (ältere Zeilen wurden bei 256 KB weggelassen). Tokens sind entfernt; nichts wird gespeichert.",
+      "empty": "Vercel hat für dieses Deployment keine Build-Ausgabe geliefert.",
+      "failed": "Vercel hat das Build-Log nicht geliefert ({status}).",
+      "forbidden": "Nur Operatoren und Admins können Build-Logs lesen.",
+      "unauthorized": "Dein Zugang ist beendet. Melde dich erneut an.",
+      "unavailable": "Der Vercel-Token fehlt oder wurde abgelehnt.",
+      "rate_limited": "Zu viele Anfragen. Versuche es in einer Minute erneut.",
+      "error": "Das Build-Log konnte nicht geladen werden. Versuche es erneut.",
+      "viewerNote": "Das Build-Log ist bei Vercel."
     }
   },
   "vercelSettings": {
@@ -2024,6 +2112,18 @@
       "invalid_repository": "Wähle ein Repository dieses Kontos, das nicht ignoriert wird.",
       "unchanged": "Nichts zu ändern.",
       "other": "Die Aktion ist fehlgeschlagen ({code})."
+    },
+    "management": {
+      "title": "Vercel-Aktionen",
+      "on": "an",
+      "off": "aus",
+      "description": "Neu deployen, abbrechen, anheben und zurückrollen aus dieser App (Operatoren und Admins). Dafür sind dieser Schalter, der Verwaltungsschalter des Kontos und MANAGEMENT_ENABLED nötig; Anheben, Rollback und Production-Deployments brauchen zusätzlich den eingetippten Projektnamen. Standardmäßig aus.",
+      "enable": "Vercel-Aktionen einschalten",
+      "disable": "Vercel-Aktionen ausschalten",
+      "enableTitle": "Vercel-Aktionen einschalten",
+      "disableTitle": "Vercel-Aktionen ausschalten",
+      "enableText": "Operatoren können dann Deployments dieses Vercel-Teams ändern, auch in Production. Jede Aktion wird auditiert.",
+      "disableText": "Die Deployment-Schaltflächen verschwinden; die Daten werden weiter nur lesend synchronisiert."
     }
   }
 }

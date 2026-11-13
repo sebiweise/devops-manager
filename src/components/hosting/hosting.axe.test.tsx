@@ -16,12 +16,34 @@ vi.mock("@/server/actions/vercel", () => ({
   rotateVercelTokenAction: vi.fn(),
   disconnectVercelAction: vi.fn(),
   linkVercelProjectAction: vi.fn(),
+  vercelDeploymentAction: vi.fn(),
+  setVercelManagementAction: vi.fn(),
+  vercelBuildLogAction: vi.fn(),
 }));
 
 const { PreviewBadge } = await import("./preview-badge");
 const { VercelTokenButton, VercelDisconnectButton, VercelLinkButton } =
   await import("./vercel-settings");
 const { StatusBadge } = await import("../data/status-badge");
+const {
+  BuildLogExcerpt,
+  DeploymentActions,
+  OperationForm,
+  VercelManagementToggle,
+} = await import("./deployment-actions");
+
+const ctx = { installationId: "2002", plan: "hobby", last24h: 12 };
+const prodDeployment = {
+  id: "dpl_demoP2",
+  projectName: "project-a",
+  target: "production",
+  state: "READY",
+  live: false,
+  rollbackCandidate: true,
+  commitSha: "a".repeat(40),
+  branch: "main",
+};
+const controls = { close: () => undefined, changed: () => undefined };
 
 /** The client-renderable hosting blocks with axe-core, in English and German. */
 
@@ -122,6 +144,58 @@ describe("hosting blocks", () => {
         expect(html).toContain("https://vercel.com/example-team/project-a/abc");
         expect(html).toContain("Deployed as preview: Ready");
         expect(html).toContain("Connect Vercel");
+      }
+    });
+  }
+
+  for (const locale of ["en", "de"] as const) {
+    it(`M6 deployment actions, dialogs, build log and toggle (${locale})`, async () => {
+      const html = render(
+        <>
+          <DeploymentActions ctx={ctx} deployment={prodDeployment} />
+          <DeploymentActions
+            ctx={ctx}
+            deployment={{
+              ...prodDeployment,
+              id: "dpl_demoB1",
+              target: "preview",
+              state: "BUILDING",
+              rollbackCandidate: false,
+            }}
+            compact
+          />
+          {(["redeploy", "cancel", "promote", "rollback"] as const).map(
+            (op) => (
+              <OperationForm
+                key={op}
+                ctx={ctx}
+                deployment={prodDeployment}
+                operation={op}
+                controls={controls}
+              />
+            ),
+          )}
+          <BuildLogExcerpt installationId="2002" deploymentId="dpl_demoE1" />
+          <VercelManagementToggle
+            installationId="2002"
+            teamSlug="example-team"
+            enabled={false}
+          />
+        </>,
+        locale,
+      );
+      expect(await violations(html)).toEqual([]);
+      if (locale === "en") {
+        // READY production, not live, a candidate: redeploy, promote, rollback.
+        expect(html).toContain(">Redeploy<");
+        expect(html).toContain(">Promote<");
+        expect(html).toContain(">Roll back<");
+        // Building: cancel only.
+        expect(html).toContain(">Cancel<");
+        expect(html).toContain("Type project-a to confirm");
+        expect(html).toContain("12 of 100 deployments");
+        expect(html).toContain("Show build log");
+        expect(html).toContain("Turn on Vercel actions");
       }
     });
   }

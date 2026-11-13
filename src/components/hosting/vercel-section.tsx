@@ -1,8 +1,9 @@
-import { CircleAlert, Info } from "lucide-react";
+import { CircleAlert, Info, ShieldCheck, ShieldOff } from "lucide-react";
 import { getFormatter, getTranslations } from "next-intl/server";
 import { StatusBadge } from "@/components/data/status-badge";
 import { dailyAllotment } from "@/lib/hosting-view";
 import type { VercelSettings } from "@/server/data/vercel";
+import { VercelManagementToggle } from "./deployment-actions";
 import {
   VercelDisconnectButton,
   VercelLinkButton,
@@ -12,7 +13,8 @@ import {
 /**
  * "Hosting · Vercel" on the account settings (admin, design addendum §9):
  * the team, plan, token source and hint, expiry, sync status and last error,
- * the rate-limit reset, Connect/Rotate/Disconnect, the freshness mode
+ * the rate-limit reset, Connect/Rotate/Disconnect, the Vercel management
+ * toggle (M6, off by default, typed team slug), the freshness mode
  * (polling + GitHub hints, with a hint when the App lacks
  * `deployments: read`), the static plan limits and the manual project links.
  * The app roles are the only authorisation layer over the one Vercel token.
@@ -179,6 +181,40 @@ export async function VercelSection({
             </p>
           ) : null}
           <p className="text-sm text-muted-foreground">{t("rbacNote")}</p>
+          <div className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="flex items-center gap-2 font-medium">
+                {c.managementEnabled ? (
+                  <ShieldCheck
+                    aria-hidden="true"
+                    className="size-4 text-status-good"
+                  />
+                ) : (
+                  <ShieldOff
+                    aria-hidden="true"
+                    className="size-4 text-muted-foreground"
+                  />
+                )}
+                {t("management.title")}
+                <span className="font-normal text-muted-foreground">
+                  ·{" "}
+                  {c.managementEnabled
+                    ? t("management.on")
+                    : t("management.off")}
+                </span>
+              </h3>
+              {globalEnabled ? (
+                <VercelManagementToggle
+                  installationId={installationId}
+                  teamSlug={c.teamSlug}
+                  enabled={c.managementEnabled}
+                />
+              ) : null}
+            </div>
+            <p className="max-w-prose text-muted-foreground">
+              {t("management.description")}
+            </p>
+          </div>
           <div className="rounded-lg border p-3 text-sm">
             <h3 className="font-medium">{t("limits.title")}</h3>
             <p className="text-muted-foreground">
