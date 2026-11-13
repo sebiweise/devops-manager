@@ -37,6 +37,10 @@ export const AUDIT_ACTIONS = [
   "BILLING_CREDENTIAL_REVOKE",
   "REPO_IGNORE",
   "REPO_UNIGNORE",
+  "VERCEL_CONNECT",
+  "VERCEL_TOKEN_ROTATE",
+  "VERCEL_DISCONNECT",
+  "VERCEL_PROJECT_LINK",
 ] as const satisfies readonly AuditAction[];
 
 export const AUDIT_STATUSES = [

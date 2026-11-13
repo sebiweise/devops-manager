@@ -125,3 +125,98 @@ export function deploySuccessRate(ready: number, error: number): number | null {
 export function shortSha(sha: string | null | undefined): string | null {
   return sha ? sha.slice(0, 7) : null;
 }
+
+/** Error and refusal codes of the Vercel settings actions (messages: vercelSettings.errors). */
+export const VERCEL_ERROR_CODES = [
+  "invalid_token",
+  "token_expired",
+  "team_required",
+  "team_not_found",
+  "team_mismatch",
+  "no_team",
+  "team_not_allowed",
+  "rate_limited",
+  "vercel_unavailable",
+  "invalid_input",
+  "team_changed",
+  "already_connected",
+  "already_connected_elsewhere",
+  "not_connected",
+  "env_managed",
+  "invalid_repository",
+  "unchanged",
+] as const;
+
+export type VercelResultLike = {
+  status: string;
+  replayed?: boolean;
+  message?: string;
+  reason?: string;
+  level?: "global" | "installation";
+  retryAfterS?: number;
+};
+
+/**
+ * The message of a Vercel settings result, as a full message key: Vercel's
+ * failures and refusals have their own texts (never "GitHub refused"); the
+ * pipeline's denials reuse management.result.
+ */
+export function vercelResultText(r: VercelResultLike): {
+  key: string;
+  values: Record<string, string | number>;
+  tone: "success" | "error" | "info";
+} {
+  const code =
+    r.status === "failed"
+      ? r.message
+      : r.status === "refused"
+        ? r.reason
+        : null;
+  if (r.status === "failed" || r.status === "refused") {
+    return (VERCEL_ERROR_CODES as readonly string[]).includes(code ?? "")
+      ? { key: `vercelSettings.errors.${code}`, values: {}, tone: "error" }
+      : {
+          key: "vercelSettings.errors.other",
+          values: { code: code || "—" },
+          tone: "error",
+        };
+  }
+  switch (r.status) {
+    case "succeeded":
+      return {
+        key: r.replayed
+          ? "management.result.replayed"
+          : "management.result.succeeded",
+        values: {},
+        tone: "success",
+      };
+    case "pending":
+      return { key: "management.result.pending", values: {}, tone: "info" };
+    case "management_disabled":
+      return {
+        key:
+          r.level === "global"
+            ? "management.result.management_disabled_global"
+            : "management.result.management_disabled_installation",
+        values: {},
+        tone: "error",
+      };
+    case "rate_limited":
+      return {
+        key: "management.result.rate_limited",
+        values: { seconds: r.retryAfterS ?? 60 },
+        tone: "error",
+      };
+    case "unauthorized":
+    case "forbidden":
+    case "confirmation_mismatch":
+    case "conflict":
+      return {
+        key: `management.result.${r.status}`,
+        values: {},
+        tone: "error",
+      };
+    default:
+      return { key: "management.result.error", values: {}, tone: "error" };
+  }
+}

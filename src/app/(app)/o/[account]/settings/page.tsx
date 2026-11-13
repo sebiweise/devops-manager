@@ -20,6 +20,8 @@ import { accountMeta } from "@/lib/page-meta";
 import { hasRole } from "@/server/authz/roles";
 import { getSyncHealth, type SyncHealth } from "@/server/data/insights";
 import { getManagementState } from "@/server/data/management";
+import { getVercelSettings } from "@/server/data/vercel";
+import { VercelSection } from "@/components/hosting/vercel-section";
 import {
   listIgnoredRepositories,
   type IgnoredRepository,
@@ -37,7 +39,13 @@ const DELIVERY_STATUSES = [
   "REJECTED",
 ] as const;
 
-const SECTIONS = ["management", "repositories", "sync", "diagnostics"] as const;
+const SECTIONS = [
+  "management",
+  "hosting",
+  "repositories",
+  "sync",
+  "diagnostics",
+] as const;
 
 /**
  * "Settings & sync" of one account (UI overhaul §2.13), admin only (other
@@ -55,14 +63,17 @@ export default async function InstallationSettingsPage({
   const { account } = await params;
   const { scope, installation } = await loadAccount(account);
   if (!hasRole(scope.role, "ADMIN")) notFound();
-  const [t, format, locale, health, state, ignored] = await Promise.all([
-    getTranslations(),
-    getFormatter(),
-    getLocale(),
-    orNotFound(getSyncHealth(scope, installation.id, env.BACKFILL_DAYS)),
-    orNotFound(getManagementState(scope, installation.id)),
-    orNotFound(listIgnoredRepositories(scope, installation.id)),
-  ]);
+  const [t, format, locale, health, state, ignored, vercel] = await Promise.all(
+    [
+      getTranslations(),
+      getFormatter(),
+      getLocale(),
+      orNotFound(getSyncHealth(scope, installation.id, env.BACKFILL_DAYS)),
+      orNotFound(getManagementState(scope, installation.id)),
+      orNotFound(listIgnoredRepositories(scope, installation.id)),
+      orNotFound(getVercelSettings(scope, installation.id)),
+    ],
+  );
   const login = installation.accountLogin;
   const installationId = String(installation.id);
   const when = (iso: string | null) =>
@@ -280,6 +291,12 @@ export default async function InstallationSettingsPage({
         />
       </section>
 
+      <VercelSection
+        installationId={installationId}
+        settings={vercel}
+        globalEnabled={state.globalEnabled}
+      />
+
       <section aria-labelledby="repositories" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 id="repositories" className={h2}>
@@ -327,6 +344,25 @@ export default async function InstallationSettingsPage({
           </h2>
           <SyncNowButton installationId={installationId} />
         </div>
+        {vercel.connection ? (
+          <p className="text-sm">
+            <span className="text-muted-foreground">
+              {t("vercelSettings.syncRow")}:{" "}
+            </span>
+            {t(
+              `vercelSettings.status.${vercel.connection.lastSyncStatus ?? "never"}`,
+            )}
+            {vercel.connection.lastSyncedAt ? (
+              <> · {when(vercel.connection.lastSyncedAt)}</>
+            ) : null}
+            {vercel.connection.lastError ? (
+              <span className="text-muted-foreground">
+                {" "}
+                · {vercel.connection.lastError}
+              </span>
+            ) : null}
+          </p>
+        ) : null}
         <KpiStrip label={t("settingsPage.sync")} columns={4}>
           <KpiTile
             label={t("syncHealth.lastWebhook")}

@@ -165,8 +165,11 @@
     "groups": {
       "insights": "Insights",
       "manage": "Manage",
-      "audit": "Audit"
-    }
+      "audit": "Audit",
+      "hosting": "Hosting"
+    },
+    "deployments": "Deployments",
+    "projects": "Projects"
   },
   "freshness": {
     "label": "Data freshness",
@@ -985,6 +988,13 @@
       "login_mismatch": "The GitHub account that authorised the App is not the account of this installation. Nothing was stored.",
       "not_configured": "Connect GitHub is not configured on this instance.",
       "forbidden": "Only admins can manage billing credentials."
+    },
+    "hosting": {
+      "title": "Hosting",
+      "account": "Account",
+      "vercel": "Vercel",
+      "connected": "Connected",
+      "notConnected": "Not connected"
     }
   },
   "management": {
@@ -1152,7 +1162,11 @@
         "BILLING_CREDENTIAL_CONNECT": "Billing access connected",
         "BILLING_CREDENTIAL_REVOKE": "Billing access removed",
         "REPO_IGNORE": "Repository ignored",
-        "REPO_UNIGNORE": "Repository un-ignored"
+        "REPO_UNIGNORE": "Repository un-ignored",
+        "VERCEL_CONNECT": "Vercel connected",
+        "VERCEL_TOKEN_ROTATE": "Vercel token rotated",
+        "VERCEL_DISCONNECT": "Vercel disconnected",
+        "VERCEL_PROJECT_LINK": "Vercel project linked"
       }
     },
     "typeToConfirm": "Type {text} to confirm",
@@ -1604,6 +1618,42 @@
     "successDrop": {
       "label": "Success drop",
       "info": "The success rate of the last 7 days is 10 points or more below the 28 days before."
+    },
+    "deployReady": {
+      "label": "Ready"
+    },
+    "deployError": {
+      "label": "Failed"
+    },
+    "deployBuilding": {
+      "label": "Building"
+    },
+    "deployQueued": {
+      "label": "Queued"
+    },
+    "deployCanceled": {
+      "label": "Canceled"
+    },
+    "deployBlocked": {
+      "label": "Blocked"
+    },
+    "deployUnknown": {
+      "label": "Unknown",
+      "info": "Vercel reported no final state, or the deployment was deleted, or it was still building after 6 hours."
+    },
+    "production": {
+      "label": "Production"
+    },
+    "preview": {
+      "label": "Preview"
+    },
+    "manualLink": {
+      "label": "Manual",
+      "info": "An admin linked this project to the repository by hand (for example for CLI deployments)."
+    },
+    "autoAssignPaused": {
+      "label": "Auto-assign paused",
+      "info": "Production is served from an older deployment (a rollback). New pushes do not go live until a deployment is promoted in Vercel."
     }
   },
   "breadcrumbs": {
@@ -1619,7 +1669,9 @@
       "queue": "Queue",
       "costs": "Costs",
       "settings": "Settings & sync",
-      "audit": "Audit log"
+      "audit": "Audit log",
+      "deployments": "Deployments",
+      "projects": "Projects"
     }
   },
   "gettingStarted": {
@@ -1699,7 +1751,9 @@
     "run": "Run",
     "userSettings": "Settings",
     "onboarding": "GitHub App installations",
-    "billingAccess": "Billing access"
+    "billingAccess": "Billing access",
+    "deployments": "Deployments",
+    "projects": "Vercel projects"
   },
   "settingsPage": {
     "sections": "Sections of this page",
@@ -1712,6 +1766,254 @@
     "importDays": "history of {days} days",
     "problems": "Repositories with problems",
     "allOk": "All {count} repositories are in sync. Show the list",
-    "diagnosticsSummary": "Webhook deliveries, rate limits and delays · data shows up after about {lag} · {dirty} daily summaries waiting"
+    "diagnosticsSummary": "Webhook deliveries, rate limits and delays · data shows up after about {lag} · {dirty} daily summaries waiting",
+    "hosting": "Hosting · Vercel"
+  },
+  "hosting": {
+    "production": "Production",
+    "preview": "Preview",
+    "live": "live",
+    "openInVercel": "Open in Vercel",
+    "openPreview": "Open preview",
+    "deployedAsPreview": "Deployed as preview: {state}",
+    "deployedAsProduction": "Deployed as production: {state}",
+    "freshness": "Data comes from Vercel by polling (daily, on page views after 5 minutes and on Sync now) and is refreshed early when GitHub reports a deployment.",
+    "revokedBanner": "Vercel rejected the token of team {team}. Deployment data is not updated until an admin reconnects.",
+    "expiringBanner": "The Vercel token of team {team} expires on {date}.",
+    "reconnect": "Reconnect",
+    "rotateNow": "Rotate token",
+    "pausedBanner": "Production auto-assignment paused since {when}: production is served from an older deployment, and new pushes do not go live until a deployment is promoted.",
+    "allProjects": "All projects",
+    "allRepos": "All repositories",
+    "state": {
+      "deployReady": "Ready",
+      "deployError": "Failed",
+      "deployBuilding": "Building",
+      "deployQueued": "Queued",
+      "deployCanceled": "Canceled",
+      "deployBlocked": "Blocked",
+      "deployUnknown": "Unknown",
+      "other": "Other"
+    },
+    "creator": {
+      "git": "Git push",
+      "cli": "CLI",
+      "api": "API or hook",
+      "redeploy": "Redeploy",
+      "promote": "Promote",
+      "rollback": "Rollback"
+    },
+    "plan": {
+      "hobby": "Hobby plan, rolling 24 h",
+      "pro": "Pro plan, rolling 24 h"
+    },
+    "col": {
+      "state": "State",
+      "project": "Project",
+      "target": "Target",
+      "commit": "Commit",
+      "build": "Build time",
+      "created": "Created",
+      "source": "Created by",
+      "error": "Error",
+      "links": "Links",
+      "repo": "Repository",
+      "productionBranch": "Production branch",
+      "production": "Latest production"
+    },
+    "filter": {
+      "production": "Production",
+      "preview": "Preview",
+      "error": "Failed",
+      "building": "Building",
+      "ready": "Ready",
+      "canceled": "Canceled"
+    },
+    "kpi": {
+      "label": "Deployment key figures",
+      "deployments": "Deployments",
+      "deploymentsInfo": "Deployments created in the range, production and preview.",
+      "byTarget": "{production} production · {preview} preview",
+      "prodSuccess": "Production success",
+      "prodSuccessInfo": "Ready production deployments out of ready and failed ones (canceled ones are left out).",
+      "failures": "Failed deployments",
+      "build": "Build time (median)",
+      "buildInfo": "From the start of the build until the deployment was ready.",
+      "buildP90": "90 % within {p90}",
+      "failingProd": "Failing production",
+      "failingProdInfo": "Projects whose newest production deployment failed.",
+      "quota": "Deploys in 24 h",
+      "quotaInfo": "Deployments created in the last 24 hours, against the {cap} per day of the plan.",
+      "quotaOver": "Over the daily allotment",
+      "last24h": "Deploys in 24 h"
+    },
+    "chart": {
+      "title": "Deployments per {bucket, select, week {week} month {month} other {day}}",
+      "description": "Stacked by final state; building, queued and blocked ones count as other.",
+      "label": "Stacked bar chart of deployments per {bucket, select, week {week} month {month} other {day}} by state over {n} {bucket, select, week {weeks} month {months} other {days}}, {total} deployments in total.",
+      "total": "Deployments",
+      "successRate": "Success",
+      "bucketName": {
+        "day": "Day",
+        "week": "Week of",
+        "month": "Month"
+      }
+    },
+    "deployments": {
+      "title": "Deployments",
+      "subtitle": "Vercel team {team} · {range}",
+      "search": "Search branch, commit or project",
+      "chips": "Filter deployments",
+      "empty": "No deployments in the {range}."
+    },
+    "projects": {
+      "title": "Projects",
+      "subtitle": "Vercel team {team} · {count, plural, one {# project} other {# projects}}",
+      "search": "Search projects",
+      "chips": "Filter projects",
+      "filter": {
+        "failing": "Failing production",
+        "paused": "Paused",
+        "unlinked": "Not linked"
+      },
+      "empty": "No projects match.",
+      "noDeployments": "No deployments stored yet.",
+      "recent": "Last {count, plural, one {deployment} other {# deployments}}",
+      "notLinked": "Not linked",
+      "notInInstallation": "Repository outside this account"
+    },
+    "repoCard": {
+      "title": "Deployments",
+      "production": "Production",
+      "live": "Serving",
+      "preview": "Latest preview",
+      "none": "None yet",
+      "recent": "Last {count, plural, one {deployment} other {# deployments}}"
+    },
+    "card": {
+      "title": "Hosting",
+      "subtitle": "Vercel team {team} · {range}",
+      "showAll": "All deployments"
+    },
+    "attention": {
+      "title": "Needs attention",
+      "empty": "Nothing needs attention.",
+      "since": "since {when}",
+      "expires": "expires {when}",
+      "reconnect": "Go to the settings",
+      "openInVercel": "Open in Vercel",
+      "severity": {
+        "CRITICAL": "critical",
+        "HIGH": "high",
+        "MEDIUM": "medium",
+        "LOW": "low",
+        "INFO": "info"
+      },
+      "kind": {
+        "prod_failing": "{project}: production deployment failed",
+        "auto_assign_paused": "{project}: production auto-assignment paused",
+        "token_expiring": "Vercel token expires soon",
+        "credential_revoked": "Vercel rejected the token"
+      }
+    },
+    "dashboard": {
+      "title": "Hosting",
+      "revoked": "token rejected"
+    }
+  },
+  "vercelSettings": {
+    "title": "Hosting · Vercel",
+    "description": "Connect the Vercel team of this account to see its projects and deployments. Read-only: the app never changes anything at Vercel, never reads environment variable values and stores no Vercel user names.",
+    "notConnected": "No Vercel team is connected.",
+    "connect": "Connect Vercel",
+    "connectTitle": "Connect a Vercel team",
+    "rotate": "Rotate token",
+    "rotateTitle": "Rotate the Vercel token",
+    "disconnect": "Disconnect",
+    "disconnectTitle": "Disconnect Vercel",
+    "disconnectText": "Deletes the stored projects, deployments and statistics of this team. The audit log stays. Revoke the token at Vercel as well (Account settings, Tokens).",
+    "disconnectEnv": "The token comes from VERCEL_TOKEN: remove it from the environment too, or the next sync connects the team again.",
+    "steps": {
+      "create": "In Vercel, open Account settings, Tokens, and create a token.",
+      "scope": "Set its scope to this team and give it an expiry date.",
+      "paste": "Paste it here. It is checked with read-only requests and stored encrypted; only its last 4 characters are shown."
+    },
+    "token": "Access token",
+    "teamId": "Team id (optional)",
+    "teamIdHint": "Only needed for a full-account token that reaches several teams.",
+    "fullTokenWarning": "A full-account token reaches every team of its user. Prefer a token scoped to this team.",
+    "team": "Team",
+    "plan": "Plan",
+    "plans": {
+      "hobby": "Hobby",
+      "pro": "Pro",
+      "enterprise": "Enterprise",
+      "other": "Other"
+    },
+    "tokenSource": "Token",
+    "sourceDb": "Stored (encrypted)",
+    "sourceEnv": "Configured via environment",
+    "scopeFull": "full account",
+    "scopeTeam": "team only",
+    "expires": "Expires",
+    "noExpiry": "No expiry reported",
+    "lastSync": "Last sync",
+    "lastError": "Last error",
+    "pausedUntil": "Paused until",
+    "rateLimit": "Rate limit",
+    "rateLimitValue": "{remaining} of {limit} left",
+    "never": "never",
+    "revoked": "Vercel rejected the token on {when}. Rotate it to continue syncing.",
+    "freshness": "Freshness",
+    "freshnessHints": "Polling plus GitHub deployment hints",
+    "freshnessPolling": "Polling only",
+    "hintsMissing": "Near real-time status needs the GitHub App permission “Deployments: read” and the deployment_status event. Accept the updated permissions in the installation's settings on GitHub; until then the data refreshes by polling.",
+    "rbacNote": "Vercel's own team roles are not mapped: every user of this app sees the team through the one token, limited by their role here.",
+    "limits": {
+      "title": "Plan limits",
+      "deployments": "{cap} deployments per day.",
+      "custom": "The plan's limits are not known to the app.",
+      "note": "Static figures from Vercel's documentation; the app does not read billing."
+    },
+    "syncRow": "Vercel",
+    "status": {
+      "ok": "ok",
+      "partial": "partial (continues on the next pass)",
+      "rate_limited": "paused by Vercel's rate limit",
+      "credential_error": "token rejected or missing",
+      "error": "error",
+      "never": "not synced yet"
+    },
+    "linksTitle": "Project links",
+    "linksDescription": "Projects are linked to the repository of their Git connection when it belongs to this account. Link CLI-deployed projects by hand.",
+    "linkOutside": "{repo} (not in this account)",
+    "linkNone": "not linked",
+    "linkEdit": "Link",
+    "linkEditFor": "Link project {project}",
+    "linkTitle": "Link {project} to a repository",
+    "linkText": "Choose the repository whose page shows the deployments of {project}.",
+    "linkRepository": "Repository",
+    "linkAutomatic": "Automatic (from the Git connection)",
+    "linkSave": "Save link",
+    "errors": {
+      "invalid_token": "Vercel rejected the token. Check that it was copied completely and is not revoked or expired.",
+      "token_expired": "The token has expired.",
+      "team_required": "The token reaches several teams. Enter the team id.",
+      "team_not_found": "The team was not found or the token cannot access it.",
+      "team_mismatch": "The token is scoped to another team.",
+      "no_team": "The token reaches no team.",
+      "team_not_allowed": "This team is not allowed on this instance (ALLOWED_VERCEL_TEAMS).",
+      "rate_limited": "Vercel's rate limit was reached. Try again later.",
+      "vercel_unavailable": "Vercel could not be reached. Try again later.",
+      "invalid_input": "Check the token and the team id (team_…).",
+      "team_changed": "The token belongs to another team. Disconnect first to switch teams.",
+      "already_connected": "A team is already connected. Rotate the token instead.",
+      "already_connected_elsewhere": "This team is already connected elsewhere.",
+      "not_connected": "No Vercel team is connected.",
+      "env_managed": "The token comes from the environment; change VERCEL_TOKEN instead.",
+      "invalid_repository": "Choose a repository of this account that is not ignored.",
+      "unchanged": "Nothing to change.",
+      "other": "The action failed ({code})."
+    }
   }
 }

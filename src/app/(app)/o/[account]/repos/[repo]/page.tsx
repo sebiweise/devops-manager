@@ -42,6 +42,8 @@ import {
 } from "@/server/data/insights";
 import { getManagementState } from "@/server/data/management";
 import { listIgnoredRepositories } from "@/server/data/repos";
+import { getRepoDeployments } from "@/server/data/vercel";
+import { RepoDeployments } from "@/components/hosting/hosting";
 
 export const generateMetadata = accountMeta("repo");
 
@@ -193,7 +195,7 @@ export default async function RepoPage({
     : "workflows";
   const insightRange = await pageRange(sp);
   const repositoryId = BigInt(repo.id);
-  const [summary, workflows] = await Promise.all([
+  const [summary, workflows, deployments] = await Promise.all([
     orNotFound(
       getRepositorySummary(scope, installation.id, repositoryId, insightRange),
     ),
@@ -203,6 +205,7 @@ export default async function RepoPage({
         range: insightRange,
       }),
     ),
+    orNotFound(getRepoDeployments(scope, installation.id, repositoryId)),
   ]);
   const s = summary.summary;
   const rangeLabel = t(`filters.ranges.${insightRange}`);
@@ -312,6 +315,8 @@ export default async function RepoPage({
           href={withParams(base, { tab: "dependabot", range })}
         />
       </KpiStrip>
+
+      <RepoDeployments cards={deployments} />
 
       <nav aria-label={t("repo.tabs")} className="overflow-x-auto border-b">
         <ul className="flex w-max gap-1">

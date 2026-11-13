@@ -10,6 +10,7 @@ import { DependabotBulkMerge } from "./dependabot-bulk-merge";
 import { AlertsTable, SeverityMatrix } from "./dependabot-table";
 import { OrgVariablesTable } from "./org-variables";
 import { PullsTable } from "./pulls-table";
+import { deploymentsForShas } from "@/server/data/vercel";
 import {
   NewVariableButton,
   RepoVariablesList,
@@ -70,6 +71,13 @@ export async function PullsSection({
     ? overview.repos.filter((r) => r.repositoryId === repositoryId)
     : overview.repos;
   const unavailable = repos.filter((r) => r.status === "unavailable");
+  const previews = Object.fromEntries(
+    await deploymentsForShas(
+      scope,
+      installationId,
+      pulls.map((p) => p.headSha),
+    ).catch(() => new Map()),
+  );
   const mergeMethods = Object.fromEntries(
     repos.map((r) => [r.repositoryId, r.mergeMethods]),
   );
@@ -100,6 +108,7 @@ export async function PullsSection({
         mergeAuditTrailer={state.mergeAuditTrailer}
         showRepo={!repositoryId}
         caption={t("title")}
+        previews={previews}
       />
       {unavailable.length > 0 ? (
         <p className="text-xs text-muted-foreground">
