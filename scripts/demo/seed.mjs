@@ -6,12 +6,15 @@
 // Wipes the tenant tables of the target database and fills them with two
 // installations (example-org, example-user), repo-a.. repositories (some
 // forks, one archived, one ignored), 30 days of runs and jobs, queued jobs,
-// self-hosted runners with samples, billing items and webhook deliveries.
+// self-hosted runners with samples, billing items, webhook deliveries and a
+// Vercel team with projects, deployments (a failed production build and a
+// rolled-back production) and findings.
 // Every name is a generic placeholder. With --app, it then calls the app's
 // cron endpoint (CRON_SECRET from the environment) until the daily
 // summaries are computed. Refuses to run when NODE_ENV=production or when
 // the database URL does not point at localhost / 127.0.0.1.
 
+import { createHash } from "node:crypto";
 import pg from "pg";
 
 const url = process.env.DATABASE_URL;
@@ -106,8 +109,9 @@ await client.query(`
   TRUNCATE "WorkflowJob", "WorkflowRun", "RollupDirty", "DailyWorkflowStat",
     "DailyJobStat", "DailyRunnerStat", "RunnerSample", "Runner",
     "BillingUsageItem", "GitHubCredential", "SyncState", "WebhookDelivery",
-    "InstallationRateLimit", "AuditLog", "AuditChainHead", "Repository",
-    "Installation" CASCADE`);
+    "InstallationRateLimit", "AuditLog", "AuditChainHead", "VercelDeployment",
+    "VercelProject", "VercelConnection", "DailyDeploymentStat", "Finding",
+    "FeatureAvailability", "Repository", "Installation" CASCADE`);
 
 const permissions = JSON.stringify({
   metadata: "read",
@@ -332,10 +336,7 @@ for (const [
           "feature-x",
           "dependabot/npm/example",
         ]),
-        headSha: (BigInt(id_) * 2654435761n)
-          .toString(16)
-          .padStart(40, "0")
-          .slice(0, 40),
+        headSha: createHash("sha1").update(`run-${id_}`).digest("hex"),
         isDefaultBranch: true,
         actorLogin: "example-user",
         runNumber: id_ % 10_000,
@@ -580,8 +581,340 @@ await insert(
   })),
 );
 
+// ---------- hosting: a Vercel team for example-org (synthetic) ----------
+// The org's connection holds no token (accessToken null), so the app makes
+// no Vercel call in the demo; example-user's connection is "revoked" to show
+// the reconnect banner. Deployments follow the seeded push runs of repo-a..d
+// (same commit SHAs), so the run and pull request pages show "Deployed as".
+await insert("VercelConnection", [
+  {
+    installationId: ORG,
+    teamId: "team_exampleteam0000000001",
+    teamSlug: "example-team",
+    teamName: "Example Team",
+    plan: "hobby",
+    tokenSource: "DB",
+    accessToken: null,
+    tokenHint: "a1b2",
+    tokenScope: "team",
+    tokenExpiresAt: iso(NOW + 9 * DAY),
+    createdByUserId: "demo",
+    revokedAt: null,
+    lastError: null,
+    lastUsedAt: recent(4),
+    lastSyncStatus: "ok",
+    lastSyncedAt: recent(2),
+    projectsSyncedAt: recent(90),
+    deploymentsCursor: BigInt(NOW - 30 * MIN),
+    updatedAt: recent(2),
+  },
+  {
+    installationId: USER,
+    teamId: "team_exampleteam0000000002",
+    teamSlug: "example-user-team",
+    teamName: "Example User",
+    plan: "hobby",
+    tokenSource: "DB",
+    accessToken: null,
+    tokenHint: "c3d4",
+    tokenScope: "team",
+    tokenExpiresAt: null,
+    createdByUserId: "demo",
+    lastUsedAt: null,
+    deploymentsCursor: null,
+    revokedAt: iso(NOW - 2 * DAY),
+    lastSyncStatus: "credential_error",
+    lastSyncedAt: iso(NOW - 2 * DAY),
+    lastError: "401 Not authorized",
+    projectsSyncedAt: iso(NOW - 2 * DAY),
+    updatedAt: iso(NOW - 2 * DAY),
+  },
+]);
+/** @type {Array<[string, bigint, string, string, bigint | null, string | null, bigint | null]>} */
+const projects = [
+  // [id, installation, name, framework, repoId, linkRepo, manualRepoId]
+  [
+    "prj_demo00000000000000001",
+    ORG,
+    "project-a",
+    "nextjs",
+    201n,
+    "example-org/repo-a",
+    null,
+  ],
+  [
+    "prj_demo00000000000000002",
+    ORG,
+    "project-b",
+    "vite",
+    202n,
+    "example-org/repo-b",
+    null,
+  ],
+  ["prj_demo00000000000000003", ORG, "project-c", "nextjs", null, null, 203n],
+  [
+    "prj_demo00000000000000004",
+    ORG,
+    "docs",
+    "astro",
+    204n,
+    "example-org/repo-d",
+    null,
+  ],
+  [
+    "prj_demo00000000000000005",
+    USER,
+    "project-x",
+    "nextjs",
+    101n,
+    "example-user/repo-x",
+    null,
+  ],
+];
+const projectOfRepo = new Map(projects.map((p) => [p[4] ?? p[6], p]));
+/** @type {Array<Record<string, any>>} */
+const deployments = [];
+let dplSeq = 0;
+for (const r of runs) {
+  const p = projectOfRepo.get(r.repositoryId);
+  if (!p || r.workflowName !== "CI" || r.event === "schedule") continue;
+  const created = Date.parse(r.createdAt) + 2 * MIN;
+  if (created > NOW - 3 * MIN) continue;
+  const production = r.headBranch === "main" && rand() < 0.5;
+  const failed = rand() < (p[2] === "project-c" ? 0.15 : 0.05);
+  const canceled = !failed && rand() < 0.03;
+  const buildS = between(35, p[3] === "astro" ? 70 : 160);
+  deployments.push({
+    id: `dpl_demo${String(dplSeq++).padStart(17, "0")}`,
+    installationId: p[1],
+    projectId: p[0],
+    target: production ? "production" : "preview",
+    state: failed ? "ERROR" : canceled ? "CANCELED" : "READY",
+    readySubstate:
+      failed || canceled ? null : production ? "PROMOTED" : "STAGED",
+    url: `${p[2]}-${(dplSeq * 7919).toString(36)}-example-team.vercel.app`,
+    branch: r.headBranch,
+    commitSha: r.headSha,
+    commitMessage: pick([
+      "feat: add search to the list view",
+      "fix: handle empty responses",
+      "chore(deps): update dependencies",
+      "docs: explain the setup",
+      "refactor: split the settings form",
+    ]),
+    creatorKind: p[6] ? "cli" : "git",
+    errorCode: failed ? "BUILD_FAILED" : null,
+    isRollbackCandidate: production && !failed && !canceled,
+    createdAt: iso(created),
+    buildingAt: iso(created + 8_000),
+    readyAt: failed || canceled ? null : iso(created + 8_000 + buildS * 1000),
+    buildMs: failed || canceled ? null : buildS * 1000,
+    syncedAt: recent(2),
+  });
+}
+// A failed production build of project-a (newest) and a rolled-back
+// production of project-b (served from an older deployment).
+/** @param {bigint} repoId */
+const lastSha = (repoId) =>
+  createHash("sha1").update(`synthetic-${repoId}`).digest("hex");
+deployments.push({
+  id: "dpl_demo_failed_production",
+  installationId: ORG,
+  projectId: "prj_demo00000000000000001",
+  target: "production",
+  state: "ERROR",
+  readySubstate: null,
+  url: null,
+  branch: "main",
+  commitSha: lastSha(201n),
+  commitMessage: "feat: move the build to the new bundler",
+  creatorKind: "git",
+  errorCode: "BUILD_FAILED",
+  isRollbackCandidate: false,
+  createdAt: iso(NOW - 40 * MIN),
+  buildingAt: iso(NOW - 40 * MIN + 8_000),
+  readyAt: null,
+  buildMs: null,
+  syncedAt: recent(2),
+});
+deployments.push({
+  id: "dpl_demo_building_preview",
+  installationId: ORG,
+  projectId: "prj_demo00000000000000002",
+  target: "preview",
+  state: "BUILDING",
+  readySubstate: null,
+  url: null,
+  branch: "feature-x",
+  commitSha: lastSha(202n),
+  commitMessage: "feat: new onboarding steps",
+  creatorKind: "git",
+  errorCode: null,
+  isRollbackCandidate: false,
+  createdAt: iso(NOW - 4 * MIN),
+  buildingAt: iso(NOW - 3 * MIN),
+  readyAt: null,
+  buildMs: null,
+  syncedAt: recent(2),
+});
+/** @param {string} projectId */
+const prodOf = (projectId) =>
+  deployments
+    .filter(
+      (d) =>
+        d.projectId === projectId &&
+        d.target === "production" &&
+        d.state === "READY",
+    )
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+const liveOf = new Map(
+  projects.map((p) => {
+    const prods = prodOf(p[0]);
+    // project-b: production was rolled back to the second-newest deployment.
+    return [p[0], (p[2] === "project-b" ? prods[1] : prods[0])?.id ?? null];
+  }),
+);
+await insert(
+  "VercelProject",
+  projects.map(([id, inst, name, framework, repoId, linkRepo, manual]) => {
+    const latest = deployments
+      .filter((d) => d.projectId === id && d.target === "production")
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+    return {
+      id,
+      installationId: inst,
+      name,
+      framework,
+      linkType: repoId ? "github" : null,
+      linkRepoId: repoId,
+      linkRepo,
+      productionBranch: "main",
+      repositoryId: repoId,
+      manualRepositoryId: manual,
+      latestProdDeploymentId: latest?.id ?? null,
+      latestProdState: latest?.state ?? null,
+      latestProdReadyAt: latest?.readyAt ?? null,
+      liveProdDeploymentId: liveOf.get(id),
+      autoAssignPausedAt:
+        name === "project-b" ? iso(NOW - 5 * 3_600_000) : null,
+      updatedAt: recent(2),
+    };
+  }),
+);
+await insert("VercelDeployment", deployments);
+// Daily stats per project, UTC day and target.
+/** @type {Map<string, Record<string, any>>} */
+const stats = new Map();
+for (const d of deployments) {
+  const day = d.createdAt.slice(0, 10);
+  const k = `${d.projectId}|${day}|${d.target}`;
+  const s = stats.get(k) ?? {
+    installationId: d.installationId,
+    projectId: d.projectId,
+    day,
+    target: d.target,
+    total: 0,
+    ready: 0,
+    error: 0,
+    canceled: 0,
+    builds: [],
+  };
+  s.total++;
+  if (d.state === "READY") s.ready++;
+  if (d.state === "ERROR") s.error++;
+  if (d.state === "CANCELED") s.canceled++;
+  if (d.buildMs) s.builds.push(d.buildMs);
+  stats.set(k, s);
+}
+/** @param {number[]} xs @param {number} q */
+const quantile = (xs, q) => {
+  if (xs.length === 0) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.min(s.length - 1, Math.floor(q * (s.length - 1)))];
+};
+await insert(
+  "DailyDeploymentStat",
+  [...stats.values()].map(({ builds, ...s }) => ({
+    ...s,
+    buildMsP50: quantile(builds, 0.5),
+    buildMsP90: quantile(builds, 0.9),
+  })),
+);
+/**
+ * @param {bigint} inst @param {string} ruleKey @param {string} source
+ * @param {string} severity @param {string} title
+ * @param {Record<string, string>} details
+ */
+const finding = (inst, ruleKey, source, severity, title, details) => ({
+  id: `finding-${ruleKey.replace(/[^a-z0-9]/gi, "-")}`,
+  installationId: inst,
+  repositoryId: null,
+  source,
+  ruleKey,
+  severity,
+  status: "OPEN",
+  title,
+  externalUrl: details.projectName
+    ? `https://vercel.com/example-team/${details.projectName}`
+    : null,
+  details: JSON.stringify(details),
+  firstSeenAt: iso(NOW - 40 * MIN),
+  lastSeenAt: recent(2),
+});
+await insert("Finding", [
+  finding(
+    ORG,
+    "vercel:prod-failing:prj_demo00000000000000001",
+    "VERCEL",
+    "HIGH",
+    "project-a: production deployment failed",
+    {
+      kind: "prod_failing",
+      projectId: "prj_demo00000000000000001",
+      projectName: "project-a",
+      repositoryId: "201",
+    },
+  ),
+  finding(
+    ORG,
+    "vercel:auto-assign-paused:prj_demo00000000000000002",
+    "VERCEL",
+    "MEDIUM",
+    "project-b: production auto-assignment paused",
+    {
+      kind: "auto_assign_paused",
+      projectId: "prj_demo00000000000000002",
+      projectName: "project-b",
+      since: iso(NOW - 5 * 3_600_000),
+      repositoryId: "202",
+    },
+  ),
+  finding(
+    ORG,
+    "vercel:token-expiring",
+    "CREDENTIAL",
+    "MEDIUM",
+    "Vercel token expires soon",
+    {
+      kind: "token_expiring",
+      expiresAt: iso(NOW + 9 * DAY),
+    },
+  ),
+  finding(
+    USER,
+    "vercel:credential-revoked",
+    "CREDENTIAL",
+    "HIGH",
+    "Vercel token rejected; reconnect required",
+    {
+      kind: "credential_revoked",
+      since: iso(NOW - 2 * DAY),
+    },
+  ),
+]);
+
 console.log(
-  `seeded ${repos.length} repositories, ${runs.length} runs, ${jobs.length} jobs, ${samples.length} runner samples, ${billing.length} billing items`,
+  `seeded ${repos.length} repositories, ${runs.length} runs, ${jobs.length} jobs, ${samples.length} runner samples, ${billing.length} billing items, ${deployments.length} Vercel deployments`,
 );
 
 if (appUrl) {
