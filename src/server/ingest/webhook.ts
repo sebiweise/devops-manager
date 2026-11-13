@@ -19,6 +19,10 @@ export const HANDLED_EVENTS = new Set([
   "github_app_authorization",
   // Freshness hints for Vercel projects (needs the optional deployments: read).
   "deployment_status",
+  // Freshness hints for Azure Pipelines runs (checks: read; check runs and
+  // suites created by the Azure Pipelines GitHub App).
+  "check_run",
+  "check_suite",
 ]);
 
 /**
@@ -34,6 +38,8 @@ export const REPO_DATA_EVENTS = new Set([
   "pull_request_review",
   "dependabot_alert",
   "deployment_status",
+  "check_run",
+  "check_suite",
 ]);
 
 export const REPO_IGNORED_REASON = "repo_ignored";
@@ -136,21 +142,32 @@ const json = (
 
 /**
  * Removes token-like strings and truncates, for error columns and logs:
- * GitHub tokens (`ghs_`, `github_pat_`, ...), Vercel tokens (`vcp_`, ...)
- * and any `Authorization`/`Bearer`/`token` value.
+ * GitHub tokens (`ghs_`, `github_pat_`, ...), Vercel tokens (`vcp_`, ...),
+ * Azure DevOps PATs, JWTs, Basic credentials and any
+ * `Authorization`/`Bearer`/`token` value.
  */
 export function redactError(message: string, max = 500): string {
-  return message
-    .replace(
-      /\b(gh[pousr]_[A-Za-z0-9_]{10,}|github_pat_[A-Za-z0-9_]{10,}|vc[a-z]_[A-Za-z0-9_]{8,})\b/g,
-      "[redacted]",
-    )
-    .replace(/\bBearer\s+[^\s"',]+/gi, "Bearer [redacted]")
-    .replace(
-      /(authorization|bearer|token)(["'\s:=]+)(?:(?:bearer|token)\s+)?(?!\[redacted\])[^\s"',]+/gi,
-      "$1$2[redacted]",
-    )
-    .slice(0, max);
+  return (
+    message
+      .replace(
+        /\b(gh[pousr]_[A-Za-z0-9_]{10,}|github_pat_[A-Za-z0-9_]{10,}|vc[a-z]_[A-Za-z0-9_]{8,})\b/g,
+        "[redacted]",
+      )
+      // Azure DevOps PATs (84 characters with the AZDO signature), JWTs
+      // (Microsoft Entra access tokens) and Basic credentials.
+      .replace(/\b[A-Za-z0-9]{70,80}AZDO[A-Za-z0-9]{4,8}\b/g, "[redacted]")
+      .replace(
+        /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
+        "[redacted]",
+      )
+      .replace(/\bBasic\s+[A-Za-z0-9+/=]{8,}/gi, "Basic [redacted]")
+      .replace(/\bBearer\s+[^\s"',]+/gi, "Bearer [redacted]")
+      .replace(
+        /(authorization|bearer|token)(["'\s:=]+)(?:(?:bearer|token)\s+)?(?!\[redacted\])[^\s"',]+/gi,
+        "$1$2[redacted]",
+      )
+      .slice(0, max)
+  );
 }
 
 /**

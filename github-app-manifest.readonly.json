@@ -19,7 +19,9 @@
     "workflow_run",
     "workflow_job",
     "repository",
-    "deployment_status"
+    "deployment_status",
+    "check_run",
+    "check_suite"
   ],
   "default_permissions": {
     "metadata": "read",
