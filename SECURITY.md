@@ -46,4 +46,4 @@ secret, session cookies, the stored run history and the audit log.
 ## Dependencies and supply chain
 
 Dependabot (with a cooldown), Semgrep, Trivy and Gitleaks run in CI. Actions
-are pinned by commit SHA and run on GitHub-hosted runners only.
+use version tags and run on GitHub-hosted runners only.

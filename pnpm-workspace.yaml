@@ -20,3 +20,8 @@ minimumReleaseAgeExclude:
   - next-intl@4.15.0
   - use-intl@4.15.0
   - prettier@3.10.0
+
+# Keep the pnpm pin from "packageManager" out of pnpm-lock.yaml: with it, pnpm 12
+# writes the lockfile as two YAML documents, which SonarCloud's dependency
+# analysis (and other YAML tooling) cannot parse.
+pmOnFail: ignore
