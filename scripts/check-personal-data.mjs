@@ -30,8 +30,13 @@ const ALLOWED_EMAIL_DOMAINS = [
   /^noreply\./i,
 ];
 // GitHub commits merges and squashes as `GitHub <noreply@github.com>`;
-// Dependabot signs off its commits with `dependabot[bot] <support@github.com>`.
-const ALLOWED_ADDRESSES = new Set(["noreply@github.com", "support@github.com"]);
+// Dependabot signs off its commits with `dependabot[bot] <support@github.com>`;
+// Claude Code commits as `Claude <noreply@anthropic.com>`.
+const ALLOWED_ADDRESSES = new Set([
+  "noreply@github.com",
+  "support@github.com",
+  "noreply@anthropic.com",
+]);
 // Email addresses are found without a regex: a nested group like (?:[a-z0-9-]+\.)+
 // backtracks super-linearly. Every "@" with a local part before it is a candidate.
 const LOCAL_CHAR = /[A-Za-z0-9._%+-]/;
