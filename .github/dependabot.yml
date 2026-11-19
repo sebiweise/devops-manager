@@ -1,72 +1,127 @@
+# Dependabot, set up the same way in every repository of sebiweise: weekly on
+# Monday morning, a week of cooldown, few grouped pull requests. Only the
+# directories, the target branch and the ignore list differ per repository.
+# Dependabot reads this file from the default branch only.
 version: 2
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
+  # npm also covers pnpm (pnpm-lock.yaml).
+  - package-ecosystem: npm
+    directory: /
     schedule:
-      interval: "weekly"
-    # Version updates wait a week: most hijacked releases are pulled within
-    # days. Security updates are not delayed by this.
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    # Version updates wait a week: longer than pnpm's minimumReleaseAge, and
+    # most hijacked releases are pulled by then. Security updates are not delayed.
     cooldown:
       default-days: 7
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(dev-deps)"
+    # The first matching group wins.
     groups:
-      nextjs:
-        patterns: ["next", "eslint-config-next"]
-        update-types: ["minor", "patch"]
-      react:
-        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+      # Minor and patch updates of everything in one pull request.
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      # Majors of packages that only work together, one pull request per
+      # family. Groups whose packages a repository does not use stay empty.
+      next-react:
+        update-types: [major]
+        patterns: [next, eslint-config-next, react, react-dom, "@types/react*"]
       prisma:
-        # Prisma 8 is a separate migration; stay on 7.x until then.
-        patterns: ["prisma", "@prisma/*"]
-        update-types: ["minor", "patch"]
+        update-types: [major]
+        patterns: [prisma, "@prisma/*"]
       better-auth:
-        patterns: ["better-auth", "@better-auth/*"]
-        update-types: ["minor", "patch"]
-      octokit:
-        patterns: ["@octokit/*"]
-        update-types: ["minor", "patch"]
-      lint:
+        update-types: [major]
+        patterns: [better-auth, "@better-auth/*"]
+      trpc-tanstack:
+        update-types: [major]
+        patterns: ["@trpc/*", "@tanstack/*"]
+      react-email:
+        update-types: [major]
+        patterns: [react-email, "@react-email/*"]
+      tailwind:
+        update-types: [major]
+        patterns: [tailwindcss, "@tailwindcss/*"]
+      lint-format:
+        update-types: [major]
         patterns:
           [
-            "eslint",
-            "typescript-eslint",
-            "prettier",
-            "prettier-plugin-tailwindcss",
+            eslint,
+            "eslint-*",
+            "@eslint/*",
+            typescript-eslint,
+            prettier,
+            "prettier-*",
+            "@biomejs/*",
           ]
-        update-types: ["minor", "patch"]
+      # Security updates in one pull request.
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
     ignore:
-      - dependency-name: "prisma"
-        update-types: ["version-update:semver-major"]
+      # Prisma 8 is a separate migration; stay on 7.x until then.
+      - dependency-name: prisma
+        update-types: [version-update:semver-major]
       - dependency-name: "@prisma/*"
-        update-types: ["version-update:semver-major"]
+        update-types: [version-update:semver-major]
       # The app runs on Node 22 (Dockerfile, CI); the types follow the runtime major.
       - dependency-name: "@types/node"
-        update-types: ["version-update:semver-major"]
+        update-types: [version-update:semver-major]
       # typescript-eslint supports TypeScript < 6.1 only.
-      - dependency-name: "typescript"
-        update-types:
-          ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: typescript
+        update-types: [version-update:semver-major, version-update:semver-minor]
 
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  # Base image tags and digests.
+  - package-ecosystem: docker
+    directories:
+      - "/"
     schedule:
-      interval: "weekly"
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
     cooldown:
       default-days: 7
+    labels: [dependencies]
+    commit-message:
+      prefix: "chore(docker)"
     groups:
-      actions:
+      docker:
         patterns: ["*"]
 
-  - package-ecosystem: "docker"
-    directory: "/"
+  - package-ecosystem: docker-compose
+    directory: /
     schedule:
-      interval: "weekly"
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
     cooldown:
       default-days: 7
+    labels: [dependencies]
+    commit-message:
+      prefix: "chore(docker)"
+    groups:
+      docker-compose:
+        patterns: ["*"]
 
-  - package-ecosystem: "docker-compose"
-    directory: "/"
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "weekly"
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
     cooldown:
       default-days: 7
+    labels: [dependencies]
+    commit-message:
+      prefix: "ci"
+    groups:
+      github-actions:
+        patterns: ["*"]
